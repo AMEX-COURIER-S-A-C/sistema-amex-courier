@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { uploadFileToR2, getR2ViewUrl } from '@/lib/r2/client';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { authorizeUser } from '@/lib/auth/guards';
 import { getDateSegments, sanitizeFileName } from '@/lib/r2/datePartitionedUpload';
 
 const MAX_IMAGE_SIZE = 15 * 1024 * 1024; // 15 MB
@@ -10,6 +11,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await authorizeUser();
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
     const { id: paradaId } = await params;
     if (!paradaId) {
       return NextResponse.json({ error: 'ID de parada no proporcionado.' }, { status: 400 });
@@ -90,6 +94,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const auth = await authorizeUser();
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
     const { id: paradaId } = await params;
     if (!paradaId) {
       return NextResponse.json({ error: 'ID de parada no proporcionado.' }, { status: 400 });

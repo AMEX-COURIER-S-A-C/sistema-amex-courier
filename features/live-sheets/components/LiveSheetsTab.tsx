@@ -1,7 +1,6 @@
 'use client';
 
 import React from 'react';
-import { supabase } from '@/lib/supabase/client';
 import { soundEffects } from '@/lib/audio/soundEffects';
 import PasteWrListModal from '@/components/modals/PasteWrListModal';
 import NewSheetModal from '@/components/modals/NewSheetModal';
@@ -13,6 +12,7 @@ import type { LiveSheetsTabProps } from '../types';
 import { useLiveSheetsData } from '../hooks/useLiveSheetsData';
 import { useLiveSheetsPresence } from '../hooks/useLiveSheetsPresence';
 import { useLiveSheetsKeyboard } from '../hooks/useLiveSheetsKeyboard';
+import { sheetsService } from '../services/sheets.service';
 import { LiveSheetsHeader } from './LiveSheetsHeader';
 import { LiveSheetsToolbar } from './LiveSheetsToolbar';
 import { FormulaBar } from './FormulaBar';
@@ -25,7 +25,6 @@ export * from '@/features/live-sheets/types';
 export default function LiveSheetsTab({
   paquetes = [],
   clientes = [],
-  onViewPdf,
   currentUser
 }: LiveSheetsTabProps) {
   const operatorName = currentUser?.nombre || 'Operador Lince';
@@ -189,11 +188,13 @@ export default function LiveSheetsTab({
             orden: data.items.length + idx + 1
           }));
 
-          const { data: inserted, error } = await supabase.from('hojas_cotejo_items').insert(rowsToInsert).select();
-          if (!error && inserted) {
+          try {
+            await sheetsService.insertItems(rowsToInsert);
             soundEffects.playBulkLoaded();
             data.fetchItems(data.activeHojaId);
             keyboard.setIsPasteModalOpen(false);
+          } catch (error) {
+            console.error('[LiveSheetsTab] Error importando filas:', error);
           }
         }}
       />

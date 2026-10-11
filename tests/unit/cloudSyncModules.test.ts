@@ -49,7 +49,7 @@ describe('Cloud-First Synchronization Services (Módulos 7, 10, 11 y 6.1)', () =
       expect(draft?.slots.length).toBe(1);
       expect(draft?.slots[0].label).toBe('JUAN PEREZ');
       expect(draft?.totalSlots).toBe(50);
-      expect(draft?.settings.printSize).toBe('medium');
+      expect(draft?.settings.printSize).toBe('standard');
     });
 
     it('guarda el borrador en Supabase con upsert y actualiza fecha', async () => {

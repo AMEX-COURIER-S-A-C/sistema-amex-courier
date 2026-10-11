@@ -1,0 +1,140 @@
+openapi: 3.1.0
+info:
+  title: Sistema AMEX Courier API
+  version: 1.0.0
+  description: Contrato base para los flujos de scanner e inventario.
+servers:
+  - url: /
+security:
+  - bearerAuth: []
+paths:
+  /api/scanner/batch-sync:
+    post:
+      summary: Sincroniza un lote de escaneos
+      operationId: scannerBatchSync
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '401':
+          $ref: '#/components/responses/ApiError'
+  /api/inventario-jobs:
+    get:
+      summary: Lista trabajos de inventario
+      operationId: listInventoryJobs
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '401':
+          $ref: '#/components/responses/ApiError'
+    post:
+      summary: Crea un trabajo de inventario
+      operationId: createInventoryJob
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '400':
+          $ref: '#/components/responses/ApiError'
+        '401':
+          $ref: '#/components/responses/ApiError'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    RequestId:
+      name: x-request-id
+      in: header
+      required: false
+      schema:
+        type: string
+    CorrelationId:
+      name: x-correlation-id
+      in: header
+      required: false
+      schema:
+        type: string
+  schemas:
+    ApiSuccess:
+      type: object
+      required: [ok, data, contractVersion]
+      properties:
+        ok:
+          const: true
+        data: {}
+        contractVersion:
+          const: v1
+    ApiError:
+      type: object
+      required: [ok, error, code, requestId, contractVersion]
+      properties:
+        ok:
+          const: false
+        error:
+          type: string
+        code:
+          type: string
+        details: {}
+        requestId:
+          type: string
+        contractVersion:
+          const: v1
+  responses:
+    Success:
+      description: Operación exitosa
+      headers:
+        x-request-id:
+          $ref: '#/components/headers/RequestId'
+        x-correlation-id:
+          $ref: '#/components/headers/CorrelationId'
+        x-contract-version:
+          $ref: '#/components/headers/ContractVersion'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiSuccess'
+    ApiError:
+      description: Error de API versionado
+      headers:
+        x-request-id:
+          $ref: '#/components/headers/RequestId'
+        x-correlation-id:
+          $ref: '#/components/headers/CorrelationId'
+        x-contract-version:
+          $ref: '#/components/headers/ContractVersion'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+  headers:
+    RequestId:
+      description: Identificador de la solicitud
+      schema:
+        type: string
+    CorrelationId:
+      description: Identificador distribuido de la operación
+      schema:
+        type: string
+    ContractVersion:
+      description: Versión del contrato de respuesta
+      schema:
+        const: v1

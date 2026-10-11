@@ -72,3 +72,7 @@ graphify-out/20*/
 # Supabase temp & IDE config
 supabase/.temp/
 .mcp.json
+
+# Playwright runtime artifacts
+test-results/
+playwright-report/

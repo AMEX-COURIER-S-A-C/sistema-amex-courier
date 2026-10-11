@@ -1,0 +1,2 @@
+-- Seed local intentionally empty.
+-- Use a staging-safe fixture set here when local integration data is required.

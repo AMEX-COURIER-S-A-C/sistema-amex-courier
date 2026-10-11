@@ -26,6 +26,9 @@ jobs:
       - name: Verificación de Tipos TypeScript
         run: npx tsc --noEmit
 
+      - name: Verificar contratos y esquema generado
+        run: npm run verify:contracts
+
       - name: Análisis estático con ESLint
         run: npm run lint
 
@@ -47,3 +50,44 @@ jobs:
 
       - name: Ejecutar Suite Vitest
         run: npm run test
+
+  e2e-smoke:
+    name: Smoke E2E y contratos de flujo
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck, unit-tests]
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Instalar dependencias
+        run: npm ci --legacy-peer-deps
+
+      - name: Construir aplicación
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL || 'https://placeholder.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
+
+      - name: Instalar Chromium de Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Ejecutar smoke E2E
+        run: npm run test:e2e
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+
+      - name: Ejecutar flujos E2E autenticados
+        if: ${{ secrets.E2E_EMAIL != '' && secrets.E2E_PASSWORD != '' }}
+        run: npm run test:e2e
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL || 'https://placeholder.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
+          E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
+          E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}

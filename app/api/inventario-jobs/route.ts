@@ -6,6 +6,7 @@ import { uploadFileToR2 } from '@/lib/r2/client';
 import { generateInventoryExcelBufferFromDb, getDbInventoryCount } from '@/lib/inventory-jobs/exportDbInventory';
 import { CreateInventarioJobSchema } from '@/lib/validations/inventario-jobs.schema';
 import { validateBody } from '@/lib/api/validate';
+import { withErrorHandler } from '@/lib/api/handler';
 
 /**
  * POST /api/inventario-jobs — encola un trabajo para el worker Render.
@@ -27,7 +28,7 @@ function isXlsxKey(key: string): boolean {
   return key.toLowerCase().endsWith('.xlsx') && !key.includes('..');
 }
 
-export async function POST(req: NextRequest) {
+async function handlePost(req: NextRequest) {
   try {
     const auth = await authorizeUser();
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
@@ -178,7 +179,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function GET() {
+async function handleGet() {
   try {
     const auth = await authorizeUser();
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
@@ -217,3 +218,6 @@ export async function GET() {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const POST = withErrorHandler(handlePost, 'api-inventario-jobs-post');
+export const GET = withErrorHandler(handleGet, 'api-inventario-jobs-get');

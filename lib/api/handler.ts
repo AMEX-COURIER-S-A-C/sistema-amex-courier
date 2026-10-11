@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { logger } from '@/lib/logger';
+import {
+  API_CONTRACT_VERSION,
+  applyContractHeaders,
+  applyRequestContextHeaders,
+  getCorrelationId,
+  getRequestId,
+} from '@/lib/observability/request-context';
 
 export type ApiHandler = (
   req: NextRequest,
@@ -10,13 +17,13 @@ export function withErrorHandler(handler: ApiHandler, serviceName = 'api-route')
   const routeLogger = logger.child(serviceName);
 
   return async (req: NextRequest, context?: { params?: Promise<Record<string, string | string[]>> }) => {
-    const requestId = req.headers.get('x-request-id') || crypto.randomUUID();
+    const requestId = getRequestId(req);
+    const correlationId = getCorrelationId(req);
 
     try {
       const response = await handler(req, context);
-      if (!response.headers.has('x-request-id')) {
-        response.headers.set('x-request-id', requestId);
-      }
+      applyRequestContextHeaders(response, requestId, correlationId);
+      applyContractHeaders(response, requestId);
       return response;
     } catch (error: unknown) {
       routeLogger.error(
@@ -37,13 +44,18 @@ export function withErrorHandler(handler: ApiHandler, serviceName = 'api-route')
 
       return NextResponse.json(
         {
+          ok: false,
           error: errorMessage,
+          code: 'INTERNAL_ERROR',
           requestId,
+          contractVersion: API_CONTRACT_VERSION,
         },
         {
           status: 500,
           headers: {
             'x-request-id': requestId,
+            'x-correlation-id': correlationId,
+            'x-contract-version': API_CONTRACT_VERSION,
           },
         }
       );

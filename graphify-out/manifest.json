@@ -100,8 +100,8 @@
     "semantic_hash": ""
   },
   "app/page.tsx": {
-    "mtime": 1791622231.1114416,
-    "ast_hash": "b6c94a711c812a5125b0c69f550e002d",
+    "mtime": 1791649692.1695883,
+    "ast_hash": "e9e2c18f67bfcfab94bd86f6a3346cc9",
     "semantic_hash": ""
   },
   "components/HeaderBar.tsx": {
@@ -425,8 +425,8 @@
     "semantic_hash": ""
   },
   "features/cobros/data/initial-data.ts": {
-    "mtime": 1789233161.6835585,
-    "ast_hash": "9889378ab3692dfb45e1077377bc44e7",
+    "mtime": 1791665365.694051,
+    "ast_hash": "08704f0a42e56f989d111cda3d804d58",
     "semantic_hash": ""
   },
   "features/cobros/data/initial-lotes.json": {
@@ -441,8 +441,8 @@
     "semantic_hash": ""
   },
   "features/cobros/hooks/useCobrosOperaciones.ts": {
-    "mtime": 1790564843.8364077,
-    "ast_hash": "9a3efdacea7cd1a1d719d11bd08c7be7",
+    "mtime": 1791665467.8196723,
+    "ast_hash": "c5f6974e9171f09e2b877f64554c72c5",
     "semantic_hash": ""
   },
   "features/cobros/hooks/useVoucherForm.ts": {
@@ -501,8 +501,8 @@
     "semantic_hash": ""
   },
   "features/dashboard/components/DashboardTab.tsx": {
-    "mtime": 1790572364.8270607,
-    "ast_hash": "42765e11e8dca0e6d9518bd822688eb1",
+    "mtime": 1791663493.9362736,
+    "ast_hash": "04ef289968fdd728d93b0c80fcdcd73a",
     "semantic_hash": ""
   },
   "features/dashboard/components/DashboardTabContent.tsx": {
@@ -516,8 +516,8 @@
     "semantic_hash": ""
   },
   "features/dashboard/components/LivePackagesStream.tsx": {
-    "mtime": 1790484616.361262,
-    "ast_hash": "aad04aa778185be766919a215ffbc201",
+    "mtime": 1791663556.47016,
+    "ast_hash": "6291c03e4e851f0d4214c286a7dff5ee",
     "semantic_hash": ""
   },
   "features/dashboard/data/default-forms.ts": {
@@ -561,9 +561,9 @@
     "semantic_hash": ""
   },
   "features/dni-matrix/components/DniDropzonePanel.tsx": {
-    "mtime": 1790136909.029967,
-    "ast_hash": "e37d3aa25fcc9edca3df21887cdab7a3",
-    "semantic_hash": "e37d3aa25fcc9edca3df21887cdab7a3"
+    "mtime": 1791623660.171997,
+    "ast_hash": "d648399bd49b59ef3b1c8514b1f9fa52",
+    "semantic_hash": ""
   },
   "features/dni-matrix/components/DniMatrixTab.tsx": {
     "mtime": 1791621831.2548,
@@ -591,8 +591,8 @@
     "semantic_hash": "7f9aa92217ee1bc230559d5ddddfe2ae"
   },
   "features/dni-matrix/hooks/useDniMatrixState.ts": {
-    "mtime": 1791621790.7271743,
-    "ast_hash": "0e1117a8866fb5556004244fc91f50c5",
+    "mtime": 1791623613.1125264,
+    "ast_hash": "bb96f59ec9e5f8021ec3176b17cb2ff6",
     "semantic_hash": ""
   },
   "features/dni-matrix/index.ts": {
@@ -601,8 +601,8 @@
     "semantic_hash": ""
   },
   "features/dni-matrix/modals/DniConfigModal.tsx": {
-    "mtime": 1789102795.819111,
-    "ast_hash": "893e18693c6dd3cfc32e80bb7efc2829",
+    "mtime": 1791624264.2942598,
+    "ast_hash": "a626b31260d34edda2160e62504755c8",
     "semantic_hash": ""
   },
   "features/dni-matrix/modals/DniDeleteConfirmModal.tsx": {
@@ -791,8 +791,8 @@
     "semantic_hash": ""
   },
   "features/invoices/components/InvoiceControlPanel.tsx": {
-    "mtime": 1790564843.8528018,
-    "ast_hash": "2c1f9d842e0981ec6b765fdbde884047",
+    "mtime": 1791651654.8796558,
+    "ast_hash": "cb6c3d5d69c0f177fd5583269c9dfec8",
     "semantic_hash": ""
   },
   "features/invoices/components/InvoiceDocumentPreview.tsx": {
@@ -986,9 +986,9 @@
     "semantic_hash": "10dc6c6a48b11817a7c88c072b40fa67"
   },
   "lib/dni-matrix/docx-exporter.ts": {
-    "mtime": 1790136909.0834856,
-    "ast_hash": "2178dca5abd02953edad57718d16bd7d",
-    "semantic_hash": "2178dca5abd02953edad57718d16bd7d"
+    "mtime": 1791624042.7760434,
+    "ast_hash": "b98465ab452dd72f998882a0a80d5fc2",
+    "semantic_hash": ""
   },
   "lib/dni-matrix/excel-exporter.ts": {
     "mtime": 1790566604.4852223,
@@ -996,8 +996,8 @@
     "semantic_hash": ""
   },
   "lib/dni-matrix/pdf-converter.ts": {
-    "mtime": 1790566600.8372881,
-    "ast_hash": "bfe12e4e7aa294d0795afd3f5069a5f7",
+    "mtime": 1791624223.0393784,
+    "ast_hash": "36edf98b321b5857e9a71b06518e1f2f",
     "semantic_hash": ""
   },
   "lib/excelExport.ts": {
@@ -1847,8 +1847,8 @@
     "semantic_hash": ""
   },
   "lib/smooth-scroll/manager.ts": {
-    "mtime": 1791524175.9354491,
-    "ast_hash": "0e3d6d83d261a7147fce8075eb786586",
+    "mtime": 1791649601.7514544,
+    "ast_hash": "61369318ff96ec7602eb32fd52868d4b",
     "semantic_hash": ""
   },
   "tests/unit/smoothScrollManager.test.ts": {
@@ -1904,6 +1904,16 @@
   "tests/unit/cloudSyncModules.test.ts": {
     "mtime": 1791622389.1076052,
     "ast_hash": "7d04a1a9d25e3cbc093f18766cfef35b",
+    "semantic_hash": ""
+  },
+  "tests/unit/dniMatrixDefaults.test.ts": {
+    "mtime": 1791624289.1876273,
+    "ast_hash": "2b1b5d48cd0983da4575ba5687092e4d",
+    "semantic_hash": ""
+  },
+  "tests/unit/invoiceScrollProtection.test.ts": {
+    "mtime": 1791650147.4377215,
+    "ast_hash": "d67a2387cc14062e4be25bb45cdbecde",
     "semantic_hash": ""
   }
 }

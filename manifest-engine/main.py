@@ -1,9 +1,11 @@
 import io
 import os
+import uuid
+import logging
 import pytesseract
 import cv2
 import numpy as np
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
@@ -19,10 +21,39 @@ app = FastAPI(
     version="1.0.0"
 )
 
+logger = logging.getLogger("manifest-engine")
+allowed_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        "MANIFEST_ALLOWED_ORIGINS",
+        "https://www.sistema-amex.online,http://localhost:3000,http://127.0.0.1:3000",
+    ).split(",")
+    if origin.strip()
+]
+
+@app.middleware("http")
+async def request_context(request: Request, call_next):
+    request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+    correlation_id = request.headers.get("x-correlation-id") or request_id
+    response = await call_next(request)
+    response.headers["x-request-id"] = request_id
+    response.headers["x-correlation-id"] = correlation_id
+    logger.info(
+        "request_completed",
+        extra={
+            "request_id": request_id,
+            "correlation_id": correlation_id,
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": response.status_code,
+        },
+    )
+    return response
+
 # Habilitar CORS para comunicación directa con el frontend Next.js de AMEX
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

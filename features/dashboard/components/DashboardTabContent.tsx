@@ -1,6 +1,5 @@
 'use client';
 
-import dynamic from 'next/dynamic';
 import type { Dispatch, SetStateAction } from 'react';
 import type {
   Cliente,
@@ -11,114 +10,28 @@ import type {
 } from '@/types';
 import type { DashboardTabId } from '@/features/dashboard/hooks/useDashboardNavigation';
 import type { DashboardScanExtra } from '@/features/dashboard/hooks/useDashboardActions';
+import { PageSkeleton } from '@/components/ui/Skeleton';
 import {
-  BoletasShalomSkeleton,
-  CobrosSkeleton,
-  DashboardSkeleton,
-  DniMatrixSkeleton,
-  FormatoEntregaSkeleton,
-  InvoicesSkeleton,
-  InventorySkeleton,
-  LiveSheetsSkeleton,
-  PageSkeleton,
-  RotulosA4Skeleton,
-  ScannerSkeleton
-} from '@/components/ui/Skeleton';
-
-const DashboardTab = dynamic(() => import('./DashboardTab'), {
-  ssr: false,
-  loading: () => <DashboardSkeleton />
-});
-
-const OperatorHubTab = dynamic(() => import('./OperatorHubTab'), {
-  ssr: false,
-  loading: () => <DashboardSkeleton />
-});
-
-const InventoryTab = dynamic(() => import('@/features/inventory/components/InventoryTab'), {
-  ssr: false,
-  loading: () => <InventorySkeleton />
-});
-
-const CobrosTab = dynamic(() => import('@/features/cobros/components/CobrosTab'), {
-  ssr: false,
-  loading: () => <CobrosSkeleton />
-});
-
-const DirectorioClientesTab = dynamic(() => import('@/features/cobros/components/DirectorioClientesTab'), {
-  ssr: false,
-  loading: () => <CobrosSkeleton />
-});
-
-const ScannerTab = dynamic(() => import('@/features/scanner/components/ScannerTab'), {
-  ssr: false,
-  loading: () => <ScannerSkeleton />
-});
-
-const LiveSheetsTab = dynamic(() => import('@/features/live-sheets/components/LiveSheetsTab'), {
-  ssr: false,
-  loading: () => <LiveSheetsSkeleton />
-});
-
-const DniMatrixTab = dynamic(() => import('@/features/dni-matrix/components/DniMatrixTab'), {
-  ssr: false,
-  loading: () => <DniMatrixSkeleton />
-});
-
-const RotulosA4Tab = dynamic(() => import('@/features/rotulos/components/RotulosA4Tab'), {
-  ssr: false,
-  loading: () => <RotulosA4Skeleton />
-});
-
-const BoletasShalomTab = dynamic(() => import('@/features/boletas-shalom/components/BoletasShalomTab'), {
-  ssr: false,
-  loading: () => <BoletasShalomSkeleton />
-});
-
-const FormatoEntregaTab = dynamic(() => import('@/features/formato-entrega/components/FormatoEntregaTab'), {
-  ssr: false,
-  loading: () => <FormatoEntregaSkeleton />
-});
-
-const InvoicesTab = dynamic(() => import('@/features/invoices/components/InvoicesTab'), {
-  ssr: false,
-  loading: () => <InvoicesSkeleton />
-});
-
-const InfoAmexTab = dynamic(() => import('@/features/info-amex/components/InfoAmexTab'), {
-  ssr: false,
-  loading: () => <DashboardSkeleton />
-});
-
-const InventarioJobsTab = dynamic(() => import('@/features/inventory-jobs/components/InventarioJobsTab'), {
-  ssr: false,
-  loading: () => <DashboardSkeleton />
-});
-
-const AuditoriaTab = dynamic(() => import('@/features/auditoria/components/AuditoriaTab'), {
-  ssr: false,
-  loading: () => <DashboardSkeleton />
-});
-
-const AdminUsersTab = dynamic(() => import('@/features/admin-users/components/AdminUsersTab'), {
-  ssr: false,
-  loading: () => <DashboardSkeleton />
-});
-
-const DespachoRutasTab = dynamic(() => import('@/features/despacho-rutas/components/DespachoRutasTab'), {
-  ssr: false,
-  loading: () => <DashboardSkeleton />
-});
-
-const ManifiestosTibTab = dynamic(() => import('@/features/manifiestos-tib/components/ManifiestosTibTab'), {
-  ssr: false,
-  loading: () => <DashboardSkeleton />
-});
-
-const ConfiguracionTab = dynamic(() => import('@/features/configuracion/components/ConfiguracionTab'), {
-  ssr: false,
-  loading: () => <DashboardSkeleton />
-});
+  AdminUsersTab,
+  AuditoriaTab,
+  BoletasShalomTab,
+  CobrosTab,
+  ConfiguracionTab,
+  DespachoRutasTab,
+  DirectorioClientesTab,
+  DniMatrixTab,
+  DashboardTab,
+  FormatoEntregaTab,
+  InfoAmexTab,
+  InventarioJobsTab,
+  InvoicesTab,
+  InventoryTab,
+  LiveSheetsTab,
+  ManifiestosTibTab,
+  OperatorHubTab,
+  RotulosA4Tab,
+  ScannerTab
+} from './dashboard-tab-registry';
 
 interface DashboardTabContentProps {
   activeTab: DashboardTabId;
@@ -212,7 +125,6 @@ export default function DashboardTabContent({
         <LiveSheetsTab
           paquetes={paquetes}
           clientes={clientes}
-          onViewPdf={onViewPdf}
           currentUser={currentUser}
         />
       )}
@@ -268,7 +180,7 @@ export default function DashboardTabContent({
                     : 'slotting'
           }
           onChangeSubmodule={(sub: 'slotting' | 'lookup' | 'delivery' | 'relocate' | 'masivo') => {
-            onNavigateTab(`scanner-${sub}` as any);
+            onNavigateTab(`scanner-${sub}`);
           }}
           scannedLogs={scannedLogs}
           paquetes={paquetes}

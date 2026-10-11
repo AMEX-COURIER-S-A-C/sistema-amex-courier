@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { withErrorHandler } from '@/lib/api/handler';
 
-export async function GET() {
+async function handleGet() {
   try {
     const supabase = await createClient();
     const { data, error } = await supabase.auth.getUser();
@@ -75,3 +76,5 @@ export async function GET() {
     return NextResponse.json({ error: 'Error obteniendo perfil de sesión' }, { status: 500 });
   }
 }
+
+export const GET = withErrorHandler(handleGet, 'api-auth-me');

@@ -1,6 +1,27 @@
 import { supabase } from '@/lib/supabase/client';
 import { DniSlotData } from '@/lib/dni-matrix/db';
 import { DniPrintSize } from '@/lib/dni-matrix/docx-exporter';
+import { z } from 'zod';
+
+const DniSlotDataSchema = z.object({
+  id: z.number(),
+  anverso: z.string().nullable().optional(),
+  reverso: z.string().nullable().optional(),
+  label: z.string().optional(),
+  dni: z.string().optional(),
+  clienteId: z.string().optional(),
+  paqueteId: z.string().optional(),
+  anversoRotation: z.number().optional(),
+  reversoRotation: z.number().optional(),
+  updatedAt: z.number().optional()
+});
+
+const DniCloudSettingsSchema = z.object({
+  // `medium` is a legacy persisted value; it is normalized to `standard` below.
+  printSize: z.enum(['large', 'xlarge', 'standard', 'medium']).optional(),
+  soundEnabled: z.boolean().optional(),
+  activeSlotId: z.number().optional()
+}).partial();
 
 export interface DniCloudSettings {
   printSize?: DniPrintSize;
@@ -31,10 +52,24 @@ export const DniCloudService = {
         return null;
       }
 
-      const slots = Array.isArray(data.slots_data) ? (data.slots_data as DniSlotData[]) : [];
+      const slotsResult = z.array(DniSlotDataSchema).safeParse(data.slots_data);
+      const settingsResult = DniCloudSettingsSchema.safeParse(data.settings || {});
+
+      if (!slotsResult.success || !settingsResult.success) {
+        console.warn('[DniCloudService] Borrador remoto con formato incompatible.');
+        return null;
+      }
+
+      const settings = {
+        ...settingsResult.data,
+        printSize: settingsResult.data.printSize === 'medium'
+          ? 'standard'
+          : settingsResult.data.printSize
+      } as DniCloudSettings;
+
       return {
-        slots,
-        settings: (data.settings as DniCloudSettings) || {},
+        slots: slotsResult.data as DniSlotData[],
+        settings,
         totalSlots: data.total_slots || 100
       };
     } catch (err) {

@@ -3,6 +3,7 @@ import {
   Paquete,
   Cliente
 } from '@/types';
+import type { Database } from '@/types/supabase';
 
 export type {
   HojaCotejo,
@@ -78,9 +79,10 @@ export interface EditingCell {
 export interface LiveSheetsTabProps {
   paquetes: Paquete[];
   clientes: Cliente[];
-  onViewPdf?: (url: string) => void;
   currentUser?: { nombre: string; rol: string } | null;
 }
+
+export type NewSheetItemRow = Database['public']['Tables']['hojas_cotejo_items']['Insert'];
 
 export interface SheetStats {
   total: number;

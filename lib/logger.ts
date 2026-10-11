@@ -6,6 +6,9 @@ export interface LogEntry {
   service: string;
   message: string;
   requestId?: string;
+  correlationId?: string;
+  traceId?: string;
+  jobId?: string;
   userId?: string;
   metadata?: Record<string, unknown>;
   error?: {
@@ -59,12 +62,18 @@ class Logger {
     }
 
     const requestId = (meta?.requestId as string) || undefined;
+    const correlationId = (meta?.correlationId as string) || undefined;
+    const traceId = (meta?.traceId as string) || undefined;
+    const jobId = (meta?.jobId as string) || undefined;
     const userId = (meta?.userId as string) || undefined;
 
     // Remove requestId/userId from metadata if present
     const cleanMeta = meta ? { ...meta } : undefined;
     if (cleanMeta) {
       delete cleanMeta.requestId;
+      delete cleanMeta.correlationId;
+      delete cleanMeta.traceId;
+      delete cleanMeta.jobId;
       delete cleanMeta.userId;
     }
 
@@ -74,6 +83,9 @@ class Logger {
       service: this.serviceName,
       message,
       requestId,
+      correlationId,
+      traceId,
+      jobId,
       userId,
       metadata: cleanMeta && Object.keys(cleanMeta).length > 0 ? cleanMeta : undefined,
       error: errorObj,

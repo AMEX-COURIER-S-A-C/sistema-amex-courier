@@ -26,9 +26,9 @@ const fsp = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
-const { spawn } = require('node:child_process');
 const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
 const XLSX = require('xlsx');
+const { createProcessorClient } = require('./processor-client');
 
 // ---------------------------------------------------------------- config
 
@@ -348,7 +348,7 @@ async function getOrSyncCachedTibFile(tipo, r2Key, originalName) {
     try {
       console.log(`[worker] [AUTO-WARMUP 🚀] Sincronización completada. Precalentando índice en RAM para ${tipo}...`);
       getOrBuildTibLookup(tipo);
-      notifyProcessorDaemonWarmup();
+      processorClient.warmup();
     } catch (warmErr) {
       console.warn(`[worker] [AUTO-WARMUP ⚠️] Error en precalentamiento para ${tipo}:`, warmErr.message);
     }
@@ -442,7 +442,7 @@ function getOrBuildTibLookup(tipo = 'sent') {
  */
 async function bootWarmUpTibIndices() {
   // Asegurar que el daemon residente en RAM de C# esté activo
-  startProcessorDaemon();
+  processorClient.startDaemon();
 
   console.log('[worker] [BOOT-WARMUP 🚀] Verificando archivos TIB en disco para precalentamiento de RAM...');
   for (const tipo of ['sent', 'delivered', 'received']) {
@@ -459,7 +459,7 @@ async function bootWarmUpTibIndices() {
 
   // Notificar al daemon C# para que cargue los 3 archivos en su RAM
   setTimeout(() => {
-    notifyProcessorDaemonWarmup();
+    processorClient.warmup();
   }, 1000);
 }
 
@@ -594,194 +594,19 @@ function cruzarFilasCobros(filas = [], options = {}) {
   };
 }
 
-// ------------------------------------------------------------- processor daemon & cli
+// ------------------------------------------------------------- processor service boundary
 
-const PROCESSOR_PORT = process.env.PROCESSOR_PORT || 10001;
-const DAEMON_URL = `http://127.0.0.1:${PROCESSOR_PORT}`;
-let daemonProcess = null;
-let daemonReady = false;
-
-function startProcessorDaemon() {
-  if (daemonProcess && !daemonProcess.killed) return;
-  console.log(`[worker] [DAEMON 🚀] Iniciando AmexInventoryProcessor en modo daemon (puerto ${PROCESSOR_PORT})...`);
-  try {
-    daemonProcess = spawn(PROCESSOR, ['--daemon', String(PROCESSOR_PORT)], {
-      windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-
-    daemonProcess.stdout.setEncoding('utf8');
-    daemonProcess.stderr.setEncoding('utf8');
-
-    daemonProcess.stdout.on('data', (data) => {
-      for (const line of data.split('\n')) {
-        const trimmed = line.trim();
-        if (trimmed) console.log(`[daemon] ${trimmed}`);
-      }
-    });
-
-    daemonProcess.stderr.on('data', (data) => {
-      for (const line of data.split('\n')) {
-        const trimmed = line.trim();
-        if (trimmed) console.warn(`[daemon] ${trimmed}`);
-      }
-    });
-
-    daemonProcess.on('error', (err) => {
-      console.warn(`[daemon] Error al iniciar daemon C#: ${err.message}`);
-      daemonProcess = null;
-      daemonReady = false;
-    });
-
-    daemonProcess.on('exit', (code, signal) => {
-      console.warn(`[daemon] Proceso daemon C# finalizó (code=${code}, signal=${signal}).`);
-      daemonProcess = null;
-      daemonReady = false;
-    });
-  } catch (err) {
-    console.warn(`[daemon] No se pudo lanzar el daemon C#: ${err.message}`);
-  }
-}
-
-async function checkProcessorDaemonReady(retries = 2) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const res = await fetch(`${DAEMON_URL}/health`, { signal: AbortSignal.timeout(1000) });
-      if (res.ok) {
-        daemonReady = true;
-        return true;
-      }
-    } catch {
-      if (i < retries - 1) await new Promise((r) => setTimeout(r, 200));
-    }
-  }
-  return false;
-}
-
-function notifyProcessorDaemonWarmup() {
-  fetch(`${DAEMON_URL}/warmup`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      sourcePaths: [
-        getTibCacheFilePath('delivered'),
-        getTibCacheFilePath('sent'),
-        getTibCacheFilePath('received'),
-      ],
-    }),
-    signal: AbortSignal.timeout(60000),
-  }).catch((err) => {
-    console.warn('[worker] Aviso warmup daemon C#:', err.message);
-  });
-}
-
-async function runProcessor(args, onProgress) {
-  // 1. Intentar ejecución ultra-rápida en memoria RAM vía Daemon C# (Zero Cold-Start)
-  try {
-    const isReady = await checkProcessorDaemonReady(2);
-    if (isReady) {
-      console.log('[worker] [DAEMON ⚡] Procesando inventario directamente en RAM (Zero Cold-Start)...');
-      if (typeof onProgress === 'function') {
-        onProgress({ stage: 'matching', message: 'Cruzando inventario directamente en memoria RAM...' });
-      }
-      const t0 = Date.now();
-      const res = await fetch(`${DAEMON_URL}/process`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          inventoryPath: args[0],
-          sourcePaths: args.slice(1, 4),
-          outputPath: args[4],
-          unmatchedCsvPath: args[5],
-        }),
-        signal: AbortSignal.timeout(PROCESS_TIMEOUT_MS),
-      });
-
-      if (res.ok) {
-        const result = await res.json();
-        if (result && result.ok) {
-          const duration = Date.now() - t0;
-          console.log(`[worker] [DAEMON COMPLETADO ⚡] Inventario procesado en RAM en ${duration}ms! (coincidencias: ${result.matched}/${result.totalInventory})`);
-          return result;
-        }
-      }
-    }
-  } catch (daemonErr) {
-    console.warn(`[worker] [DAEMON FALLBACK ⚠️] Falló llamada a daemon C# (${daemonErr.message}). Usando CLI tradicional...`);
-  }
-
-  // 2. Fallback garantizado: ejecución CLI spawn tradicional
-  return runProcessorCli(args, onProgress);
-}
-
-function runProcessorCli(args, onProgress) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(PROCESSOR, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-    let stdout = '';
-    let stderrTail = '';
-    let stderrPending = '';
-    let timedOut = false;
-    const timeout = setTimeout(() => {
-      timedOut = true;
-      child.kill('SIGKILL');
-    }, PROCESS_TIMEOUT_MS);
-
-    child.stdout.setEncoding('utf8');
-    child.stderr.setEncoding('utf8');
-    child.stdout.on('data', (chunk) => { stdout = (stdout + chunk).slice(-2_000_000); });
-    child.stderr.on('data', (chunk) => {
-      const lines = (stderrPending + chunk).split(/\r?\n/);
-      stderrPending = lines.pop() || '';
-      for (const line of lines) {
-        if (line.startsWith('PROGRESS:')) {
-          try {
-            const progress = JSON.parse(line.slice('PROGRESS:'.length));
-            if (typeof progress.stage === 'string' && typeof progress.message === 'string') {
-              onProgress(progress);
-            }
-          } catch {
-            stderrTail = (stderrTail + `${line}\n`).slice(-50_000);
-          }
-        } else if (line.trim()) {
-          stderrTail = (stderrTail + `${line}\n`).slice(-50_000);
-        }
-      }
-    });
-    child.on('error', (error) => {
-      clearTimeout(timeout);
-      reject(new Error(
-        `No se pudo iniciar el procesador (spawn error: ${error.message}; code=${error.code || 'n/a'}). ` +
-        `stderr: ${(stderrTail.trim() || '(vacío)').slice(0, 500)}`
-      ));
-    });
-    child.on('close', (code, signal) => {
-      clearTimeout(timeout);
-      if (timedOut) {
-        reject(new Error('El procesamiento excedió el tiempo máximo y se detuvo.'));
-        return;
-      }
-      if (code !== 0) {
-        let message = stderrTail.trim() || stdout.trim() || `El procesador terminó con código ${code} y señal ${signal || 'n/a'}.`;
-        try {
-          const details = JSON.parse(message.split(/\r?\n/).at(-1));
-          if (details.error) message = details.error;
-        } catch { /* usa el mensaje tal cual */ }
-        reject(new Error(
-          `${message.split('\n')[0]} [exit=${code} signal=${signal || 'n/a'}] ` +
-          `stdout: ${(stdout.trim() || '(vacío)').slice(-300)}`
-        ));
-        return;
-      }
-      try {
-        const result = JSON.parse(stdout.trim());
-        if (!result || result.ok !== true) throw new Error((result && result.error) || 'Resultado inválido del procesador.');
-        resolve(result);
-      } catch (error) {
-        reject(new Error(`No se pudo leer el resultado: ${error.message}`));
-      }
-    });
-  });
-}
+const PROCESSOR_PORT = Number(process.env.PROCESSOR_PORT || 10001);
+const processorClient = createProcessorClient({
+  processor: PROCESSOR,
+  port: PROCESSOR_PORT,
+  timeoutMs: PROCESS_TIMEOUT_MS,
+  sourcePaths: [
+    getTibCacheFilePath('delivered'),
+    getTibCacheFilePath('sent'),
+    getTibCacheFilePath('received'),
+  ],
+});
 
 // --------------------------------------------------------------- process
 
@@ -834,7 +659,7 @@ async function processJob(job) {
 
     const outputPath = path.join(jobDir, OUTPUT_FILE_NAME);
     const unmatchedPath = path.join(jobDir, UNMATCHED_FILE_NAME);
-    const result = await runProcessor(
+    const result = await processorClient.run(
       [inventoryPath, ...sourcePaths, outputPath, unmatchedPath],
       (p) => { void pushProgress(p.stage, p.message); },
     );
@@ -966,9 +791,27 @@ function readCgroup() {
 }
 
 const server = http.createServer(async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  const requestId = req.headers['x-request-id'] || crypto.randomUUID();
+  const correlationId = req.headers['x-correlation-id'] || requestId;
+  const allowedOrigins = (process.env.WORKER_ALLOWED_ORIGINS || 'https://www.sistema-amex.online,http://localhost:3000,http://127.0.0.1:3000')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  const requestOrigin = req.headers.origin;
+  if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
+    res.setHeader('Access-Control-Allow-Origin', requestOrigin);
+    res.setHeader('Vary', 'Origin');
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-Id, X-Correlation-Id');
+  res.setHeader('x-request-id', requestId);
+  res.setHeader('x-correlation-id', correlationId);
+  workerLog('info', 'request_received', {
+    requestId,
+    correlationId,
+    method: req.method,
+    path: req.url,
+  });
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -1073,25 +916,12 @@ const server = http.createServer(async (req, res) => {
   // Endpoint de precalentamiento para Inventario (C# Daemon): GET/POST /prewarm-inventario
   if (parsedUrl.pathname === '/prewarm-inventario') {
     try {
-      const isReady = await checkProcessorDaemonReady(1);
+      const isReady = await processorClient.checkReady(1);
       if (!isReady) {
-        startProcessorDaemon();
+        processorClient.startDaemon();
       }
-      const warmRes = await fetch(`${DAEMON_URL}/warmup`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sourcePaths: [
-            getTibCacheFilePath('delivered'),
-            getTibCacheFilePath('sent'),
-            getTibCacheFilePath('received'),
-          ],
-        }),
-        signal: AbortSignal.timeout(60000),
-      });
-
-      if (warmRes.ok) {
-        const warmData = await warmRes.json();
+      const warmData = await processorClient.warmup();
+      if (warmData) {
         const respBody = Buffer.from(JSON.stringify(warmData));
         res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Length': respBody.length });
         res.end(respBody);
@@ -1200,7 +1030,7 @@ const server = http.createServer(async (req, res) => {
     } : { isWarm: false };
   }
 
-  const daemonAlive = await checkProcessorDaemonReady(1);
+  const daemonAlive = await processorClient.checkReady(1);
   const uptimeSeconds = Math.round((Date.now() - workerStartTime) / 1000);
 
   const body = Buffer.from(JSON.stringify({
@@ -1212,7 +1042,7 @@ const server = http.createServer(async (req, res) => {
     lastJobTime: telemetry.lastJobTime,
     processor: fs.existsSync(PROCESSOR) ? 'openxml' : 'missing',
     processorDaemon: daemonAlive ? 'online' : 'offline',
-    processorDaemonPid: daemonProcess ? daemonProcess.pid : null,
+    processorDaemonPid: processorClient.pid,
     nodeRssMB: Math.round(mem.rss / 1024 / 1024),
     nodeHeapUsedMB: Math.round(mem.heapUsed / 1024 / 1024),
     tibCacheDir: TIB_CACHE_DIR,
@@ -1228,29 +1058,8 @@ const server = http.createServer(async (req, res) => {
 
 // ------------------------------------------------------------------ main
 
-// Preflight: el binario sin argumentos debe responder uso + exit 2.
-// Solo diagnostica (no bloquea el arranque) para depurar el contenedor.
-function preflight() {
-  try {
-    const child = spawn(PROCESSOR, [], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-    let err = '';
-    child.stderr.setEncoding('utf8');
-    child.stderr.on('data', (c) => { err += c; });
-    child.on('error', (e) => {
-      telemetry.preflight = { exit: null, signal: null, spawnError: `${e.message} (code=${e.code || 'n/a'})`, out: '' };
-      console.error(`[worker] preflight spawn error: ${e.message} (code=${e.code || 'n/a'})`);
-    });
-    child.on('close', (code, signal) => {
-      telemetry.preflight = { exit: code, signal: signal || null, spawnError: null, out: err.trim().slice(0, 200) || '(vacío)' };
-      console.log(`[worker] preflight: exit=${code} signal=${signal || 'n/a'} out=${err.trim().slice(0, 200) || '(vacío)'}`);
-    });
-  } catch (e) {
-    console.error(`[worker] preflight exception: ${e.message}`);
-  }
-}
-
 assertConfig();
-preflight();
+processorClient.preflight();
 Promise.all([
   fsp.mkdir(WORK_DIR, { recursive: true }),
   fsp.mkdir(TIB_CACHE_DIR, { recursive: true }),

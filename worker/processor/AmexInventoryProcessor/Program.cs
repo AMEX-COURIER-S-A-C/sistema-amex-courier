@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.IO.Compression;
-using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Xml;
@@ -322,158 +321,25 @@ internal static class Program
 
     private static void RunDaemon(int port)
     {
-        string prefix = $"http://127.0.0.1:{port}/";
-        using var listener = new HttpListener();
-        listener.Prefixes.Add(prefix);
-        listener.Start();
-        Console.WriteLine($"[daemon] AmexInventoryProcessor Daemon escuchando en {prefix}");
-
-        string[] defaultSources = [
-            "/app/cache/tib-active/delivered.xlsx",
-            "/app/cache/tib-active/sent.xlsx",
-            "/app/cache/tib-active/received.xlsx"
-        ];
-        if (defaultSources.Any(File.Exists))
-        {
-            Task.Run(() =>
+        var daemon = new ProcessorDaemon(
+            JsonOptions,
+            (sourcePaths, onStage) =>
             {
-                try
-                {
-                    Console.WriteLine("[daemon-boot] Iniciando precalentamiento automático de fuentes...");
-                    var sw = Stopwatch.StartNew();
-                    WarmUpSources(defaultSources.Where(File.Exists).ToArray(), (st, msg) => Console.WriteLine($"[daemon-warmup] {st}: {msg}"));
-                    Console.WriteLine($"[daemon-boot] Precalentamiento completado en {sw.ElapsedMilliseconds}ms. {GlobalCache.Lookup.Count:N0} WRs listos en RAM.");
-                }
-                catch (Exception ex)
-                {
-                    Console.Error.WriteLine($"[daemon-boot-error] {ex.Message}");
-                }
-            });
-        }
-
-        while (listener.IsListening)
-        {
-            try
-            {
-                var context = listener.GetContext();
-                ThreadPool.QueueUserWorkItem(_ => HandleDaemonRequest(context));
-            }
-            catch (Exception) when (!listener.IsListening)
-            {
-                break;
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"[daemon-error] {ex.Message}");
-            }
-        }
-    }
-
-    private sealed record ProcessRequest(string? InventoryPath, string[]? SourcePaths, string? OutputPath, string? UnmatchedCsvPath);
-    private sealed record WarmupRequest(string[]? SourcePaths);
-
-    private static void HandleDaemonRequest(HttpListenerContext context)
-    {
-        var req = context.Request;
-        var res = context.Response;
-        res.Headers.Add("Access-Control-Allow-Origin", "*");
-
-        try
-        {
-            if (req.HttpMethod == "OPTIONS")
-            {
-                res.StatusCode = 204;
-                res.Close();
-                return;
-            }
-
-            string path = req.Url?.AbsolutePath ?? "/";
-
-            if (req.HttpMethod == "GET" && path == "/health")
-            {
-                var health = new
-                {
-                    ok = true,
-                    status = "daemon_online",
-                    isWarm = GlobalCache.Lookup.Count > 0,
-                    totalWrs = GlobalCache.Lookup.Count,
-                    totalSourceRows = GlobalCache.SourceRows,
-                    lastWarmup = GlobalCache.LastWarmup,
-                };
-                SendDaemonJson(res, 200, health);
-                return;
-            }
-
-            if (req.HttpMethod == "POST" && path == "/warmup")
-            {
-                using var reader = new StreamReader(req.InputStream, Encoding.UTF8);
-                string body = reader.ReadToEnd();
-                var parsed = string.IsNullOrWhiteSpace(body) ? null : JsonSerializer.Deserialize<WarmupRequest>(body, JsonOptions);
-                string[] sources = parsed?.SourcePaths ?? [
-                    "/app/cache/tib-active/delivered.xlsx",
-                    "/app/cache/tib-active/sent.xlsx",
-                    "/app/cache/tib-active/received.xlsx"
-                ];
-
                 var sw = Stopwatch.StartNew();
-                var cache = WarmUpSources(sources.Where(File.Exists).ToArray());
-                var resp = new
-                {
-                    ok = true,
-                    status = "warm",
-                    totalWrs = cache.Lookup.Count,
-                    sourceRows = cache.SourceRows,
-                    elapsedMs = sw.ElapsedMilliseconds,
-                };
-                SendDaemonJson(res, 200, resp);
-                return;
-            }
-
-            if (req.HttpMethod == "POST" && path == "/process")
-            {
-                using var reader = new StreamReader(req.InputStream, Encoding.UTF8);
-                string body = reader.ReadToEnd();
-                var pReq = JsonSerializer.Deserialize<ProcessRequest>(body, JsonOptions)
-                    ?? throw new InvalidOperationException("Cuerpo de petición inválido.");
-
-                if (string.IsNullOrWhiteSpace(pReq.InventoryPath) || string.IsNullOrWhiteSpace(pReq.OutputPath))
-                    throw new InvalidOperationException("InventoryPath y OutputPath son requeridos.");
-
-                var result = ProcessInventory(
-                    pReq.InventoryPath,
-                    pReq.SourcePaths ?? [],
-                    pReq.OutputPath,
-                    pReq.UnmatchedCsvPath ?? (pReq.OutputPath + ".unmatched.csv"));
-
-                SendDaemonJson(res, 200, result);
-                return;
-            }
-
-            SendDaemonJson(res, 404, new { ok = false, error = "Ruta no encontrada" });
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"[daemon-request-error] {ex.Message}");
-            SendDaemonJson(res, 500, new { ok = false, error = ex.Message });
-        }
-    }
-
-    private static void SendDaemonJson(HttpListenerResponse response, int statusCode, object data)
-    {
-        try
-        {
-            byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(data, JsonOptions);
-            response.StatusCode = statusCode;
-            response.ContentType = "application/json; charset=utf-8";
-            response.ContentLength64 = bytes.Length;
-            using Stream output = response.OutputStream;
-            output.Write(bytes, 0, bytes.Length);
-        }
-        catch { }
-        finally
-        {
-            try { response.Close(); } catch { }
-        }
+                CachedSourceData cache = WarmUpSources(sourcePaths, onStage);
+                return new ProcessorWarmupResult(cache.Lookup.Count, cache.SourceRows, sw.ElapsedMilliseconds);
+            },
+            request => ProcessInventory(
+                request.InventoryPath!,
+                request.SourcePaths ?? [],
+                request.OutputPath!,
+                request.UnmatchedCsvPath ?? (request.OutputPath! + ".unmatched.csv")),
+            () => new ProcessorHealth(
+                GlobalCache.Lookup.Count > 0,
+                GlobalCache.Lookup.Count,
+                GlobalCache.SourceRows,
+                GlobalCache.LastWarmup));
+        daemon.Run(port);
     }
 
     private static void ReportProgress(string stage, string message, long? currentRows = null, WorkbookValidation? validation = null)

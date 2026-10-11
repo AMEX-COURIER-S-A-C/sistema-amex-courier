@@ -5,6 +5,7 @@ import {
   TipoProcesoCotejo,
   TipoEstadoItemCotejo
 } from '@/types';
+import type { NewSheetItemRow } from '../types';
 
 export const sheetsService = {
   async fetchHojas(): Promise<HojaCotejo[]> {
@@ -206,13 +207,13 @@ export const sheetsService = {
     return newSheet;
   },
 
-  async insertItems(rows: any[]): Promise<any[]> {
+  async insertItems(rows: NewSheetItemRow[]): Promise<unknown[]> {
     const { data, error } = await supabase.from('hojas_cotejo_items').insert(rows).select();
     if (error) throw error;
     return data || [];
   },
 
-  async updateItem(itemId: string, patch: Record<string, any>): Promise<void> {
+  async updateItem(itemId: string, patch: Record<string, unknown>): Promise<void> {
     const { error } = await supabase
       .from('hojas_cotejo_items')
       .update(patch)

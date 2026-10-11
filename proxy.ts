@@ -1,17 +1,28 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
+import { apiError } from '@/lib/contracts/api';
+import {
+  API_CONTRACT_VERSION,
+  CONTRACT_VERSION_HEADER,
+  CORRELATION_ID_HEADER,
+  REQUEST_ID_HEADER,
+} from '@/lib/observability/request-context';
 
 export async function proxy(request: NextRequest) {
   // Obtener x-request-id existente o generar un identificador único para trazabilidad distribuida
   const existingRequestId = request.headers.get('x-request-id');
   const requestId = existingRequestId || crypto.randomUUID();
+  const correlationId = request.headers.get(CORRELATION_ID_HEADER) || requestId;
 
   // Inyectar x-request-id en los encabezados de la petición para endpoints internos
   const requestHeaders = new Headers(request.headers);
-  requestHeaders.set('x-request-id', requestId);
+  requestHeaders.set(REQUEST_ID_HEADER, requestId);
+  requestHeaders.set(CORRELATION_ID_HEADER, correlationId);
 
   const setRequestIdHeader = (res: NextResponse) => {
-    res.headers.set('x-request-id', requestId);
+    res.headers.set(REQUEST_ID_HEADER, requestId);
+    res.headers.set(CORRELATION_ID_HEADER, correlationId);
+    res.headers.set(CONTRACT_VERSION_HEADER, API_CONTRACT_VERSION);
     return res;
   };
 
@@ -34,9 +45,7 @@ export async function proxy(request: NextRequest) {
   if (!supabaseUrl || !supabaseAnonKey) {
     if (isLoginPage || isPublicAuthRoute) return response;
     if (isApiRoute) {
-      return setRequestIdHeader(
-        NextResponse.json({ error: 'Autenticación no configurada.' }, { status: 503 })
-      );
+      return setRequestIdHeader(apiError('AUTH_NOT_CONFIGURED', 'Autenticación no configurada.', requestId, 503));
     }
     return setRequestIdHeader(
       NextResponse.redirect(new URL('/login?error=auth-config', request.url))
@@ -89,9 +98,7 @@ export async function proxy(request: NextRequest) {
 
   if (!user && !isServiceRole && !isLoginPage && !isPublicAuthRoute) {
     if (isApiRoute) {
-      return setRequestIdHeader(
-        NextResponse.json({ error: 'No autenticado.' }, { status: 401 })
-      );
+      return setRequestIdHeader(apiError('UNAUTHENTICATED', 'No autenticado.', requestId, 401));
     }
 
     const loginUrl = new URL('/login', request.url);

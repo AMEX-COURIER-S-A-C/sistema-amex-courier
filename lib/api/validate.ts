@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ZodSchema, ZodError } from 'zod';
+import { apiError } from '@/lib/contracts/api';
+import { getRequestId } from '@/lib/observability/request-context';
 
 export function formatZodError(error: ZodError) {
   return error.issues.map((issue) => ({
@@ -19,22 +21,18 @@ export async function validateBody<T>(
       const details = formatZodError(result.error);
       return {
         ok: false,
-        response: NextResponse.json(
-          {
-            error: 'Datos de entrada inválidos.',
-            details,
-          },
-          { status: 400 }
-        ),
+        response: apiError('VALIDATION_ERROR', 'Datos de entrada inválidos.', getRequestId(req), 400, details),
       };
     }
     return { ok: true, data: result.data };
   } catch {
     return {
       ok: false,
-      response: NextResponse.json(
-        { error: 'El cuerpo de la solicitud no es un JSON válido.' },
-        { status: 400 }
+      response: apiError(
+        'INVALID_JSON',
+        'El cuerpo de la solicitud no es un JSON válido.',
+        getRequestId(req),
+        400
       ),
     };
   }
@@ -54,12 +52,12 @@ export function validateQuery<T>(
     const details = formatZodError(result.error);
     return {
       ok: false,
-      response: NextResponse.json(
-        {
-          error: 'Parámetros de consulta inválidos.',
-          details,
-        },
-        { status: 400 }
+      response: apiError(
+        'INVALID_QUERY',
+        'Parámetros de consulta inválidos.',
+        getRequestId({ headers: new Headers() }),
+        400,
+        details
       ),
     };
   }
