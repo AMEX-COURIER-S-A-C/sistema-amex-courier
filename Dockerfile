@@ -28,6 +28,7 @@ RUN chmod +x /app/processor/AmexInventoryProcessor
 COPY worker/package.json ./worker/package.json
 RUN cd worker && npm install --omit=dev --no-audit --no-fund
 COPY worker/worker.js ./worker/worker.js
+COPY worker/processor-client.js ./worker/processor-client.js
 COPY worker/assets/FUENTE_VACIA.xlsx ./assets/FUENTE_VACIA.xlsx
 ENV PROCESSOR=/app/processor/AmexInventoryProcessor
 ENV EMPTY_TEMPLATE=/app/assets/FUENTE_VACIA.xlsx
