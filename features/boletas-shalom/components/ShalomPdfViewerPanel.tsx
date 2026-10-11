@@ -88,7 +88,7 @@ export const ShalomPdfViewerPanel: React.FC<ShalomPdfViewerPanelProps> = ({
       </div>
 
       {/* Metadatos normalizados de la Boleta / Ticket */}
-      <div className="shalom-viewer-metadata">
+      <div className="shalom-viewer-metadata" data-lenis-prevent="">
         <div className="shalom-meta-row">
           <span className="shalom-meta-key">N° Orden / Cód:</span>
           <span className="shalom-meta-val font-mono text-sky-400">

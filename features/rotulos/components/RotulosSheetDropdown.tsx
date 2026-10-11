@@ -87,7 +87,7 @@ export const RotulosSheetDropdown: React.FC<RotulosSheetDropdownProps> = ({
             </span>
           </div>
 
-          <div className="sheet-dropdown-items-list">
+          <div className="sheet-dropdown-items-list" data-lenis-prevent="">
             {Array.from({ length: totalSheets }, (_, i) => {
               const sheetNum = i + 1;
               const sheetSlots = slots.slice(i * 5, (i + 1) * 5);

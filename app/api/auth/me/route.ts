@@ -18,7 +18,7 @@ async function handleGet() {
     // 1. Consultar perfil persistido del usuario
     const { data: profile } = await admin
       .from('perfiles_usuarios')
-      .select('id, nombre_completo, email, rol_id, activo')
+      .select('id, nombre_completo, email, rol_id, activo, permisos')
       .eq('id', authUser.id)
       .maybeSingle();
 
@@ -35,7 +35,7 @@ async function handleGet() {
       'Operador Logístico';
     let permisos: Record<string, unknown> = {};
 
-    // 2. Consultar rol y matriz de permisos
+    // 2. Consultar rol y matriz de permisos por defecto
     if (profile?.rol_id) {
       const { data: roleData } = await admin
         .from('roles_sistema')
@@ -47,6 +47,11 @@ async function handleGet() {
         if (roleData.nombre) rolNombre = roleData.nombre;
         if (roleData.permisos) permisos = roleData.permisos as Record<string, unknown>;
       }
+    }
+
+    // 3. Si el usuario tiene permisos personalizados individuales en su perfil, tienen prioridad
+    if (profile?.permisos && typeof profile.permisos === 'object' && Object.keys(profile.permisos).length > 0) {
+      permisos = profile.permisos as Record<string, unknown>;
     }
 
     const normRole = rolNombre.trim().toLowerCase();

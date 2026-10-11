@@ -280,7 +280,7 @@ export const SYSTEM_MODULES: ModuleMetadata[] = [
     path: '/admin-usuarios',
     icon: 'fa-solid fa-user-gear',
     category: 'sistema',
-    allowedRoles: ['ADMIN', 'SUPER_ADMIN', 'ADMINISTRADOR'],
+    allowedRoles: ['ADMIN', 'SUPER_ADMIN', 'ADMINISTRADOR', 'GERENTE GENERAL', 'GERENTE_GENERAL'],
     permissionKey: 'admin_usuarios',
     permissionAliases: ['admin-usuarios', 'usuarios']
   },
@@ -406,7 +406,9 @@ export function hasModuleAccess(
     (targetModule?.id === 'admin-usuarios' || tabOrModuleId === 'admin-usuarios') &&
     !user.isAdmin &&
     roleName !== 'admin' &&
-    roleName !== 'administrador'
+    roleName !== 'administrador' &&
+    roleName !== 'gerente general' &&
+    roleName !== 'gerente_general'
   ) {
     const adminVal = permisos['admin_usuarios'] ?? permisos['admin-usuarios'] ?? permisos['usuarios'];
     if (adminVal !== true && !(typeof adminVal === 'object' && (adminVal as Record<string, unknown>)?.ver === true)) {
@@ -455,6 +457,104 @@ export function hasModuleAccess(
         const obj = val as Record<string, unknown>;
         if (typeof obj.ver === 'boolean') return obj.ver;
         return Object.values(obj).some(v => v === true);
+      }
+    }
+  }
+
+  return false;
+}
+
+export type PermissionAction = 'ver' | 'crear' | 'editar' | 'eliminar' | 'exportar';
+
+export interface ModulePermissionActions {
+  ver: boolean;
+  crear: boolean;
+  editar: boolean;
+  eliminar: boolean;
+  exportar: boolean;
+}
+
+/**
+ * Evalúa si un usuario tiene permiso para realizar una acción específica (ver, crear, editar, eliminar, exportar)
+ * en un módulo determinado.
+ */
+export function hasModuleAction(
+  user: UserAccessContext | null | undefined,
+  tabOrModuleId: string,
+  action: PermissionAction = 'ver'
+): boolean {
+  if (!user) return false;
+
+  const roleName = String(user.rol || '').trim().toLowerCase();
+  // Administradores globales siempre tienen permiso total para todas las acciones
+  if (user.isAdmin || roleName === 'admin' || roleName === 'administrador') {
+    return true;
+  }
+
+  // Si no tiene acceso al módulo, no puede realizar ninguna acción
+  if (!hasModuleAccess(user, tabOrModuleId)) {
+    return false;
+  }
+
+  // Si solo se consulta visibilidad ('ver'), y hasModuleAccess es true, conceder
+  if (action === 'ver') {
+    return true;
+  }
+
+  const permisos = user.permisos;
+  if (!permisos || typeof permisos !== 'object') {
+    return false;
+  }
+
+  // Buscar módulo correspondiente
+  const isCobrosTab =
+    tabOrModuleId === 'cobros' ||
+    tabOrModuleId === 'fico-cobros' ||
+    tabOrModuleId === 'cobros-diario' ||
+    tabOrModuleId === 'cobros-armar-planilla' ||
+    tabOrModuleId.startsWith('cobros-');
+
+  const isScannerTab =
+    tabOrModuleId === 'scanner' ||
+    tabOrModuleId === 'mobile-scanner' ||
+    tabOrModuleId.startsWith('scanner-');
+
+  const targetModule = SYSTEM_MODULES.find(
+    m =>
+      m.id === tabOrModuleId ||
+      m.tabId === tabOrModuleId ||
+      (m.submodules && m.submodules.some(s => s.tabId === tabOrModuleId || s.id === tabOrModuleId)) ||
+      m.permissionKey === tabOrModuleId ||
+      (m.permissionAliases && m.permissionAliases.includes(tabOrModuleId))
+  );
+
+  const keysToCheck: string[] = [];
+  if (isCobrosTab) {
+    keysToCheck.push('cobros', 'fico-cobros', 'cobros-diario', 'cobros-armar-planilla');
+  }
+  if (isScannerTab) {
+    keysToCheck.push('scanner', 'escaner', 'mobile-scanner', 'mobile_scanner');
+  }
+  if (targetModule) {
+    keysToCheck.push(targetModule.permissionKey);
+    if (targetModule.permissionAliases) {
+      keysToCheck.push(...targetModule.permissionAliases);
+    }
+    keysToCheck.push(targetModule.id, targetModule.tabId);
+  } else {
+    keysToCheck.push(tabOrModuleId);
+  }
+
+  for (const k of keysToCheck) {
+    if (k in permisos) {
+      const val = permisos[k];
+      if (typeof val === 'boolean') {
+        // En formato booleano legacy, si el módulo está habilitado, tiene todas las acciones
+        return val;
+      }
+      if (typeof val === 'object' && val !== null) {
+        const obj = val as Record<string, unknown>;
+        return Boolean(obj[action]);
       }
     }
   }

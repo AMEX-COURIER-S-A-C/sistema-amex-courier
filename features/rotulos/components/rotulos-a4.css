@@ -2404,6 +2404,9 @@
   min-height: 100%;
   overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
 }
 
 .rotulos-preview-container::-webkit-scrollbar {
@@ -3619,6 +3622,9 @@
   gap: 4px;
   max-height: 240px;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
   padding-right: 2px;
 }
 
@@ -4008,7 +4014,19 @@
 .rotulo-history-body {
   flex: 1;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
   padding: 20px 24px;
+}
+
+.rotulo-history-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.rotulo-history-body::-webkit-scrollbar-thumb {
+  background: rgba(56, 189, 248, 0.3);
+  border-radius: 4px;
 }
 
 .rotulo-history-loading {

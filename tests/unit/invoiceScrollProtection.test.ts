@@ -106,6 +106,48 @@ describe('Módulo 11: Invoice Scroll Protection & Lenis Isolation', () => {
     expect(body.hasAttribute(PREVENT_ATTRIBUTE)).toBe(true);
   });
 
+  it('protege automáticamente los paneles de Formato de Entrega (Módulo 10) con data-lenis-prevent en scanDOM', () => {
+    const actaPanel = new MockElement('div') as unknown as HTMLElement;
+    actaPanel.className = 'acta-control-panel';
+
+    const actaBody = new MockElement('div') as unknown as HTMLElement;
+    actaBody.className = 'acta-panel-body';
+
+    const actaAutocomplete = new MockElement('div') as unknown as HTMLElement;
+    actaAutocomplete.className = 'acta-autocomplete-menu';
+
+    const actaChips = new MockElement('div') as unknown as HTMLElement;
+    actaChips.className = 'acta-chips-container';
+
+    const actaModalBody = new MockElement('div') as unknown as HTMLElement;
+    actaModalBody.className = 'acta-modal-body';
+
+    const shalomModalBody = new MockElement('div') as unknown as HTMLElement;
+    shalomModalBody.className = 'shalom-modal-body';
+
+    const rotuloHistoryBody = new MockElement('div') as unknown as HTMLElement;
+    rotuloHistoryBody.className = 'rotulo-history-body';
+
+    const root = {
+      querySelectorAll: vi.fn((sel: string) => {
+        if (sel.includes('.acta-control-panel')) {
+          return [actaPanel, actaBody, actaAutocomplete, actaChips, actaModalBody, shalomModalBody, rotuloHistoryBody];
+        }
+        return [];
+      }),
+    } as unknown as ParentNode;
+
+    smoothScrollManager.scanDOM(root);
+
+    expect(actaPanel.hasAttribute(PREVENT_ATTRIBUTE)).toBe(true);
+    expect(actaBody.hasAttribute(PREVENT_ATTRIBUTE)).toBe(true);
+    expect(actaAutocomplete.hasAttribute(PREVENT_ATTRIBUTE)).toBe(true);
+    expect(actaChips.hasAttribute(PREVENT_ATTRIBUTE)).toBe(true);
+    expect(actaModalBody.hasAttribute(PREVENT_ATTRIBUTE)).toBe(true);
+    expect(shalomModalBody.hasAttribute(PREVENT_ATTRIBUTE)).toBe(true);
+    expect(rotuloHistoryBody.hasAttribute(PREVENT_ATTRIBUTE)).toBe(true);
+  });
+
   it('no registra instancias de Lenis en elementos que tienen data-lenis-prevent (aislamiento estricto)', () => {
     const panel = new MockElement('aside') as unknown as HTMLElement;
     panel.className = 'invoice-control-panel';

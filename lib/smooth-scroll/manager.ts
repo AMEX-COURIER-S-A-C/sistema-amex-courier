@@ -229,10 +229,33 @@ class SmoothScrollManager {
   public syncModalLockState(): void {
     if (typeof window === 'undefined') return;
 
+    // 1. Limpieza de tokens desconectados (nodos eliminados del DOM)
+    if (typeof document !== 'undefined') {
+      this.openModalTokens.forEach((token) => {
+        if (token instanceof HTMLElement && !token.isConnected) {
+          this.openModalTokens.delete(token);
+        }
+      });
+    }
+
+    // 2. Verificar si existe algún backdrop realmente activo en el DOM
     const hasDomBackdrop =
       typeof document !== 'undefined' && typeof document.querySelector === 'function'
         ? document.querySelector(MODAL_BACKDROP_SELECTOR) !== null
         : false;
+
+    // 3. Auto-recuperación estricta: Si no hay ningún backdrop en el DOM físico,
+    // limpiar cualquier token residual de elementos HTML
+    if (!hasDomBackdrop && typeof document !== 'undefined' && typeof document.querySelectorAll === 'function') {
+      const tokensToRemove: (HTMLElement | string)[] = [];
+      this.openModalTokens.forEach((token) => {
+        if (token instanceof HTMLElement) {
+          tokensToRemove.push(token);
+        }
+      });
+      tokensToRemove.forEach((t) => this.openModalTokens.delete(t));
+    }
+
     const isLocked = this.openModalTokens.size > 0 || this.modalLockCount > 0 || hasDomBackdrop;
 
     this.instances.forEach(({ lenis, isBackground }) => {
@@ -271,11 +294,27 @@ class SmoothScrollManager {
       });
 
       const dedicatedScrollElements = root.querySelectorAll<HTMLElement>(
-        '.invoice-control-panel, .invoice-panel-body'
+        '.invoice-control-panel, .invoice-panel-body, ' +
+        '.acta-control-panel, .acta-panel-body, .acta-modal-body, .acta-historial-list, .acta-document-container, .acta-autocomplete-menu, .acta-chips-container, ' +
+        '.shalom-viewer-metadata, .shalom-modal-body, .shalom-split-form, .shalom-split-preview-image-container, ' +
+        '.agency-dropdown-menu, .rotulos-preview-container, .rotulo-history-body, .sheet-dropdown-items-list, ' +
+        '.dni-modal-body, .modal-body, .clean-modal-body, [class*="-panel-body"], [class*="-control-panel"], [data-editor-scroll]'
       );
       dedicatedScrollElements.forEach((el) => {
         if (!el.hasAttribute('data-lenis-prevent')) {
           el.setAttribute('data-lenis-prevent', '');
+        }
+      });
+
+      // Auto-detección global: Todo contenedor interno con scroll vertical explícito dentro de la vista
+      const allScrollableChildren = root.querySelectorAll<HTMLElement>(
+        '[style*="overflowY"], [style*="overflow-y"], [style*="overflow: auto"], [style*="overflow: scroll"]'
+      );
+      allScrollableChildren.forEach((el) => {
+        if (!el.classList.contains('main-content') && !el.classList.contains('sap-sidebar') && el.tagName.toLowerCase() !== 'main') {
+          if (!el.hasAttribute('data-lenis-prevent')) {
+            el.setAttribute('data-lenis-prevent', '');
+          }
         }
       });
     }
@@ -320,8 +359,13 @@ class SmoothScrollManager {
         // Nodos agregados
         mutation.addedNodes.forEach((node) => {
           if (node instanceof HTMLElement) {
-            if (node.matches(MODAL_BACKDROP_SELECTOR) || node.querySelector(MODAL_BACKDROP_SELECTOR)) {
+            if (node.matches(MODAL_BACKDROP_SELECTOR)) {
               this.openModalTokens.add(node);
+              modalStateChanged = true;
+            } else if (node.querySelector(MODAL_BACKDROP_SELECTOR)) {
+              node.querySelectorAll<HTMLElement>(MODAL_BACKDROP_SELECTOR).forEach((b) => {
+                this.openModalTokens.add(b);
+              });
               modalStateChanged = true;
             }
 
@@ -339,7 +383,13 @@ class SmoothScrollManager {
               this.openModalTokens.delete(node);
               modalStateChanged = true;
             }
-            if (node.matches(MODAL_BACKDROP_SELECTOR) || node.querySelector(MODAL_BACKDROP_SELECTOR)) {
+            if (node.matches(MODAL_BACKDROP_SELECTOR)) {
+              this.openModalTokens.delete(node);
+              modalStateChanged = true;
+            } else if (node.querySelector(MODAL_BACKDROP_SELECTOR)) {
+              node.querySelectorAll<HTMLElement>(MODAL_BACKDROP_SELECTOR).forEach((b) => {
+                this.openModalTokens.delete(b);
+              });
               modalStateChanged = true;
             }
 

@@ -155,7 +155,7 @@ export const ShalomUploadModal: React.FC<ShalomUploadModalProps> = ({
 
   return (
     <div className="shalom-modal-overlay">
-      <div className="shalom-modal-container">
+      <div className="shalom-modal-container" data-lenis-prevent="">
         <div className="shalom-modal-header">
           <h3>
             <UploadCloud size={20} className="text-sky-400" />
@@ -171,7 +171,7 @@ export const ShalomUploadModal: React.FC<ShalomUploadModalProps> = ({
           </button>
         </div>
 
-        <div className="shalom-modal-body">
+        <div className="shalom-modal-body" data-lenis-prevent="">
           {uploadError && (
             <div className="mb-4 p-3 bg-red-950/60 border border-red-500/40 rounded-lg text-xs text-red-300 flex items-center gap-2">
               <AlertCircle size={16} className="text-red-400 flex-shrink-0" />
@@ -242,7 +242,7 @@ export const ShalomUploadModal: React.FC<ShalomUploadModalProps> = ({
                 </div>
                 {filePreviewBlobUrl && (
                   currentFile?.type.startsWith('image/') || /\.(jpe?g|png|webp|bmp)$/i.test(currentFile?.name || '') ? (
-                    <div className="shalom-split-preview-image-container">
+                    <div className="shalom-split-preview-image-container" data-lenis-prevent="">
                       <img
                         src={filePreviewBlobUrl}
                         alt="Boleta Shalom Escaneada"
@@ -259,7 +259,7 @@ export const ShalomUploadModal: React.FC<ShalomUploadModalProps> = ({
                 )}
               </div>
 
-              <div className="shalom-split-form">
+              <div className="shalom-split-form" data-lenis-prevent="">
                 <div className="shalom-ai-toolbar">
                   <button
                     type="button"

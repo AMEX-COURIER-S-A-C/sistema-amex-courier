@@ -189,7 +189,7 @@ export const RotulosSheetPreview: React.FC<RotulosSheetPreviewProps> = ({
   };
 
   return (
-    <div className="rotulos-preview-container">
+    <div className="rotulos-preview-container" data-lenis-prevent="">
       {/* 1. Hoja A4 en Pantalla */}
       <div className="rotulos-a4-sheet screen-only-sheet">
         {currentSheetSlots.map((slot) => renderStrip(slot, true))}

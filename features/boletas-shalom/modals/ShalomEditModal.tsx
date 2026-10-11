@@ -68,7 +68,7 @@ export const ShalomEditModal: React.FC<ShalomEditModalProps> = ({
 
   return (
     <div className="shalom-modal-overlay">
-      <div className="shalom-modal-container" style={{ maxWidth: '680px' }}>
+      <div className="shalom-modal-container" data-lenis-prevent="" style={{ maxWidth: '680px' }}>
         <div className="shalom-modal-header">
           <h3>
             <Edit2 size={18} className="text-sky-400" />
@@ -83,7 +83,7 @@ export const ShalomEditModal: React.FC<ShalomEditModalProps> = ({
           </button>
         </div>
 
-        <div className="shalom-modal-body flex flex-col gap-4">
+        <div className="shalom-modal-body flex flex-col gap-4" data-lenis-prevent="">
           {/* Sección 1: Comprobante */}
           <div className="shalom-form-section">
             <div className="shalom-form-section-title">

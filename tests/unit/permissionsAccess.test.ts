@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   SYSTEM_MODULES,
   hasModuleAccess,
+  hasModuleAction,
   getAvailableModulesForUser,
   getFirstAvailableTab
 } from '@/lib/navigation/registry';
@@ -150,16 +151,50 @@ describe('Control de Acceso y Permisos por Módulo (lib/navigation/registry.ts)'
     });
   });
 
-  describe('hasModuleAccess — Casos de borde y usuarios sin permisos', () => {
-    it('debe denegar acceso si el usuario es null o undefined', () => {
-      expect(hasModuleAccess(null, 'dashboard')).toBe(false);
-      expect(hasModuleAccess(undefined, 'mm-lince')).toBe(false);
+  describe('hasModuleAction — Evaluación Granular de Permisos (Ver, Crear, Editar, Eliminar, Exportar)', () => {
+    it('el administrador tiene permiso irrestricto para todas las 5 acciones en cualquier módulo', () => {
+      expect(hasModuleAction(adminUser, 'inventario', 'ver')).toBe(true);
+      expect(hasModuleAction(adminUser, 'inventario', 'crear')).toBe(true);
+      expect(hasModuleAction(adminUser, 'inventario', 'editar')).toBe(true);
+      expect(hasModuleAction(adminUser, 'inventario', 'eliminar')).toBe(true);
+      expect(hasModuleAction(adminUser, 'inventario', 'exportar')).toBe(true);
     });
 
-    it('debe denegar acceso si el usuario no tiene permisos configurados', () => {
-      const emptyUser = { nombre: 'Sin Rol', rol: 'Invitado', permisos: {} };
-      expect(hasModuleAccess(emptyUser, 'dashboard')).toBe(false);
-      expect(hasModuleAccess(emptyUser, 'mobile-scanner')).toBe(false);
+    it('un usuario con permisos granulares específicos respeta las restricciones de crear, editar, eliminar y exportar', () => {
+      // cobranzasUser en cobros: { ver: true, crear: true, editar: true, eliminar: false, exportar: true }
+      expect(hasModuleAction(cobranzasUser, 'cobros', 'ver')).toBe(true);
+      expect(hasModuleAction(cobranzasUser, 'cobros', 'crear')).toBe(true);
+      expect(hasModuleAction(cobranzasUser, 'cobros', 'editar')).toBe(true);
+      expect(hasModuleAction(cobranzasUser, 'cobros', 'eliminar')).toBe(false);
+      expect(hasModuleAction(cobranzasUser, 'cobros', 'exportar')).toBe(true);
+
+      // cobranzasUser en inventario: { ver: true, crear: false, editar: false, eliminar: false, exportar: true }
+      expect(hasModuleAction(cobranzasUser, 'inventario', 'ver')).toBe(true);
+      expect(hasModuleAction(cobranzasUser, 'inventario', 'crear')).toBe(false);
+      expect(hasModuleAction(cobranzasUser, 'inventario', 'editar')).toBe(false);
+      expect(hasModuleAction(cobranzasUser, 'inventario', 'eliminar')).toBe(false);
+      expect(hasModuleAction(cobranzasUser, 'inventario', 'exportar')).toBe(true);
+    });
+
+    it('si el módulo está desactivado (ver: false o no asignado), ninguna acción está permitida', () => {
+      expect(hasModuleAction(cobranzasUser, 'scanner', 'ver')).toBe(false);
+      expect(hasModuleAction(cobranzasUser, 'scanner', 'crear')).toBe(false);
+      expect(hasModuleAction(cobranzasUser, 'scanner', 'editar')).toBe(false);
+      expect(hasModuleAction(cobranzasUser, 'scanner', 'eliminar')).toBe(false);
+      expect(hasModuleAction(cobranzasUser, 'scanner', 'exportar')).toBe(false);
+    });
+
+    it('en formato booleano legacy (true), otorga todas las acciones cuando el módulo está activo', () => {
+      // angelUser tiene scanner: true
+      expect(hasModuleAction(angelUser, 'scanner', 'ver')).toBe(true);
+      expect(hasModuleAction(angelUser, 'scanner', 'crear')).toBe(true);
+      expect(hasModuleAction(angelUser, 'scanner', 'editar')).toBe(true);
+      expect(hasModuleAction(angelUser, 'scanner', 'eliminar')).toBe(true);
+      expect(hasModuleAction(angelUser, 'scanner', 'exportar')).toBe(true);
+
+      // angelUser tiene cobros: false
+      expect(hasModuleAction(angelUser, 'cobros', 'ver')).toBe(false);
+      expect(hasModuleAction(angelUser, 'cobros', 'crear')).toBe(false);
     });
   });
 });

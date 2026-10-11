@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { ActaEntregaData, ActaHistorialItem, LogoStyle } from '../types';
 import { Cliente, Paquete } from '@/types';
 
@@ -60,6 +60,52 @@ export default function ActaControlPanel({
   const [clientSearch, setClientSearch] = useState('');
   const [showClientSuggestions, setShowClientSuggestions] = useState(false);
 
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+
+  // Detección y activación inteligente del scroll con touchpad y mouse en la zona del editor
+  useEffect(() => {
+    const panel = panelRef.current;
+    const body = bodyRef.current;
+    if (!panel || !body) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      // 1. Aislar estrictamente el evento para que jamás alcance a la ventana principal o al gestor Lenis
+      e.stopPropagation();
+
+      const target = e.target as HTMLElement | null;
+
+      // 2. Si el cursor está en la cabecera u otra zona fija fuera del cuerpo deslizable:
+      // delegar el scroll directamente a body.scrollTop de forma inmediata
+      if (!body.contains(target)) {
+        let delta = e.deltaY;
+        if (e.deltaMode === 1) delta *= 33; // Líneas de rueda de ratón tradicional
+        else if (e.deltaMode === 2) delta *= body.clientHeight;
+
+        const canScrollUp = delta < 0 && body.scrollTop > 0;
+        const canScrollDown = delta > 0 && body.scrollTop + body.clientHeight < body.scrollHeight - 1;
+
+        if (canScrollUp || canScrollDown) {
+          e.preventDefault();
+          body.scrollTop += delta;
+        } else {
+          e.preventDefault();
+        }
+        return;
+      }
+
+      // 3. Cuando el cursor está dentro del cuerpo (inputs, títulos, campos, etc.):
+      // NO ejecutamos e.preventDefault(). Dejamos que el motor nativo del navegador (GPU / Compositor)
+      // procese los microgestos del touchpad y ratón a 120 FPS con inercia física real sin trabas.
+    };
+
+    panel.addEventListener('wheel', handleWheel, { passive: false });
+
+    return () => {
+      panel.removeEventListener('wheel', handleWheel);
+    };
+  }, []);
+
   // Conteo de paquetes duplicados si existen en la lista
   const duplicateCount = useMemo(() => {
     const seen = new Set<string>();
@@ -86,7 +132,12 @@ export default function ActaControlPanel({
   const validPkgsCount = (formData.paquetes || []).length;
 
   return (
-    <div className="acta-control-panel">
+    <div
+      ref={panelRef}
+      data-lenis-prevent=""
+      className="acta-control-panel no-print"
+      aria-label="Panel de Edición de Formato de Entrega"
+    >
       {/* Barra de Acciones Principales */}
       <div className="acta-panel-header">
         <div>
@@ -147,7 +198,11 @@ export default function ActaControlPanel({
         </div>
       </div>
 
-      <div className="acta-panel-body">
+      <div
+        ref={bodyRef}
+        data-lenis-prevent=""
+        className="acta-panel-body"
+      >
         {/* BLOQUE 1: DATOS DEL ENCABEZADO */}
         <div className="acta-card-section">
           <h3 className="acta-card-title">
@@ -228,7 +283,7 @@ export default function ActaControlPanel({
 
             {/* Sugerencias de clientes desplegables */}
             {showClientSuggestions && filteredClientes.length > 0 && (
-              <div className="acta-autocomplete-menu">
+              <div className="acta-autocomplete-menu" data-lenis-prevent="">
                 <div className="acta-autocomplete-header">
                   <span>Clientes coincidentes ({filteredClientes.length})</span>
                   <button type="button" onClick={() => setShowClientSuggestions(false)}>✕</button>
@@ -332,7 +387,7 @@ export default function ActaControlPanel({
           </div>
 
           {/* Lista de Códigos agregados con chips */}
-          <div className="acta-chips-container mt-3">
+          <div className="acta-chips-container mt-3" data-lenis-prevent="">
             {formData.paquetes.map((code, idx) => (
               <span key={`${code}-${idx}`} className="acta-pkg-chip">
                 <code>{code}</code>
@@ -432,7 +487,11 @@ export default function ActaControlPanel({
       {/* Modal Historial de Actas */}
       {isHistorialOpen && (
         <div className="acta-modal-backdrop" onClick={() => onOpenHistorial(false)}>
-          <div className="acta-modal-content" onClick={e => e.stopPropagation()}>
+          <div
+            className="acta-modal-content"
+            data-lenis-prevent=""
+            onClick={e => e.stopPropagation()}
+          >
             <div className="acta-modal-header">
               <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#f8fafc' }}>
                 <i className="fa-solid fa-clock-rotate-left text-sky-400"></i> Historial de Actas Guardadas
@@ -446,7 +505,10 @@ export default function ActaControlPanel({
               </button>
             </div>
 
-            <div className="acta-modal-body">
+            <div
+              className="acta-modal-body"
+              data-lenis-prevent=""
+            >
               {historial.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>
                   No hay actas guardadas en el historial reciente.

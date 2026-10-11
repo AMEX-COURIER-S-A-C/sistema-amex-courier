@@ -32,6 +32,12 @@ export async function GET() {
     const usersWithRoles = authUsers.map(u => {
       const perfil = perfiles.find(p => p.id === u.id || p.email === u.email);
       const rol = roles.find(r => r.id === perfil?.rol_id);
+      const perfilHasCustom = Boolean(
+        perfil?.permisos &&
+        typeof perfil.permisos === 'object' &&
+        Object.keys(perfil.permisos).length > 0
+      );
+
       return {
         id: u.id,
         email: u.email,
@@ -42,7 +48,8 @@ export async function GET() {
           'Usuario',
         rol_id: perfil?.rol_id || rol?.id || null,
         rol_nombre: rol?.nombre || (u.user_metadata?.rol as string) || 'Sin Rol',
-        permisos: rol?.permisos || {},
+        permisos: perfilHasCustom ? perfil.permisos : (rol?.permisos || {}),
+        permisos_personalizados: perfilHasCustom,
         activo: perfil?.activo !== false,
         creado_en: u.created_at,
         ultimo_ingreso: u.last_sign_in_at
@@ -143,17 +150,18 @@ export async function POST(request: Request) {
         nombre_completo: nombre_completo.trim(),
         email: email.trim().toLowerCase(),
         rol_id: rol_id || null,
+        permisos: body.permisos || null,
         activo: true
       });
 
       return NextResponse.json({ success: true, user: newUser });
     }
 
-    // Acción 4: Actualizar rol o estado de usuario
+    // Acción 4: Actualizar rol, nombre, permisos o estado de usuario
     if (action === 'update_user') {
-      const { user_id, rol_id, activo, password } = body;
+      const { user_id, rol_id, activo, password, nombre_completo, permisos } = body;
 
-      let rolNombre = 'Operador Logístico';
+      let rolNombre: string | undefined = undefined;
       if (rol_id) {
         const { data: rData } = await supabase.from('roles_sistema').select('nombre').eq('id', rol_id).single();
         if (rData?.nombre) rolNombre = rData.nombre;
@@ -165,8 +173,13 @@ export async function POST(request: Request) {
         app_metadata?: Record<string, unknown>;
         password?: string;
       } = {
-        user_metadata: { rol: rolNombre },
-        app_metadata: { rol: rolNombre }
+        user_metadata: {
+          ...(rolNombre ? { rol: rolNombre } : {}),
+          ...(nombre_completo && typeof nombre_completo === 'string' ? { nombre_completo: nombre_completo.trim() } : {})
+        },
+        app_metadata: {
+          ...(rolNombre ? { rol: rolNombre } : {})
+        }
       };
       if (password && password.trim()) {
         updateData.password = password.trim();
@@ -178,8 +191,10 @@ export async function POST(request: Request) {
       await supabase
         .from('perfiles_usuarios')
         .update({
+          ...(nombre_completo && typeof nombre_completo === 'string' && { nombre_completo: nombre_completo.trim() }),
           ...(rol_id !== undefined && { rol_id }),
-          ...(activo !== undefined && { activo })
+          ...(activo !== undefined && { activo }),
+          ...(permisos !== undefined && { permisos })
         })
         .eq('id', user_id);
 

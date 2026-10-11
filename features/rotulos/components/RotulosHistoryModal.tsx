@@ -81,6 +81,7 @@ export const RotulosHistoryModal: React.FC<RotulosHistoryModalProps> = ({
     <div className="rotulo-history-modal-overlay" onClick={onClose}>
       <div
         className="rotulo-history-modal-container"
+        data-lenis-prevent=""
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -200,7 +201,7 @@ export const RotulosHistoryModal: React.FC<RotulosHistoryModalProps> = ({
         </div>
 
         {/* Contenido / Listado */}
-        <div className="rotulo-history-body">
+        <div className="rotulo-history-body" data-lenis-prevent="">
           {isLoading ? (
             <div className="rotulo-history-loading">
               <div className="history-spinner"></div>

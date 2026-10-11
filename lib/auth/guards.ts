@@ -2,7 +2,7 @@ import type { User } from '@supabase/supabase-js';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
-const ADMIN_ROLES = new Set(['admin', 'administrador']);
+const ADMIN_ROLES = new Set(['admin', 'administrador', 'gerente general', 'gerente_general']);
 
 function normalizeRole(value: unknown): string {
   return String(value || '').trim().toLowerCase();

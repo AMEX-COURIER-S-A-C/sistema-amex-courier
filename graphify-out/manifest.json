@@ -1,7 +1,7 @@
 {
   "app/api/admin/users/route.ts": {
-    "mtime": 1790563193.221679,
-    "ast_hash": "2b587bb24db566e9b68be03ee918c349",
+    "mtime": 1791752604.896595,
+    "ast_hash": "57c9667c979fdbd3c36eb3613fb286ff",
     "semantic_hash": ""
   },
   "app/api/ai/analyze-invoice/route.ts": {
@@ -40,8 +40,8 @@
     "semantic_hash": "236f7644711cf691a1623c5ec574d611"
   },
   "app/api/auth/me/route.ts": {
-    "mtime": 1791682296.426912,
-    "ast_hash": "604ff17fd61fb44b36156095d599daa1",
+    "mtime": 1791752538.8455727,
+    "ast_hash": "0fc5f451da2daaaec122206709edff5a",
     "semantic_hash": ""
   },
   "app/api/inventario-jobs/[id]/route.ts": {
@@ -275,8 +275,8 @@
     "semantic_hash": ""
   },
   "features/admin-users/components/AdminUsersTab.tsx": {
-    "mtime": 1791425412.2520008,
-    "ast_hash": "b363982d5c9bab236ab9739f7293c15e",
+    "mtime": 1791755837.0725217,
+    "ast_hash": "8c965041fd12a173447eaff66e994c22",
     "semantic_hash": ""
   },
   "features/admin-users/index.ts": {
@@ -971,8 +971,8 @@
     "semantic_hash": ""
   },
   "lib/auth/guards.ts": {
-    "mtime": 1790563191.062737,
-    "ast_hash": "6955de14c02b8782fa5bb81500ef073b",
+    "mtime": 1791749960.7839215,
+    "ast_hash": "b458becefdffb39d7c9c993492b6f01d",
     "semantic_hash": ""
   },
   "lib/auth/session.ts": {
@@ -1076,8 +1076,8 @@
     "semantic_hash": "251bbc2cbda7fdcf91cfa9cb3e42f173"
   },
   "next-env.d.ts": {
-    "mtime": 1791681645.327734,
-    "ast_hash": "0e4a65e8b2b9aa3ed0f8957b9406bd41",
+    "mtime": 1791748327.2263265,
+    "ast_hash": "c7b887684e81cfa5830eeeb7286485f6",
     "semantic_hash": ""
   },
   "next.config.ts": {
@@ -1577,8 +1577,8 @@
     "semantic_hash": ""
   },
   "lib/navigation/registry.ts": {
-    "mtime": 1791700275.0936363,
-    "ast_hash": "1d1d939e462903d1e57de5da762aa111",
+    "mtime": 1791752777.2297163,
+    "ast_hash": "df07e6e40c8107ff42282922d33ccac9",
     "semantic_hash": ""
   },
   "tests/unit/authGuards.test.ts": {
@@ -1712,8 +1712,8 @@
     "semantic_hash": ""
   },
   "tests/unit/permissionsAccess.test.ts": {
-    "mtime": 1791601023.033149,
-    "ast_hash": "75b893397486a070ca778d9770f0ca1e",
+    "mtime": 1791753123.0567222,
+    "ast_hash": "2b7ce9ffe3e205b22931dd3de205d6d8",
     "semantic_hash": ""
   },
   "manifest-engine/README.md": {
@@ -1847,8 +1847,8 @@
     "semantic_hash": ""
   },
   "lib/smooth-scroll/manager.ts": {
-    "mtime": 1791649601.7514544,
-    "ast_hash": "61369318ff96ec7602eb32fd52868d4b",
+    "mtime": 1791755899.7721786,
+    "ast_hash": "d48fb08ac7325d69412c258350b0b36d",
     "semantic_hash": ""
   },
   "tests/unit/smoothScrollManager.test.ts": {
@@ -2009,6 +2009,11 @@
   "tests/unit/excelCobroParser.test.ts": {
     "mtime": 1791696003.787367,
     "ast_hash": "a9f6f6032efb3e7b1eddc92fb98330d6",
+    "semantic_hash": ""
+  },
+  "scripts/setup-official-roles.mjs": {
+    "mtime": 1791749878.1774487,
+    "ast_hash": "c8eb5756450d50b0992cec6c42f0bad4",
     "semantic_hash": ""
   }
 }
