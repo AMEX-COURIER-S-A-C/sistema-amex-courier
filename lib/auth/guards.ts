@@ -1,6 +1,8 @@
 import type { User } from '@supabase/supabase-js';
+import { cookies } from 'next/headers';
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { SESSION_START_COOKIE, isSessionExpired } from '@/lib/auth/constants';
 
 const ADMIN_ROLES = new Set(['admin', 'administrador', 'gerente general', 'gerente_general']);
 
@@ -11,6 +13,16 @@ function normalizeRole(value: unknown): string {
 /** Obtiene el usuario de la sesión SSR sin confiar en datos enviados por el cliente. */
 export async function getAuthenticatedUser(): Promise<User | null> {
   try {
+    try {
+      const cookieStore = await cookies();
+      const sessionStart = cookieStore.get(SESSION_START_COOKIE)?.value;
+      if (isSessionExpired(sessionStart)) {
+        return null;
+      }
+    } catch {
+      // Ignorar si se invoca fuera del contexto de solicitud (ej. tests)
+    }
+
     const supabase = await createServerClient();
     const { data, error } = await supabase.auth.getUser();
     if (error || !data.user) return null;

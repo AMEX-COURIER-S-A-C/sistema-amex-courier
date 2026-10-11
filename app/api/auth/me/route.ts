@@ -1,15 +1,32 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { withErrorHandler } from '@/lib/api/handler';
+import { SESSION_START_COOKIE, isSessionExpired, getRemainingSessionMs } from '@/lib/auth/constants';
 
 async function handleGet() {
   try {
+    const cookieStore = await cookies();
+    const sessionStart = cookieStore.get(SESSION_START_COOKIE)?.value;
+
     const supabase = await createClient();
     const { data, error } = await supabase.auth.getUser();
 
     if (error || !data.user) {
       return NextResponse.json({ user: null }, { status: 401 });
+    }
+
+    if (isSessionExpired(sessionStart)) {
+      try {
+        await supabase.auth.signOut();
+      } catch {}
+      const res = NextResponse.json(
+        { user: null, error: 'Sesión expirada tras 8 horas.' },
+        { status: 401 }
+      );
+      res.cookies.delete(SESSION_START_COOKIE);
+      return res;
     }
 
     const authUser = data.user;

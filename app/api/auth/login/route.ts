@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { LoginSchema } from '@/lib/validations/auth.schema';
 import { validateBody } from '@/lib/api/validate';
 import { checkRateLimit, rateLimitExceededResponse } from '@/lib/security/rateLimit';
+import { SESSION_START_COOKIE, SESSION_MAX_AGE_SECONDS } from '@/lib/auth/constants';
 
 export async function POST(req: NextRequest) {
   try {
@@ -57,7 +58,16 @@ export async function POST(req: NextRequest) {
       email: data.user.email || email,
     };
 
-    return NextResponse.json({ user });
+    const res = NextResponse.json({ user });
+    res.cookies.set(SESSION_START_COOKIE, Date.now().toString(), {
+      maxAge: SESSION_MAX_AGE_SECONDS,
+      path: '/',
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      httpOnly: false,
+    });
+
+    return res;
   } catch (err) {
     console.error('[Auth Login Error]', err);
     return NextResponse.json({ error: 'Error interno al iniciar sesión.' }, { status: 500 });

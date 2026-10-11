@@ -7,6 +7,12 @@ import {
   CORRELATION_ID_HEADER,
   REQUEST_ID_HEADER,
 } from '@/lib/observability/request-context';
+import {
+  SESSION_MAX_AGE_SECONDS,
+  SESSION_MAX_AGE_MS,
+  SESSION_START_COOKIE,
+  isSessionExpired,
+} from '@/lib/auth/constants';
 
 export async function proxy(request: NextRequest) {
   // Obtener x-request-id existente o generar un identificador único para trazabilidad distribuida
@@ -53,6 +59,12 @@ export async function proxy(request: NextRequest) {
   }
 
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookieOptions: {
+      maxAge: SESSION_MAX_AGE_SECONDS,
+      path: '/',
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+    },
     cookies: {
       getAll() {
         return request.cookies.getAll();
@@ -65,7 +77,13 @@ export async function proxy(request: NextRequest) {
           },
         });
         cookiesToSet.forEach(({ name, value, options }) =>
-          response.cookies.set(name, value, options)
+          response.cookies.set(name, value, {
+            ...options,
+            maxAge: options?.maxAge ? Math.min(options.maxAge, SESSION_MAX_AGE_SECONDS) : SESSION_MAX_AGE_SECONDS,
+            path: '/',
+            sameSite: 'lax',
+            secure: process.env.NODE_ENV === 'production',
+          })
         );
         setRequestIdHeader(response);
       },
@@ -91,7 +109,47 @@ export async function proxy(request: NextRequest) {
      request.headers.get('apikey') === serviceKey)
   );
 
-  // Si está en login y ya está autenticado, redirigir al panel
+  // Verificación estricta de tiempo límite: La sesión de inicio expira a las 8 horas exactas
+  const sessionStartStr = request.cookies.get(SESSION_START_COOKIE)?.value;
+  const expired = user ? isSessionExpired(sessionStartStr) : false;
+
+  if (expired) {
+    try {
+      await supabase.auth.signOut();
+    } catch {}
+
+    const expiredUrl = new URL('/login?error=session-expired', request.url);
+    if (pathname !== '/' && !isLoginPage) {
+      expiredUrl.searchParams.set('next', `${pathname}${request.nextUrl.search}`);
+    }
+
+    const expiredRes = isApiRoute
+      ? setRequestIdHeader(apiError('SESSION_EXPIRED', 'Tu sesión ha caducado tras 8 horas de uso. Por favor, inicia sesión nuevamente.', requestId, 401))
+      : setRequestIdHeader(NextResponse.redirect(expiredUrl));
+
+    // Limpiar cookies de sesión para forzar re-autenticación
+    expiredRes.cookies.delete(SESSION_START_COOKIE);
+    request.cookies.getAll().forEach((c) => {
+      if (c.name.startsWith('sb-') || c.name === SESSION_START_COOKIE) {
+        expiredRes.cookies.delete(c.name);
+      }
+    });
+
+    return expiredRes;
+  }
+
+  // Inicializar cookie amex_session_start si el usuario ya está autenticado pero no la tiene
+  if (user && !sessionStartStr && !isLoginPage) {
+    response.cookies.set(SESSION_START_COOKIE, Date.now().toString(), {
+      maxAge: SESSION_MAX_AGE_SECONDS,
+      path: '/',
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      httpOnly: false,
+    });
+  }
+
+  // Si está en login y ya está autenticado con sesión vigente, redirigir al panel
   if (isLoginPage && user) {
     return setRequestIdHeader(NextResponse.redirect(new URL('/dashboard', request.url)));
   }

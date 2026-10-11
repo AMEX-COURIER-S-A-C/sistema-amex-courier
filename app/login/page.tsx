@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
+import { SESSION_START_COOKIE, SESSION_MAX_AGE_SECONDS } from '@/lib/auth/constants';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -17,6 +18,10 @@ export default function LoginPage() {
     const params = new URLSearchParams(window.location.search);
     if (params.get('recovered') === 'true' || params.has('code')) {
       setIsRecoveryMode(true);
+    }
+
+    if (params.get('error') === 'session-expired') {
+      setErrorMessage('Tu sesión ha caducado automáticamente tras 8 horas de jornada por motivos de seguridad. Por favor, inicia sesión nuevamente.');
     }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
@@ -41,6 +46,12 @@ export default function LoginPage() {
 
       if (error) {
         throw error;
+      }
+
+      // Grabar marca de inicio de sesión con vigencia estricta de 8 horas
+      if (typeof document !== 'undefined') {
+        const secureFlag = window.location.protocol === 'https:' ? 'Secure;' : '';
+        document.cookie = `${SESSION_START_COOKIE}=${Date.now()}; path=/; max-age=${SESSION_MAX_AGE_SECONDS}; SameSite=Lax; ${secureFlag}`;
       }
 
       const nextPath = new URLSearchParams(window.location.search).get('next');

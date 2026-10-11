@@ -1,4 +1,6 @@
+import { cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
+import { SESSION_START_COOKIE, isSessionExpired } from '@/lib/auth/constants';
 
 export interface SessionUser {
   nombre: string;
@@ -7,6 +9,14 @@ export interface SessionUser {
 }
 
 export async function getSessionUser(): Promise<SessionUser | null> {
+  try {
+    const cookieStore = await cookies();
+    const sessionStart = cookieStore.get(SESSION_START_COOKIE)?.value;
+    if (isSessionExpired(sessionStart)) {
+      return null;
+    }
+  } catch {}
+
   const supabase = await createClient();
   const { data, error } = await supabase.auth.getUser();
   if (error || !data.user) return null;
