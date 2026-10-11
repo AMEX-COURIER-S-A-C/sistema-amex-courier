@@ -34,7 +34,7 @@ Write-Host "1. Preparando directorio remoto en VPS: ${vpsHost}:/tmp/build-proces
 ssh -n -o StrictHostKeyChecking=no -o ConnectTimeout=15 "root@$vpsHost" "rm -rf /tmp/build-processor && mkdir -p /tmp/build-processor"
 
 Write-Host "2. Subiendo código fuente C# a VPS..."
-scp -o StrictHostKeyChecking=no -o ConnectTimeout=15 "$processorDir/Program.cs" "$processorDir/AmexInventoryProcessor.csproj" "root@${vpsHost}:/tmp/build-processor/"
+scp -o StrictHostKeyChecking=no -o ConnectTimeout=15 "$processorDir/Program.cs" "$processorDir/ProcessorDaemon.cs" "$processorDir/AmexInventoryProcessor.csproj" "root@${vpsHost}:/tmp/build-processor/"
 
 Write-Host "3. Compilando y publicando procesador C# (.NET 8 linux-x64)..."
 $buildCmd = "docker run --rm -v /tmp/build-processor:/src -w /src mcr.microsoft.com/dotnet/sdk:8.0 dotnet publish AmexInventoryProcessor.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=false -o /src/out"
