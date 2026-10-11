@@ -22,10 +22,23 @@ export default function CobrosTab({
   clientes = [],
   onUpdatePackage,
   onNavigateToClientes360,
-  filterClienteInicial
+  filterClienteInicial,
+  activeSubTab = 'diario',
+  onChangeSubTab
 }: CobrosTabProps) {
   const [isImporterOpen, setIsImporterOpen] = useState(false);
-  const [vista, setVista] = useState<CobrosSubtab>('diario');
+  const [vista, setVista] = useState<CobrosSubtab>(activeSubTab || 'diario');
+
+  useEffect(() => {
+    if (activeSubTab && activeSubTab !== vista) {
+      setVista(activeSubTab);
+    }
+  }, [activeSubTab]);
+
+  const handleVistaChange = (nuevaVista: CobrosSubtab) => {
+    setVista(nuevaVista);
+    onChangeSubTab?.(nuevaVista);
+  };
 
   // Hook de Operaciones de Cobros Diarios
   const {
@@ -83,10 +96,7 @@ export default function CobrosTab({
 
   return (
     <div style={{ padding: '16px 20px', maxWidth: '100%', width: '100%', margin: 0, display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0, boxSizing: 'border-box' }}>
-      {/* 1. BREADCRUMB */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11.5px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>
-        <span>Operaciones & Finanzas</span> / <span style={{ color: '#059669', fontWeight: 800 }}>4. Cobros</span>
-      </div>
+
 
       {/* 2. PANEL CABECERA OPERATIVA CON INTERCONEXIÓN */}
       <div
@@ -111,39 +121,34 @@ export default function CobrosTab({
         >
           <div>
             <h1 style={{ fontSize: '20px', fontWeight: 900, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '10px', margin: 0 }}>
-              <span style={{ display: 'inline-flex', padding: '6px', background: '#ecfdf5', borderRadius: '10px', color: '#059669', border: '1px solid #a7f3d0' }}>
-                <DollarSign style={{ width: '22px', height: '22px' }} />
+              <span
+                style={{
+                  display: 'inline-flex',
+                  padding: '6px',
+                  background: vista === 'armar-planilla' ? '#e0f2fe' : '#ecfdf5',
+                  borderRadius: '10px',
+                  color: vista === 'armar-planilla' ? '#0284c7' : '#059669',
+                  border: vista === 'armar-planilla' ? '1px solid #bae6fd' : '1px solid #a7f3d0'
+                }}
+              >
+                {vista === 'armar-planilla' ? (
+                  <FileSpreadsheet style={{ width: '22px', height: '22px' }} />
+                ) : (
+                  <DollarSign style={{ width: '22px', height: '22px' }} />
+                )}
               </span>
-              4. Cobros
+              {vista === 'armar-planilla' ? '4.2 Armar Planilla' : '4.1 Cobros'}
             </h1>
             <p style={{ fontSize: '12.5px', color: '#64748b', margin: '4px 0 0 0' }}>
-              Gestión y liquidación de cobros de flete, entrega en almacén/domicilio y comprobantes bancarios
+              {vista === 'armar-planilla'
+                ? 'Cruce automático de instructivo de embarque con TIB para generación de planilla oficial de cobros'
+                : 'Gestión y liquidación de cobros de flete, entrega en almacén/domicilio y comprobantes bancarios'}
             </p>
           </div>
 
           {/* ACCIONES SUPERIORES / INTERCONEXIÓN */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              onClick={() => setIsImporterOpen(true)}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '8px 14px',
-                background: '#f8fafc',
-                color: '#334155',
-                border: '1px solid #cbd5e1',
-                borderRadius: '8px',
-                fontSize: '12px',
-                fontWeight: 700,
-                cursor: 'pointer'
-              }}
-              className="hover:bg-slate-100"
-            >
-              <FileSpreadsheet style={{ width: '15px', height: '15px', color: '#059669' }} />
-              Importar Excel
-            </button>
+
 
             {/* BOTÓN INTERCONECTADO: DIRECTORIO CLIENTES 360 */}
             {onNavigateToClientes360 && (
@@ -187,33 +192,7 @@ export default function CobrosTab({
         </div>
       </div>
 
-      {/* 3. SUB-PESTAÑAS: HOJA DIARIA / ARMAR PLANILLA */}
-      <div style={{ display: 'flex', gap: '8px' }}>
-        {(
-          [
-            { key: 'diario', label: 'Hoja diaria' },
-            { key: 'armar-planilla', label: 'Armar planilla' },
-          ] as Array<{ key: CobrosSubtab; label: string }>
-        ).map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setVista(t.key)}
-            style={{
-              padding: '8px 16px',
-              borderRadius: '999px',
-              fontSize: '12.5px',
-              fontWeight: 800,
-              cursor: 'pointer',
-              border: vista === t.key ? '1px solid #059669' : '1px solid #cbd5e1',
-              background: vista === t.key ? '#ecfdf5' : '#fff',
-              color: vista === t.key ? '#047857' : '#475569',
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+
 
       {/* 4. VISTA PRINCIPAL DE OPERACIONES DE COBRO */}
       {vista === 'armar-planilla' ? (

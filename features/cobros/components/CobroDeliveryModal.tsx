@@ -15,6 +15,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { ClienteCobroLote, TipoRetirante } from '../types';
+import { smoothScrollManager } from '@/lib/smooth-scroll/manager';
 
 interface CobroDeliveryModalProps {
   isOpen: boolean;
@@ -56,6 +57,26 @@ const CobroDeliveryModalContent: React.FC<CobroDeliveryModalProps & { lote: Clie
   const [tipoMotorizado, setTipoMotorizado] = useState<'DIDI' | 'UBER' | 'PEDIDOSYA' | 'PROPIO' | 'OTRO'>('DIDI');
   const [placaVehiculo, setPlacaVehiculo] = useState('');
   const [observaciones, setObservaciones] = useState('');
+
+  // Bloqueo de scroll de fondo y activación de aislamiento para modales
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    smoothScrollManager.pushModalLock();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = originalOverflow;
+      smoothScrollManager.popModalLock();
+    };
+  }, [onClose]);
 
   // Reset al abrir
   useEffect(() => {
@@ -142,19 +163,26 @@ const CobroDeliveryModalContent: React.FC<CobroDeliveryModalProps & { lote: Clie
 
   return (
     <div
+      className="modal-backdrop"
+      data-lenis-prevent=""
+      onWheel={(e) => e.stopPropagation()}
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 9999,
+        zIndex: 99999,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         padding: '16px',
         backgroundColor: 'rgba(15, 23, 42, 0.55)',
-        backdropFilter: 'blur(6px)'
+        backdropFilter: 'blur(6px)',
+        overflowY: 'auto',
+        overscrollBehavior: 'contain'
       }}
     >
       <div
+        data-lenis-prevent=""
+        onWheel={(e) => e.stopPropagation()}
         style={{
           position: 'relative',
           width: '100%',
@@ -228,7 +256,21 @@ const CobroDeliveryModalContent: React.FC<CobroDeliveryModalProps & { lote: Clie
         </div>
 
         {/* MODAL BODY */}
-        <form onSubmit={handleSubmit} style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <form
+          onSubmit={handleSubmit}
+          data-lenis-prevent=""
+          onWheel={(e) => e.stopPropagation()}
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+            overscrollBehavior: 'contain',
+            padding: '20px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px'
+          }}
+        >
           {/* ALERTA SI HAY PAQUETES SIN PAGAR */}
           {hasUnpaidSelected && (
             <div

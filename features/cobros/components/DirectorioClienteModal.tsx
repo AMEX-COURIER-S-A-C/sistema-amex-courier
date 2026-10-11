@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { ResumenCliente360, ItemCobroWR } from '../types';
 import { KambistaService } from '../services/kambista.service';
+import { smoothScrollManager } from '@/lib/smooth-scroll/manager';
 
 interface DirectorioClienteModalProps {
   isOpen: boolean;
@@ -45,6 +46,26 @@ const DirectorioClienteModalContent: React.FC<DirectorioClienteModalProps & { cl
   const [filtroTexto, setFiltroTexto] = useState('');
   const [tarifaInput, setTarifaInput] = useState<string>(clienteResumen.tarifaPorKgUsd?.toString() || '7.00');
   const [tarifaSavedFeedback, setTarifaSavedFeedback] = useState(false);
+
+  // Bloqueo de scroll de fondo y activación de aislamiento para modales
+  React.useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    smoothScrollManager.pushModalLock();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = originalOverflow;
+      smoothScrollManager.popModalLock();
+    };
+  }, [onClose]);
 
   React.useEffect(() => {
     if (clienteResumen.tarifaPorKgUsd) {
@@ -89,8 +110,18 @@ const DirectorioClienteModalContent: React.FC<DirectorioClienteModalProps & { cl
   }, [clienteResumen.historialWRs, filtroTexto]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-      <div className="relative w-full max-w-4xl bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden flex flex-col max-h-[92vh]">
+    <div
+      className="modal-backdrop fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn"
+      data-lenis-prevent=""
+      onWheel={(e) => e.stopPropagation()}
+      style={{ overflowY: 'auto', overscrollBehavior: 'contain' }}
+    >
+      <div
+        className="relative w-full max-w-4xl bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden flex flex-col max-h-[92vh]"
+        data-lenis-prevent=""
+        onWheel={(e) => e.stopPropagation()}
+        style={{ minHeight: 0 }}
+      >
         {/* HEADER */}
         <div className="px-6 py-5 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-900 text-white flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -326,7 +357,12 @@ const DirectorioClienteModalContent: React.FC<DirectorioClienteModalProps & { cl
         </div>
 
         {/* CONTENIDO TAB */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div
+          className="flex-1 overflow-y-auto p-6"
+          data-lenis-prevent=""
+          onWheel={(e) => e.stopPropagation()}
+          style={{ overscrollBehavior: 'contain', minHeight: 0 }}
+        >
           {tabInterna === 'wrs' && (
             <div className="border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden bg-white dark:bg-gray-900">
               <table className="w-full text-left text-xs">

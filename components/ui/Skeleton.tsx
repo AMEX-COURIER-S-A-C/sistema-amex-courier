@@ -846,6 +846,8 @@ export function PageSkeleton({ activeTab, tab }: { activeTab?: string; tab?: str
     case 'mm-inventory':
       return <InventorySkeleton />;
     case 'fico-cobros':
+    case 'cobros-diario':
+    case 'cobros-armar-planilla':
       return <CobrosSkeleton />;
     case 'mobile-scanner':
       return <ScannerSkeleton />;

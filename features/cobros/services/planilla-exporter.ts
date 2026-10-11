@@ -72,7 +72,7 @@ export function obtenerInfoFecha(fechaRef?: string) {
  *    - SOLO incluye los WRs que están solos y NO están agrupados varios en una celda (los agrupados los gestiona manualmente el operador).
  *    - Columna A libre (vacía, margen para operador).
  *    - Agrupado por cliente con encabezados azul amex (#4472C4) y texto blanco: NOMBRE (B) | PESO (C) | PRECIO $ (D) | wr (E) | TRACKING (F).
- *    - Nombre del cliente combinado verticalmente por los paquetes que le pertenecen.
+ *    - Nombre del cliente solo en la primera celda por cada grupo de paquetes, sin combinar celdas (sin Merge & Center) para facilitar ordenamiento y filtrado.
  *    - Columna "PRECIO $" vacía (sin cálculo automático, libre para que el operador lo llene manualmente).
  *    - Columna F con TRACKING al costado derecho del WR.
  *    - Fila TOTAL por cliente y separación limpia de 1 fila en blanco.
@@ -117,7 +117,6 @@ export function generarHojasPlanillaCobros(
   const headerRowCruce: Row = [
     { value: 'NOMBRE', fontWeight: 'bold' as const },
     { value: 'PESO', fontWeight: 'bold' as const },
-    { value: 'PRECIO $', fontWeight: 'bold' as const },
     { value: 'CODIGO WAREHOUSE', fontWeight: 'bold' as const },
     { value: 'TRACKING', fontWeight: 'bold' as const },
     { value: 'TIPO DE PAQUETE', fontWeight: 'bold' as const },
@@ -146,7 +145,6 @@ export function generarHojasPlanillaCobros(
     dataCruce.push([
       { value: nombreCliente, type: String },
       pesoVal,
-      null, // PRECIO $: libre para el operador
       { value: it.wr || '', type: String },
       it.tracking ? { value: it.tracking, type: String } : null,
       it.tipo ? { value: it.tipo, type: String } : null,
@@ -187,7 +185,6 @@ export function generarHojasPlanillaCobros(
       dataCruce.push([
         { value: nombreCliente, type: String },
         { value: pesoFormateado, type: String },
-        null,
         { value: it.wr || '', type: String },
         it.tracking ? { value: it.tracking, type: String } : null,
         it.tipo ? { value: it.tipo, type: String } : null,
@@ -308,13 +305,16 @@ export function generarHojasPlanillaCobros(
         i === 0
           ? {
               value: clienteNombre,
-              rowSpan: n > 1 ? n : undefined,
               align: 'center' as const,
               alignVertical: 'center' as const,
               borderColor: '#000000',
               borderStyle: 'thin' as const,
             }
-          : null, // Col B cubierto por rowSpan NOMBRE
+          : {
+              // Celdas subsiguientes sin combinar (sin Merge & Center), vacías con borde individual
+              borderColor: '#000000',
+              borderStyle: 'thin' as const,
+            },
         {
           value: pesoNum,
           type: Number,
@@ -385,7 +385,6 @@ export function generarHojasPlanillaCobros(
       columns: [
         { width: 44 }, // NOMBRE
         { width: 22 }, // PESO
-        { width: 14 }, // PRECIO $
         { width: 32 }, // CODIGO WAREHOUSE
         { width: 36 }, // TRACKING
         { width: 18 }, // TIPO DE PAQUETE

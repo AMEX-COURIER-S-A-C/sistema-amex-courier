@@ -25,7 +25,6 @@ import {
   Eye,
   Calendar,
   Filter,
-  SlidersHorizontal,
   RotateCcw,
   X,
   Users,
@@ -258,38 +257,6 @@ export const CobrosDailySheetView: React.FC<CobrosDailySheetViewProps> = ({
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <div
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '6px 12px',
-              borderRadius: '10px',
-              background: '#f1f5f9',
-              border: '1px solid #e2e8f0',
-              fontSize: '12.5px',
-              fontWeight: 800,
-              color: '#1e293b'
-            }}
-          >
-            <SlidersHorizontal style={{ width: '15px', height: '15px', color: '#2563eb' }} />
-            <span>Módulos de Filtros & Control Operativo</span>
-          </div>
-
-          <span
-            style={{
-              fontSize: '12px',
-              fontWeight: 700,
-              color: '#64748b',
-              background: '#ffffff',
-              padding: '5px 10px',
-              borderRadius: '8px',
-              border: '1px solid #e2e8f0'
-            }}
-          >
-            Mostrando <strong style={{ color: '#0f172a' }}>{lotes.length}</strong> personas
-          </span>
-
           {hasActiveFilters && (
             <button
               type="button"

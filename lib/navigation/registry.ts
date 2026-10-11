@@ -79,6 +79,27 @@ export const SCANNER_SUBMODULES: SubmoduleMetadata[] = [
   }
 ];
 
+export const COBROS_SUBMODULES: SubmoduleMetadata[] = [
+  {
+    id: 'diario',
+    tabId: 'cobros-diario',
+    label: '4.1 💵 Cobros',
+    shortLabel: 'Cobros',
+    path: '/cobros/diario',
+    icon: 'fa-solid fa-receipt',
+    accentColor: '#10b981'
+  },
+  {
+    id: 'armar-planilla',
+    tabId: 'cobros-armar-planilla',
+    label: '4.2 📋 Armar Planilla',
+    shortLabel: 'Armar Planilla',
+    path: '/cobros/armar-planilla',
+    icon: 'fa-solid fa-file-excel',
+    accentColor: '#38bdf8'
+  }
+];
+
 export const SYSTEM_MODULES: ModuleMetadata[] = [
   {
     id: 'dashboard',
@@ -126,7 +147,8 @@ export const SYSTEM_MODULES: ModuleMetadata[] = [
     icon: 'fa-solid fa-receipt',
     category: 'operaciones',
     permissionKey: 'cobros',
-    permissionAliases: ['fico-cobros', 'fico_cobros']
+    permissionAliases: ['fico-cobros', 'fico_cobros', 'cobros-diario', 'cobros-armar-planilla'],
+    submodules: COBROS_SUBMODULES
   },
   {
     id: 'directorio-clientes',
@@ -229,13 +251,13 @@ export const SYSTEM_MODULES: ModuleMetadata[] = [
     id: 'completar-inventario',
     tabId: 'completar-inventario',
     number: 13,
-    label: '13. Completar Inventario',
-    shortLabel: 'Sync TIB',
+    label: '13. Subir Archivos TIB',
+    shortLabel: 'Archivos TIB',
     path: '/completar-inventario',
     icon: 'fa-solid fa-cloud-arrow-up',
     category: 'sistema',
     permissionKey: 'completar_inventario',
-    permissionAliases: ['completar-inventario', 'completar_tib', 'completar-tib']
+    permissionAliases: ['completar-inventario', 'completar_tib', 'completar-tib', 'subir-tib', 'subir_tib']
   },
   {
     id: 'auditoria',
@@ -313,6 +335,14 @@ export function getScannerSubmoduleById(id: string): SubmoduleMetadata | undefin
   return SCANNER_SUBMODULES.find(s => s.id === id);
 }
 
+export function getCobrosSubmoduleByTabId(tabId: string): SubmoduleMetadata | undefined {
+  return COBROS_SUBMODULES.find(s => s.tabId === tabId);
+}
+
+export function getCobrosSubmoduleById(id: string): SubmoduleMetadata | undefined {
+  return COBROS_SUBMODULES.find(s => s.id === id);
+}
+
 export interface UserAccessContext {
   rol?: string;
   isAdmin?: boolean;
@@ -348,7 +378,14 @@ export function hasModuleAccess(
     return true;
   }
 
-  // 4. Normalizar si se trata de un tab del escáner (incluyendo submódulos 6.1 a 6.4)
+  // 4. Normalizar si se trata de un tab del escáner o cobros
+  const isCobrosTab =
+    tabOrModuleId === 'cobros' ||
+    tabOrModuleId === 'fico-cobros' ||
+    tabOrModuleId === 'cobros-diario' ||
+    tabOrModuleId === 'cobros-armar-planilla' ||
+    tabOrModuleId.startsWith('cobros-');
+
   const isScannerTab =
     tabOrModuleId === 'scanner' ||
     tabOrModuleId === 'mobile-scanner' ||
@@ -391,6 +428,9 @@ export function hasModuleAccess(
 
   // Reunir todas las claves posibles de permiso a verificar
   const keysToCheck: string[] = [];
+  if (isCobrosTab) {
+    keysToCheck.push('cobros', 'fico-cobros', 'cobros-diario', 'cobros-armar-planilla');
+  }
   if (isScannerTab) {
     keysToCheck.push('scanner', 'escaner', 'mobile-scanner', 'mobile_scanner');
   }

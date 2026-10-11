@@ -9,6 +9,8 @@ export const VALID_DASHBOARD_TABS = [
   'mm-lince',
   'mm-inventory',
   'fico-cobros',
+  'cobros-diario',
+  'cobros-armar-planilla',
   'directorio-clientes',
   'clientes-360',
   'mobile-scanner',

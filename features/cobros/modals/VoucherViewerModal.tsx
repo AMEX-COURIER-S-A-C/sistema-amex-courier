@@ -29,9 +29,16 @@ export const VoucherViewerModal: React.FC<VoucherViewerModalProps> = ({
   if (!voucher) return null;
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div
+      className="modal-backdrop"
+      data-lenis-prevent=""
+      onWheel={(e) => e.stopPropagation()}
+      onClick={onClose}
+    >
       <div
         className="modal-dialog"
+        data-lenis-prevent=""
+        onWheel={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
         style={{
           maxWidth: '750px',

@@ -1,38 +1,74 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { supabase } from '@/lib/supabase/client';
 
 type FuenteKey = 'delivered' | 'sent' | 'received';
 
-interface Job {
-  id: string;
-  estado: string;
-  etapa: string;
-  mensaje: string;
-  progreso: number;
-  fuentes: string[];
-  resultado_key: string | null;
-  csv_key: string | null;
-  total_guias: number | null;
-  coincidencias: number | null;
-  sin_coincidencia: number | null;
-  segundos: number | null;
-  creado_en: string;
-  terminado_en: string | null;
-  sincronizar_db?: boolean;
-  db_sincronizado?: boolean;
-  db_actualizados?: number;
-  db_sincronizado_en?: string | null;
+interface TibFileInfo {
+  id?: string;
+  tipo: FuenteKey;
+  r2_key: string;
+  nombre_archivo: string;
+  peso_bytes: number;
+  subido_en: string;
+  subido_por_nombre: string;
 }
 
-const FUENTES: Array<{ key: FuenteKey; label: string; file: string }> = [
-  { key: 'delivered', label: 'ENTREGADO TIB', file: 'ENTREGADO TIB.xlsx' },
-  { key: 'sent', label: 'ENVIADO TIB', file: 'ENVIADO TIB.xlsx' },
-  { key: 'received', label: 'RECIBIDO TIB', file: 'RECIBIDO TIB.xlsx' },
+interface TibState {
+  fecha: string;
+  fechaHoy: string;
+  isToday: boolean;
+  isComplete: boolean;
+  files: Record<FuenteKey, TibFileInfo | null>;
+}
+
+export interface InventarioJobsTabProps {
+  onNavigateTab?: (tabId: string) => void;
+}
+
+const FUENTES: Array<{
+  key: FuenteKey;
+  label: string;
+  file: string;
+  color: string;
+  bgLight: string;
+  borderLight: string;
+  icon: string;
+  description: string;
+}> = [
+  {
+    key: 'delivered',
+    label: 'ENTREGADO TIB',
+    file: 'ENTREGADO TIB.xlsx',
+    color: '#16a34a',
+    bgLight: '#f0fdf4',
+    borderLight: '#bbf7d0',
+    icon: 'fa-solid fa-circle-check',
+    description: 'Reporte oficial de paquetes entregados con fecha y estado final.',
+  },
+  {
+    key: 'sent',
+    label: 'ENVIADO TIB',
+    file: 'ENVIADO TIB.xlsx',
+    color: '#2563eb',
+    bgLight: '#eff6ff',
+    borderLight: '#bfdbfe',
+    icon: 'fa-solid fa-paper-plane',
+    description: 'Reporte oficial de paquetes despachados y salidas a destino.',
+  },
+  {
+    key: 'received',
+    label: 'RECIBIDO TIB',
+    file: 'RECIBIDO TIB.xlsx',
+    color: '#d97706',
+    bgLight: '#fffbeb',
+    borderLight: '#fde68a',
+    icon: 'fa-solid fa-inbox',
+    description: 'Reporte oficial de paquetes recepcionados y clasificados.',
+  },
 ];
 
-const MAX_BYTES = 100 * 1024 * 1024;
+const MAX_BYTES = 100 * 1024 * 1024; // 100 MB
 
 function formatBytes(bytes: number): string {
   if (!bytes) return '0 B';
@@ -57,219 +93,83 @@ function uploadWithProgress(url: string, file: File, onProgress: (pct: number) =
       if (xhr.status >= 200 && xhr.status < 300) resolve();
       else reject(new Error(`R2 respondió ${xhr.status}.`));
     };
-    xhr.onerror = () => reject(new Error('Error de red subiendo a R2.'));
+    xhr.onerror = () => reject(new Error('Error de red subiendo el archivo a la nube (R2).'));
     xhr.send(file);
   });
 }
 
-interface TibFileInfo {
-  id?: string;
-  tipo: FuenteKey;
-  r2_key: string;
-  nombre_archivo: string;
-  peso_bytes: number;
-  subido_en: string;
-  subido_por_nombre: string;
-}
-
-interface TibState {
-  fecha: string;
-  fechaHoy: string;
-  isToday: boolean;
-  isComplete: boolean;
-  files: Record<FuenteKey, TibFileInfo | null>;
-}
-
-export default function InventarioJobsTab() {
-  const [files, setFiles] = useState<Record<string, File | null>>({
-    inventory: null,
-    delivered: null,
-    sent: null,
-    received: null,
-  });
-  const [fuentesActivas, setFuentesActivas] = useState<Record<FuenteKey, boolean>>({
-    delivered: true,
-    sent: true,
-    received: true,
-  });
-  const [uploadPct, setUploadPct] = useState<Record<string, number>>({});
-  const [phase, setPhase] = useState<'idle' | 'uploading' | 'queued' | 'processing' | 'done' | 'error'>('idle');
-  const [job, setJob] = useState<Job | null>(null);
-  const [error, setError] = useState('');
-  const [history, setHistory] = useState<Job[]>([]);
-  const [origenInventario, setOrigenInventario] = useState<'db' | 'file'>('db');
-  const [modoTib, setModoTib] = useState<'diario' | 'manual'>('diario');
+export default function InventarioJobsTab({ onNavigateTab }: InventarioJobsTabProps) {
   const [tibState, setTibState] = useState<TibState | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [uploadingTib, setUploadingTib] = useState<Record<string, boolean>>({});
-  const [tibUploadPct, setTibUploadPct] = useState<Record<string, number>>({});
-  const [filtroEstado, setFiltroEstado] = useState<'activos' | 'todos'>('activos');
-  const [dbStats, setDbStats] = useState<{ activos: number; todos: number }>({ activos: 0, todos: 0 });
-  const [autoSyncDb, setAutoSyncDb] = useState(true);
-  const [isSyncingDb, setIsSyncingDb] = useState(false);
-  const [syncDbMessage, setSyncDbMessage] = useState<string | null>(null);
-  const autoSyncedRef = useRef<Record<string, boolean>>({});
-  const pollRef = useRef<NodeJS.Timeout | null>(null);
+  const [uploadPct, setUploadPct] = useState<Record<string, number>>({});
+  const [dragActive, setDragActive] = useState<Record<string, boolean>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [successNotice, setSuccessNotice] = useState<string | null>(null);
+  const [deletingTib, setDeletingTib] = useState<Record<string, boolean>>({});
+
+  const noticeTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const showSuccess = (msg: string) => {
+    setSuccessNotice(msg);
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    noticeTimerRef.current = setTimeout(() => setSuccessNotice(null), 5000);
+  };
 
   const loadTibState = useCallback(async () => {
     try {
+      setIsLoading(true);
       const res = await fetch('/api/inventario-tib');
       const data = await res.json();
-      if (data.files) setTibState(data);
+      if (data.files) {
+        setTibState(data);
+      }
     } catch {
-      /* opcional */
+      setError('No se pudo cargar el estado actual de los reportes TIB.');
+    } finally {
+      setIsLoading(false);
     }
   }, []);
 
-  const loadHistory = useCallback(async () => {
-    try {
-      const res = await fetch('/api/inventario-jobs');
-      const data = await res.json();
-      if (data.jobs) setHistory(data.jobs);
-      if (data.dbStats) setDbStats(data.dbStats);
-      void loadTibState();
-    } catch {
-      /* historial opcional */
-    }
+  useEffect(() => {
+    void loadTibState();
+    return () => {
+      if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    };
   }, [loadTibState]);
 
-  const handleSyncDb = useCallback(async (targetJobId?: string) => {
-    const idToSync = targetJobId || job?.id;
-    if (!idToSync) return;
-    setIsSyncingDb(true);
-    setSyncDbMessage(null);
-    try {
-      const res = await fetch(`/api/inventario-jobs/${idToSync}/sync-db`, {
-        method: 'POST',
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error || 'Error al sincronizar con la base de datos.');
-      }
-      setSyncDbMessage(data.message || `✓ Sincronizado: ${data.updatedCount ?? 0} paquetes actualizados.`);
-      const detail = await fetch(`/api/inventario-jobs/${idToSync}`).then((r) => r.json());
-      if (detail.job) {
-        setJob(detail.job);
-      }
-      void loadHistory();
-    } catch (err: unknown) {
-      setSyncDbMessage(`Error: ${err instanceof Error ? err.message : 'No se pudo sincronizar'}`);
-    } finally {
-      setIsSyncingDb(false);
-    }
-  }, [job?.id, loadHistory]);
-
-  // Disparar sincronización automática a DB cuando el job concluye exitosamente
-  useEffect(() => {
-    if (job?.estado === 'done' && job.sincronizar_db && !job.db_sincronizado && !autoSyncedRef.current[job.id]) {
-      autoSyncedRef.current[job.id] = true;
-      void handleSyncDb(job.id);
-    }
-  }, [job?.estado, job?.sincronizar_db, job?.db_sincronizado, job?.id, handleSyncDb]);
-
-  useEffect(() => {
-    void loadHistory();
-  }, [loadHistory]);
-
-  const stopPolling = () => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  };
-
-  // Suscripción Realtime + polling de respaldo al estado del job
-  useEffect(() => {
-    if (!job || job.estado === 'done' || job.estado === 'error') return;
-
-    const channel = supabase
-      .channel(`inventario-job-${job.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'inventario_jobs',
-          filter: `id=eq.${job.id}`,
-        },
-        (payload) => {
-          const updated = payload.new as Job;
-          setJob(updated);
-          if (updated.estado === 'done' || updated.estado === 'error') {
-            setPhase(updated.estado);
-            stopPolling();
-            void loadHistory();
-          } else {
-            setPhase('processing');
-          }
-        }
-      )
-      .subscribe();
-
-    pollRef.current = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/inventario-jobs/${job.id}`);
-        const data = await res.json();
-        if (data.job) {
-          setJob(data.job);
-          if (data.job.estado === 'done' || data.job.estado === 'error') {
-            setPhase(data.job.estado);
-            stopPolling();
-            void loadHistory();
-          } else {
-            setPhase('processing');
-          }
-        }
-      } catch {
-        /* reintenta en el siguiente ciclo */
-      }
-    }, 1500);
-
-    return () => {
-      supabase.removeChannel(channel);
-      stopPolling();
-    };
-  }, [job?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const pickFile = (slot: string, file: File | null) => {
-    if (file && !file.name.toLowerCase().endsWith('.xlsx')) {
-      setError(`"${file.name}" no es .xlsx.`);
-      return;
-    }
-    if (file && file.size > MAX_BYTES) {
-      setError(`"${file.name}" supera los 100 MB.`);
-      return;
-    }
-    setError('');
-    setFiles((prev) => ({ ...prev, [slot]: file }));
-  };
-
-  const handleUploadDailyTib = async (slot: FuenteKey, file: File) => {
+  const handleUploadFile = async (slot: FuenteKey, file: File) => {
     if (!file.name.toLowerCase().endsWith('.xlsx')) {
-      setError(`"${file.name}" debe ser formato .xlsx.`);
+      setError(`"${file.name}" debe tener extensión .xlsx`);
       return;
     }
     if (file.size > MAX_BYTES) {
-      setError(`"${file.name}" supera los 100 MB.`);
+      setError(`"${file.name}" supera el límite de 100 MB (${formatBytes(file.size)}).`);
       return;
     }
 
     setUploadingTib((p) => ({ ...p, [slot]: true }));
-    setTibUploadPct((p) => ({ ...p, [slot]: 0 }));
-    setError('');
+    setUploadPct((p) => ({ ...p, [slot]: 0 }));
+    setError(null);
 
     try {
+      // 1. Obtener URL presignada para subida directa a R2
       const presign = await fetch('/api/inventario-jobs/presign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ slot, filename: file.name, isDailyTib: true }),
       }).then((r) => r.json());
 
-      if (!presign.uploadUrl) throw new Error(presign.error || `No se pudo preparar la subida para ${slot}.`);
+      if (!presign.uploadUrl) {
+        throw new Error(presign.error || `No se pudo preparar la subida para ${slot}.`);
+      }
 
-      await uploadWithProgress(presign.uploadUrl, file, (pct) =>
-        setTibUploadPct((p) => ({ ...p, [slot]: pct }))
-      );
+      // 2. Subida con progreso
+      await uploadWithProgress(presign.uploadUrl, file, (pct) => {
+        setUploadPct((p) => ({ ...p, [slot]: pct }));
+      });
 
+      // 3. Confirmar registro en base de datos y worker
       const confirmRes = await fetch('/api/inventario-tib', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -281,762 +181,841 @@ export default function InventarioJobsTab() {
         }),
       }).then((r) => r.json());
 
-      if (!confirmRes.ok) throw new Error(confirmRes.error || 'No se pudo registrar en base de datos.');
+      if (!confirmRes.ok) {
+        throw new Error(confirmRes.error || 'No se pudo registrar el archivo en la base de datos.');
+      }
+
+      const fuenteConfig = FUENTES.find((f) => f.key === slot);
+      showSuccess(`✓ Reporte ${fuenteConfig?.label} (${file.name}) subido y sincronizado correctamente.`);
       await loadTibState();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Error al subir reporte TIB diario.');
+      setError(err instanceof Error ? err.message : 'Error inesperado al subir reporte TIB.');
     } finally {
       setUploadingTib((p) => ({ ...p, [slot]: false }));
+      setUploadPct((p) => ({ ...p, [slot]: 0 }));
     }
   };
 
-  const handleProcess = async () => {
+  const handleDeleteFile = async (slot: FuenteKey) => {
+    const fuenteConfig = FUENTES.find((f) => f.key === slot);
+    const confirmed = window.confirm(
+      `¿Estás seguro de quitar el archivo ${fuenteConfig?.label}? Esto lo desactivará de los cruces automáticos.`
+    );
+    if (!confirmed) return;
+
+    setDeletingTib((p) => ({ ...p, [slot]: true }));
+    setError(null);
     try {
-      setError('');
-      const activas = (Object.keys(fuentesActivas) as FuenteKey[]).filter((k) => fuentesActivas[k]);
-      if (activas.length === 0) {
-        setError('Activa al menos una fuente TIB (Entregado, Enviado o Recibido).');
-        return;
+      const res = await fetch(`/api/inventario-tib?tipo=${slot}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || 'No se pudo eliminar el archivo.');
       }
-      if (origenInventario === 'file' && !files.inventory) {
-        setError('Selecciona el inventario AMEX (.xlsx) para el modo manual.');
-        return;
-      }
-
-      // Si usamos el modo de TIB diario guardado
-      if (modoTib === 'diario') {
-        for (const f of activas) {
-          if (!tibState?.files[f]) {
-            setError(`Falta el archivo guardado para: ${FUENTES.find((x) => x.key === f)?.label}. Puedes cargarlo arriba.`);
-            return;
-          }
-        }
-
-        let manualInvKey: string | undefined = undefined;
-        if (origenInventario === 'file' && files.inventory) {
-          setPhase('uploading');
-          const presign = await fetch('/api/inventario-jobs/presign', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ slot: 'inventory', filename: files.inventory.name }),
-          }).then((r) => r.json());
-          if (!presign.uploadUrl) throw new Error(presign.error || 'No se pudo subir inventario manual.');
-          await uploadWithProgress(presign.uploadUrl, files.inventory, (pct) =>
-            setUploadPct((prev) => ({ ...prev, inventory: pct }))
-          );
-          manualInvKey = presign.key;
-        }
-
-        setPhase('queued');
-        const res = await fetch('/api/inventario-jobs', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            usar_tib_diario: true,
-            origen_inventario: origenInventario,
-            filtro_estado: filtroEstado,
-            inventario_key: manualInvKey,
-            fuentes: activas,
-            user_nombre: 'Operador AMEX',
-            sincronizar_db: autoSyncDb,
-          }),
-        }).then((r) => r.json());
-
-        if (!res.id) throw new Error(res.error || 'No se pudo encolar el trabajo.');
-        const detail = await fetch(`/api/inventario-jobs/${res.id}`).then((r) => r.json());
-        setJob(detail.job);
-        setPhase('processing');
-        return;
-      }
-
-      for (const f of activas) {
-        if (!files[f]) {
-          setError(`Falta adjuntar el archivo: ${FUENTES.find((x) => x.key === f)?.file}.`);
-          return;
-        }
-      }
-
-      setPhase('uploading');
-      setUploadPct({});
-      const keys: Record<string, string> = {};
-
-      // 1. Subida directa a R2 con URL presignada en PARALELO
-      const slots = origenInventario === 'file' ? ['inventory', ...activas] : [...activas];
-      await Promise.all(
-        slots.map(async (slot) => {
-          const file = files[slot];
-          if (!file) return;
-          const presign = await fetch('/api/inventario-jobs/presign', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ slot, filename: file.name }),
-          }).then((r) => r.json());
-          if (!presign.uploadUrl) throw new Error(presign.error || `No se pudo preparar la subida para ${slot}.`);
-          await uploadWithProgress(presign.uploadUrl, file, (pct) =>
-            setUploadPct((prev) => ({ ...prev, [slot]: pct }))
-          );
-          keys[slot] = presign.key;
-        })
-      );
-
-      // 2. Encolar trabajo
-      setPhase('queued');
-      const res = await fetch('/api/inventario-jobs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          origen_inventario: origenInventario,
-          filtro_estado: filtroEstado,
-          inventario_key: origenInventario === 'file' ? keys.inventory : undefined,
-          entregado_key: keys.delivered,
-          enviado_key: keys.sent,
-          recibido_key: keys.received,
-          fuentes: activas,
-          user_nombre: 'Operador AMEX',
-          sincronizar_db: autoSyncDb,
-        }),
-      }).then((r) => r.json());
-      if (!res.id) throw new Error(res.error || 'No se pudo encolar el trabajo.');
-
-      const detail = await fetch(`/api/inventario-jobs/${res.id}`).then((r) => r.json());
-      setJob(detail.job);
-      setPhase('processing');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error inesperado.');
-      setPhase('error');
+      showSuccess(`Reporte ${fuenteConfig?.label} quitado correctamente.`);
+      await loadTibState();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error al eliminar reporte TIB.');
+    } finally {
+      setDeletingTib((p) => ({ ...p, [slot]: false }));
     }
   };
 
-  const reset = () => {
-    stopPolling();
-    setJob(null);
-    setPhase('idle');
-    setUploadPct({});
-    setError('');
-    setSyncDbMessage(null);
-  };
-
-  const activeJob = job && (phase === 'processing' || phase === 'queued' || phase === 'done' || phase === 'error');
-  const pct = job?.progreso ?? 0;
+  const totalFilesPresent = tibState?.files
+    ? Object.values(tibState.files).filter(Boolean).length
+    : 0;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '4px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <i className="fa-solid fa-file-excel" style={{ fontSize: '22px', color: '#16a34a' }}></i>
-        <div>
-          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 900, color: '#0f172a' }}>
-            Completar Inventario con TIB
-          </h2>
-          <p style={{ margin: 0, fontSize: '12.5px', color: '#64748b' }}>
-            Cruza tu inventario con los reportes TIB en la nube. Puedes seguir trabajando mientras se procesa.
-          </p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', padding: '6px' }}>
+      {/* CABECERA DEL MÓDULO */}
+      <div
+        style={{
+          background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
+          border: '1px solid #e2e8f0',
+          borderRadius: '16px',
+          padding: '20px 24px',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '16px',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div
+            style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: '12px',
+              background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '22px',
+              boxShadow: '0 4px 12px rgba(2, 132, 199, 0.3)',
+            }}
+          >
+            <i className="fa-solid fa-cloud-arrow-up"></i>
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 900, color: '#0f172a' }}>
+                13. Subir Archivos TIB
+              </h1>
+              <span
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  textTransform: 'uppercase',
+                  padding: '3px 8px',
+                  borderRadius: '6px',
+                  background: '#e0f2fe',
+                  color: '#0369a1',
+                }}
+              >
+                Carga de Reportes
+              </span>
+            </div>
+            <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>
+              Sube y mantén al día los 3 reportes oficiales TIB en la nube. El cruce con paquetes se ejecuta desde el Módulo de Inventario o Cobros.
+            </p>
+          </div>
         </div>
-      </div>
 
-      {error && (
-        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', fontWeight: 600 }}>
-          <i className="fa-solid fa-triangle-exclamation"></i> {error}
-        </div>
-      )}
-
-      {!activeJob && (
-        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '18px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {/* Selector de Modo: Base de Datos vs Archivo Manual */}
-          <div style={{ display: 'flex', gap: '8px', background: '#f1f5f9', padding: '5px', borderRadius: '10px' }}>
-            <button
-              type="button"
-              onClick={() => setOrigenInventario('db')}
-              style={{
-                flex: 1,
-                padding: '10px 14px',
-                border: 'none',
-                borderRadius: '8px',
-                background: origenInventario === 'db' ? '#ffffff' : 'transparent',
-                color: origenInventario === 'db' ? '#0f172a' : '#64748b',
-                fontWeight: origenInventario === 'db' ? 800 : 600,
-                fontSize: '13px',
-                boxShadow: origenInventario === 'db' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <i className="fa-solid fa-database" style={{ color: origenInventario === 'db' ? '#16a34a' : '#94a3b8' }}></i>
-              Cruzar con Base de Datos AMEX (Recomendado)
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setOrigenInventario('file')}
-              style={{
-                flex: 1,
-                padding: '10px 14px',
-                border: 'none',
-                borderRadius: '8px',
-                background: origenInventario === 'file' ? '#ffffff' : 'transparent',
-                color: origenInventario === 'file' ? '#0f172a' : '#64748b',
-                fontWeight: origenInventario === 'file' ? 800 : 600,
-                fontSize: '13px',
-                boxShadow: origenInventario === 'file' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <i className="fa-solid fa-file-excel" style={{ color: origenInventario === 'file' ? '#0284c7' : '#94a3b8' }}></i>
-              Subir Archivo Excel Manual
-            </button>
+        {/* ESTADO GENERAL Y BOTÓN DE ACTUALIZACIÓN */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: '#ffffff',
+              border: '1px solid #cbd5e1',
+              borderRadius: '10px',
+              padding: '8px 14px',
+              fontSize: '12.5px',
+            }}
+          >
+            <i className="fa-regular fa-calendar" style={{ color: '#64748b' }}></i>
+            <span style={{ color: '#475569' }}>Fecha Operativa:</span>
+            <strong style={{ color: '#0f172a', fontWeight: 800 }}>
+              {tibState?.fecha || 'Hoy'}
+            </strong>
+            {tibState?.isToday && (
+              <span
+                style={{
+                  background: '#dcfce7',
+                  color: '#15803d',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                }}
+              >
+                Hoy
+              </span>
+            )}
           </div>
 
-          {/* Panel Informativo si el origen es la Base de Datos */}
-          {origenInventario === 'db' ? (
-            <div
-              style={{
-                background: '#f0fdf4',
-                border: '1.5px solid #86efac',
-                borderRadius: '10px',
-                padding: '14px 16px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
-                gap: '12px',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div
-                  style={{
-                    width: '42px',
-                    height: '42px',
-                    borderRadius: '10px',
-                    background: '#dcfce7',
-                    color: '#16a34a',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '20px',
-                  }}
-                >
-                  <i className="fa-solid fa-boxes-stacked"></i>
-                </div>
-                <div>
-                  <strong style={{ fontSize: '13.5px', color: '#166534', display: 'block' }}>
-                    Inventario Activo Conectado ({filtroEstado === 'activos' ? dbStats.activos : dbStats.todos} paquetes listos)
-                  </strong>
-                  <span style={{ fontSize: '12px', color: '#15803d' }}>
-                    No necesitas subir ningún Excel de inventario. El sistema cruzará directamente los paquetes de la base de datos.
-                  </span>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <button
-                  type="button"
-                  onClick={() => setFiltroEstado('activos')}
-                  style={{
-                    background: filtroEstado === 'activos' ? '#16a34a' : '#ffffff',
-                    color: filtroEstado === 'activos' ? '#ffffff' : '#166534',
-                    border: `1.5px solid ${filtroEstado === 'activos' ? '#16a34a' : '#86efac'}`,
-                    borderRadius: '8px',
-                    padding: '6px 12px',
-                    fontSize: '12px',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  Activos en almacén ({dbStats.activos})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFiltroEstado('todos')}
-                  style={{
-                    background: filtroEstado === 'todos' ? '#16a34a' : '#ffffff',
-                    color: filtroEstado === 'todos' ? '#ffffff' : '#166534',
-                    border: `1.5px solid ${filtroEstado === 'todos' ? '#16a34a' : '#86efac'}`,
-                    borderRadius: '8px',
-                    padding: '6px 12px',
-                    fontSize: '12px',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  Todos ({dbStats.todos})
-                </button>
-              </div>
-            </div>
-          ) : (
-            <FileRow
-              label="1. Inventario AMEX (.xlsx) — obligatorio en modo manual"
-              file={files.inventory}
-              onPick={(f) => pickFile('inventory', f)}
-              pct={uploadPct.inventory}
-            />
-          )}
-
-          {/* Selector de Modo TIB: Guardados del Día vs Manuales */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: '#f8fafc', padding: '14px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-              <span style={{ fontSize: '13px', fontWeight: 800, color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <i className="fa-solid fa-cloud" style={{ color: '#0284c7' }}></i>
-                Origen de los Reportes TIB:
-              </span>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <button
-                  type="button"
-                  onClick={() => setModoTib('diario')}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: '6px',
-                    border: 'none',
-                    fontSize: '12px',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                    background: modoTib === 'diario' ? '#2563eb' : '#ffffff',
-                    color: modoTib === 'diario' ? '#ffffff' : '#64748b',
-                    boxShadow: modoTib === 'diario' ? '0 1px 3px rgba(37,99,235,0.3)' : 'none',
-                    borderWidth: '1px',
-                    borderStyle: 'solid',
-                    borderColor: modoTib === 'diario' ? '#2563eb' : '#cbd5e1',
-                  }}
-                >
-                  ⚡ Archivos Guardados del Día (Recomendado)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setModoTib('manual')}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: '6px',
-                    border: 'none',
-                    fontSize: '12px',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    background: modoTib === 'manual' ? '#2563eb' : '#ffffff',
-                    color: modoTib === 'manual' ? '#ffffff' : '#64748b',
-                    borderWidth: '1px',
-                    borderStyle: 'solid',
-                    borderColor: modoTib === 'manual' ? '#2563eb' : '#cbd5e1',
-                  }}
-                >
-                  📁 Adjuntar Manualmente
-                </button>
-              </div>
-            </div>
-
-            {/* MODO 1: Repositorio de Archivos TIB Activos del Día */}
-            {modoTib === 'diario' ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ fontSize: '12px', color: '#64748b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>
-                    Archivos vigentes para la fecha operativa: <strong>{tibState?.fecha || 'Hoy'}</strong>
-                  </span>
-                  {tibState && (
-                    <span
-                      style={{
-                        fontSize: '11px',
-                        fontWeight: 700,
-                        padding: '2px 8px',
-                        borderRadius: '12px',
-                        background: tibState.isComplete ? '#dcfce7' : '#fef3c7',
-                        color: tibState.isComplete ? '#15803d' : '#b45309',
-                      }}
-                    >
-                      {tibState.isComplete ? '✓ Reportes Completos (3/3)' : 'Carga parcial'}
-                    </span>
-                  )}
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px' }}>
-                  {FUENTES.map((f) => {
-                    const fileData = tibState?.files[f.key];
-                    const isUp = uploadingTib[f.key];
-                    const pct = tibUploadPct[f.key] || 0;
-
-                    return (
-                      <div
-                        key={f.key}
-                        style={{
-                          background: '#ffffff',
-                          border: fileData ? '1.5px solid #86efac' : '1.5px dashed #cbd5e1',
-                          borderRadius: '8px',
-                          padding: '12px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '6px',
-                          position: 'relative',
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12.5px', fontWeight: 800, color: '#0f172a', cursor: 'pointer' }}>
-                            <input
-                              type="checkbox"
-                              checked={fuentesActivas[f.key]}
-                              onChange={() => setFuentesActivas((p) => ({ ...p, [f.key]: !p[f.key] }))}
-                            />
-                            {f.label}
-                          </label>
-                          {fileData ? (
-                            <span style={{ fontSize: '11px', fontWeight: 700, color: '#16a34a', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <i className="fa-solid fa-circle-check"></i> Activo
-                            </span>
-                          ) : (
-                            <span style={{ fontSize: '11px', fontWeight: 600, color: '#d97706' }}>Pendiente</span>
-                          )}
-                        </div>
-
-                        {fileData ? (
-                          <div style={{ fontSize: '11.5px', color: '#334155' }}>
-                            <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={fileData.nombre_archivo}>
-                              {fileData.nombre_archivo}
-                            </div>
-                            <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '2px' }}>
-                              {formatBytes(fileData.peso_bytes)} • {fileData.subido_en ? new Date(fileData.subido_en).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                            </div>
-                          </div>
-                        ) : (
-                          <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                            Archivo esperado: <code>{f.file}</code>
-                          </div>
-                        )}
-
-                        <label
-                          style={{
-                            marginTop: '4px',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            fontSize: '11px',
-                            fontWeight: 700,
-                            color: '#2563eb',
-                            cursor: isUp || phase === 'uploading' ? 'not-allowed' : 'pointer',
-                          }}
-                        >
-                          <i className="fa-solid fa-upload"></i>
-                          <span>{isUp ? `Subiendo ${pct}%...` : fileData ? 'Reemplazar archivo' : 'Subir archivo'}</span>
-                          <input
-                            type="file"
-                            accept=".xlsx"
-                            disabled={isUp || phase === 'uploading'}
-                            style={{ display: 'none' }}
-                            onChange={(e) => {
-                              const picked = e.target.files?.[0];
-                              if (picked) void handleUploadDailyTib(f.key, picked);
-                              e.target.value = '';
-                            }}
-                          />
-                        </label>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              /* MODO 2: Subida Manual Tradicional */
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {FUENTES.map((f, i) => (
-                  <div key={f.key} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 800, color: '#0f172a', minWidth: '170px', paddingTop: '10px', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={fuentesActivas[f.key]}
-                        onChange={() => setFuentesActivas((p) => ({ ...p, [f.key]: !p[f.key] }))}
-                      />
-                      {i + 1}. {f.label}
-                    </label>
-                    <div style={{ flex: 1, opacity: fuentesActivas[f.key] ? 1 : 0.4 }}>
-                      <FileRow
-                        label={f.file}
-                        file={files[f.key]}
-                        disabled={!fuentesActivas[f.key]}
-                        onPick={(file) => pickFile(f.key, file)}
-                        pct={uploadPct[f.key]}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+          <div
+            style={{
+              padding: '8px 14px',
+              borderRadius: '10px',
+              fontSize: '12.5px',
+              fontWeight: 800,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              background:
+                totalFilesPresent === 3
+                  ? '#dcfce7'
+                  : totalFilesPresent > 0
+                  ? '#fef3c7'
+                  : '#f1f5f9',
+              color:
+                totalFilesPresent === 3
+                  ? '#15803d'
+                  : totalFilesPresent > 0
+                  ? '#b45309'
+                  : '#64748b',
+              border: `1px solid ${
+                totalFilesPresent === 3
+                  ? '#86efac'
+                  : totalFilesPresent > 0
+                  ? '#fde68a'
+                  : '#cbd5e1'
+              }`,
+            }}
+          >
+            <i
+              className={
+                totalFilesPresent === 3
+                  ? 'fa-solid fa-circle-check'
+                  : totalFilesPresent > 0
+                  ? 'fa-solid fa-clock'
+                  : 'fa-solid fa-circle-info'
+              }
+            ></i>
+            <span>
+              {totalFilesPresent === 3
+                ? 'Reportes Completos (3/3 listos)'
+                : totalFilesPresent > 0
+                ? `Carga parcial (${totalFilesPresent}/3)`
+                : 'Sin archivos cargados'}
+            </span>
           </div>
 
           <button
             type="button"
-            onClick={handleProcess}
-            disabled={phase === 'uploading' || phase === 'queued'}
+            onClick={() => void loadTibState()}
+            disabled={isLoading}
+            title="Recargar estado desde el servidor"
             style={{
-              background: 'linear-gradient(135deg, #16a34a, #15803d)',
-              color: '#fff',
-              border: 'none',
+              background: '#ffffff',
+              border: '1px solid #cbd5e1',
               borderRadius: '10px',
-              padding: '14px',
-              fontSize: '14.5px',
-              fontWeight: 900,
-              cursor: 'pointer',
-              opacity: phase === 'uploading' || phase === 'queued' ? 0.6 : 1,
+              padding: '8px 12px',
+              fontSize: '12.5px',
+              fontWeight: 700,
+              color: '#334155',
+              cursor: isLoading ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              gap: '10px',
-              boxShadow: '0 4px 12px rgba(22, 163, 74, 0.25)',
+              gap: '6px',
+              transition: 'all 0.15s ease',
             }}
           >
-            <i className={phase === 'uploading' ? "fa-solid fa-spinner fa-spin" : "fa-solid fa-bolt"}></i>
-            {phase === 'uploading'
-              ? 'Subiendo reportes TIB a la nube…'
-              : phase === 'queued'
-              ? 'Encolando cruce…'
-              : modoTib === 'diario' && origenInventario === 'db'
-              ? `⚡ Iniciar Cruce con Worker Hostinger (${filtroEstado === 'activos' ? dbStats.activos : dbStats.todos} paquetes BD)`
-              : origenInventario === 'db'
-              ? `Cruzar ${filtroEstado === 'activos' ? dbStats.activos : dbStats.todos} paquetes de la BD con TIB`
-              : 'Completar inventario en la nube'}
+            <i
+              className={`fa-solid fa-arrows-rotate ${isLoading ? 'fa-spin' : ''}`}
+              style={{ color: '#0284c7' }}
+            ></i>
+            <span>Actualizar</span>
           </button>
-          <p style={{ margin: 0, fontSize: '11.5px', color: '#94a3b8' }}>
-            Los resultados actualizarán clientes, trackings, pesos y estados directamente en el sistema. Límite 100 MB por reporte TIB.
-          </p>
+        </div>
+      </div>
+
+      {/* ALERTAS DE ERROR O ÉXITO */}
+      {error && (
+        <div
+          style={{
+            background: '#fef2f2',
+            border: '1px solid #fecaca',
+            color: '#b91c1c',
+            borderRadius: '12px',
+            padding: '12px 16px',
+            fontSize: '13px',
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '10px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <i className="fa-solid fa-circle-exclamation" style={{ fontSize: '16px' }}></i>
+            <span>{error}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#b91c1c',
+              cursor: 'pointer',
+              fontSize: '14px',
+            }}
+          >
+            <i className="fa-solid fa-xmark"></i>
+          </button>
         </div>
       )}
 
-      {activeJob && job && (
-        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '18px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <strong style={{ fontSize: '14px', color: '#0f172a' }}>
-              <i className="fa-solid fa-gear fa-spin" style={{ display: job.estado === 'done' || job.estado === 'error' ? 'none' : undefined }}></i>{' '}
-              {job.estado === 'done' ? 'Completado' : job.estado === 'error' ? 'Falló' : 'Procesando en la nube'}
-            </strong>
-            <button type="button" onClick={reset} style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '6px 12px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>
-              Nuevo trabajo
-            </button>
+      {successNotice && (
+        <div
+          style={{
+            background: '#f0fdf4',
+            border: '1px solid #bbf7d0',
+            color: '#15803d',
+            borderRadius: '12px',
+            padding: '12px 16px',
+            fontSize: '13px',
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '10px',
+            animation: 'fadeIn 0.2s ease',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <i className="fa-solid fa-circle-check" style={{ fontSize: '16px' }}></i>
+            <span>{successNotice}</span>
           </div>
+          <button
+            type="button"
+            onClick={() => setSuccessNotice(null)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#15803d',
+              cursor: 'pointer',
+              fontSize: '14px',
+            }}
+          >
+            <i className="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      )}
 
-          <div style={{ background: '#f1f5f9', borderRadius: '8px', height: '14px', overflow: 'hidden' }}>
+      {/* TARJETAS DE CARGA DE LOS 3 ARCHIVOS TIB */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+          gap: '18px',
+        }}
+      >
+        {FUENTES.map((f) => {
+          const fileData = tibState?.files?.[f.key];
+          const isUp = uploadingTib[f.key];
+          const pct = uploadPct[f.key] || 0;
+          const isDrag = dragActive[f.key];
+          const isDel = deletingTib[f.key];
+
+          return (
             <div
-              style={{
-                width: `${pct}%`,
-                height: '100%',
-                background: job.estado === 'error' ? '#ef4444' : 'linear-gradient(90deg, #16a34a, #4ade80)',
-                transition: 'width 0.5s ease',
+              key={f.key}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setDragActive((p) => ({ ...p, [f.key]: true }));
               }}
-            />
-          </div>
-          <p style={{ margin: 0, fontSize: '12.5px', color: '#475569' }}>
-            {pct}% · {job.etapa} — {job.mensaje}
-          </p>
-
-          {job.estado === 'done' && (
-            <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <span style={{ fontSize: '13px', color: '#166534', fontWeight: 700 }}>
-                {job.coincidencias ?? 0}/{job.total_guias ?? 0} guías completadas
-                {job.sin_coincidencia ? ` · ${job.sin_coincidencia} sin coincidencia` : ''}
-                {job.segundos ? ` · ${job.segundos}s de proceso` : ''}
-              </span>
-
-              {/* Tarjeta de Sincronización Directa a Base de Datos */}
-              <div
-                style={{
-                  background: job.db_sincronizado ? '#ecfdf5' : '#ffffff',
-                  border: `1.5px solid ${job.db_sincronizado ? '#a7f3d0' : '#bae6fd'}`,
-                  borderRadius: '9px',
-                  padding: '12px 14px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  flexWrap: 'wrap',
-                  gap: '10px',
-                }}
-              >
+              onDragLeave={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setDragActive((p) => ({ ...p, [f.key]: false }));
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setDragActive((p) => ({ ...p, [f.key]: false }));
+                const dropped = e.dataTransfer.files?.[0];
+                if (dropped) void handleUploadFile(f.key, dropped);
+              }}
+              style={{
+                background: '#ffffff',
+                border: isDrag
+                  ? `2px dashed ${f.color}`
+                  : fileData
+                  ? `1.5px solid ${f.borderLight}`
+                  : '1.5px dashed #cbd5e1',
+                borderRadius: '16px',
+                padding: '20px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '14px',
+                boxShadow: isDrag
+                  ? '0 6px 20px rgba(0, 0, 0, 0.08)'
+                  : '0 2px 8px rgba(0, 0, 0, 0.03)',
+                transition: 'all 0.2s ease',
+                position: 'relative',
+              }}
+            >
+              {/* ENCABEZADO DE LA TARJETA */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <i
-                    className={job.db_sincronizado ? 'fa-solid fa-circle-check' : 'fa-solid fa-database'}
-                    style={{ fontSize: '20px', color: job.db_sincronizado ? '#059669' : '#0284c7' }}
-                  ></i>
+                  <div
+                    style={{
+                      width: '38px',
+                      height: '38px',
+                      borderRadius: '10px',
+                      background: f.bgLight,
+                      color: f.color,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '18px',
+                    }}
+                  >
+                    <i className={f.icon}></i>
+                  </div>
                   <div>
-                    <strong style={{ fontSize: '13px', color: '#0f172a', display: 'block' }}>
-                      {job.db_sincronizado
-                        ? `✓ Base de Datos sincronizada (${job.db_actualizados ?? 0} paquetes actualizados)`
-                        : 'Cruzar directamente a la Base de Datos Master'}
-                    </strong>
-                    <span style={{ fontSize: '11.5px', color: '#64748b' }}>
-                      {job.db_sincronizado
-                        ? `Sincronizado exitosamente en ${job.db_sincronizado_en ? new Date(job.db_sincronizado_en).toLocaleTimeString() : 'la nube'}. La data ya está activa en Amex Courier.`
-                        : 'Inyecta y actualiza clientes, trackings, pesos y estados en la base de datos oficial.'}
-                    </span>
+                    <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 900, color: '#0f172a' }}>
+                      {f.label}
+                    </h3>
+                    <code
+                      style={{
+                        fontSize: '11.5px',
+                        color: '#64748b',
+                        background: '#f1f5f9',
+                        padding: '1px 6px',
+                        borderRadius: '4px',
+                      }}
+                    >
+                      {f.file}
+                    </code>
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleSyncDb(job.id)}
-                  disabled={isSyncingDb}
+                {/* BADGE DE ESTADO */}
+                <div>
+                  {fileData ? (
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        padding: '3px 8px',
+                        borderRadius: '12px',
+                        background: '#dcfce7',
+                        color: '#15803d',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <i className="fa-solid fa-circle-check"></i> Activo
+                    </span>
+                  ) : (
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        padding: '3px 8px',
+                        borderRadius: '12px',
+                        background: '#fef3c7',
+                        color: '#d97706',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <i className="fa-solid fa-circle-dot"></i> Pendiente
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* DESCRIPCIÓN */}
+              <p style={{ margin: 0, fontSize: '12px', color: '#64748b', minHeight: '32px' }}>
+                {f.description}
+              </p>
+
+              {/* DETALLE DEL ARCHIVO O DROPZONE */}
+              {fileData ? (
+                <div
                   style={{
-                    background: job.db_sincronizado ? '#f8fafc' : 'linear-gradient(135deg, #0284c7, #0369a1)',
-                    color: job.db_sincronizado ? '#0284c7' : '#fff',
-                    border: job.db_sincronizado ? '1px solid #cbd5e1' : 'none',
-                    borderRadius: '8px',
-                    padding: '8px 14px',
-                    fontSize: '12px',
-                    fontWeight: 800,
-                    cursor: isSyncingDb ? 'wait' : 'pointer',
+                    background: f.bgLight,
+                    border: `1px solid ${f.borderLight}`,
+                    borderRadius: '12px',
+                    padding: '12px 14px',
                     display: 'flex',
-                    alignItems: 'center',
+                    flexDirection: 'column',
                     gap: '6px',
                   }}
                 >
-                  <i className={isSyncingDb ? 'fa-solid fa-spinner fa-spin' : job.db_sincronizado ? 'fa-solid fa-arrows-rotate' : 'fa-solid fa-bolt'}></i>
-                  {isSyncingDb ? 'Sincronizando…' : job.db_sincronizado ? 'Re-sincronizar BD' : 'Sincronizar a BD Ahora'}
-                </button>
-              </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                    <div
+                      style={{
+                        fontSize: '13px',
+                        fontWeight: 800,
+                        color: '#0f172a',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                      title={fileData.nombre_archivo}
+                    >
+                      <i className="fa-solid fa-file-excel" style={{ color: '#16a34a', flexShrink: 0 }}></i>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {fileData.nombre_archivo}
+                      </span>
+                    </div>
 
-              {syncDbMessage && (
+                    <span
+                      style={{
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        color: '#475569',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {formatBytes(fileData.peso_bytes)}
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '4px',
+                      fontSize: '11px',
+                      color: '#64748b',
+                      paddingTop: '4px',
+                      borderTop: '1px solid rgba(0,0,0,0.05)',
+                    }}
+                  >
+                    <span>
+                      <i className="fa-regular fa-clock"></i>{' '}
+                      {fileData.subido_en
+                        ? new Date(fileData.subido_en).toLocaleDateString([], {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                          }) +
+                          ' ' +
+                          new Date(fileData.subido_en).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })
+                        : 'Recién subido'}
+                    </span>
+                    {fileData.subido_por_nombre && (
+                      <span title="Usuario que subió el reporte">
+                        <i className="fa-regular fa-user"></i> {fileData.subido_por_nombre}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ) : (
                 <div
                   style={{
-                    fontSize: '12px',
-                    fontWeight: 700,
-                    color: syncDbMessage.startsWith('Error') ? '#b91c1c' : '#15803d',
-                    background: syncDbMessage.startsWith('Error') ? '#fef2f2' : '#f0fdf4',
-                    border: `1px solid ${syncDbMessage.startsWith('Error') ? '#fecaca' : '#bbf7d0'}`,
-                    borderRadius: '6px',
-                    padding: '8px 12px',
+                    background: '#f8fafc',
+                    border: '1px dashed #cbd5e1',
+                    borderRadius: '12px',
+                    padding: '24px 14px',
+                    textAlign: 'center',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    color: '#64748b',
                   }}
                 >
-                  {syncDbMessage}
+                  <i className="fa-solid fa-cloud-arrow-up" style={{ fontSize: '26px', color: '#94a3b8' }}></i>
+                  <div>
+                    <strong style={{ fontSize: '12.5px', color: '#334155', display: 'block' }}>
+                      Arrastra tu archivo aquí
+                    </strong>
+                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                      o usa el botón inferior para seleccionarlo
+                    </span>
+                  </div>
                 </div>
               )}
 
-              {/* Botones de Descarga */}
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                {job.resultado_key && (
-                  <a
-                    href={`/api/storage/file?key=${encodeURIComponent(job.resultado_key)}`}
-                    style={{ background: '#16a34a', color: '#fff', borderRadius: '8px', padding: '10px 16px', fontSize: '13px', fontWeight: 800, textDecoration: 'none' }}
+              {/* BARRA DE PROGRESO DE SUBIDA */}
+              {isUp && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 700, color: '#0284c7' }}>
+                    <span>
+                      <i className="fa-solid fa-spinner fa-spin"></i> Subiendo a la nube (R2)...
+                    </span>
+                    <span>{pct}%</span>
+                  </div>
+                  <div
+                    style={{
+                      height: '6px',
+                      width: '100%',
+                      background: '#e2e8f0',
+                      borderRadius: '4px',
+                      overflow: 'hidden',
+                    }}
                   >
-                    <i className="fa-solid fa-download"></i> Descargar Excel
-                  </a>
-                )}
-                {job.csv_key && (
-                  <a
-                    href={`/api/storage/file?key=${encodeURIComponent(job.csv_key)}`}
-                    style={{ background: '#fff', color: '#166534', border: '1px solid #86efac', borderRadius: '8px', padding: '10px 16px', fontSize: '13px', fontWeight: 800, textDecoration: 'none' }}
-                  >
-                    <i className="fa-solid fa-file-csv"></i> Guías sin coincidencia (CSV)
-                  </a>
-                )}
-              </div>
-            </div>
-          )}
+                    <div
+                      style={{
+                        height: '100%',
+                        width: `${pct}%`,
+                        background: 'linear-gradient(90deg, #0284c7, #16a34a)',
+                        transition: 'width 0.15s ease',
+                      }}
+                    ></div>
+                  </div>
+                </div>
+              )}
 
-          {job.estado === 'error' && (
-            <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', padding: '12px', fontSize: '13px', color: '#b91c1c' }}>
-              {job.mensaje}
-            </div>
-          )}
-        </div>
-      )}
-
-      {history.length > 0 && (
-        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '18px' }}>
-          <h3 style={{ margin: '0 0 10px', fontSize: '14px', fontWeight: 900, color: '#0f172a' }}>
-            <i className="fa-solid fa-clock-rotate-left"></i> Historial reciente
-          </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {history.map((h) => (
-              <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '12.5px', borderBottom: '1px solid #f1f5f9', paddingBottom: '8px', flexWrap: 'wrap' }}>
-                <EstadoBadge estado={h.estado} />
-                <span style={{ color: '#475569' }}>
-                  {h.coincidencias != null ? `${h.coincidencias}/${h.total_guias ?? '?'} guías` : h.mensaje}
-                </span>
-                <span style={{ color: '#94a3b8', fontSize: '11.5px' }}>
-                  {new Date(h.creado_en).toLocaleString()}
-                </span>
-                {h.db_sincronizado ? (
-                  <span style={{ background: '#dcfce7', color: '#166534', borderRadius: '6px', padding: '2px 8px', fontSize: '11px', fontWeight: 800 }}>
-                    <i className="fa-solid fa-circle-check"></i> BD ({h.db_actualizados ?? 0})
+              {/* BOTONES DE ACCIÓN: SUBIR / REEMPLAZAR / QUITAR */}
+              <div style={{ display: 'flex', gap: '8px', marginTop: 'auto', paddingTop: '4px' }}>
+                <label
+                  style={{
+                    flex: 1,
+                    background: fileData ? '#ffffff' : f.color,
+                    color: fileData ? '#0f172a' : '#ffffff',
+                    border: fileData ? '1px solid #cbd5e1' : 'none',
+                    borderRadius: '10px',
+                    padding: '10px 14px',
+                    fontSize: '12.5px',
+                    fontWeight: 800,
+                    cursor: isUp ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    boxShadow: fileData ? '0 1px 3px rgba(0,0,0,0.05)' : `0 4px 10px ${f.color}40`,
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <i className={isUp ? 'fa-solid fa-spinner fa-spin' : fileData ? 'fa-solid fa-arrows-rotate' : 'fa-solid fa-arrow-up-from-bracket'}></i>
+                  <span>
+                    {isUp
+                      ? `Subiendo ${pct}%...`
+                      : fileData
+                      ? 'Reemplazar archivo'
+                      : 'Subir archivo'}
                   </span>
-                ) : h.estado === 'done' ? (
+                  <input
+                    type="file"
+                    accept=".xlsx"
+                    disabled={isUp}
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      const picked = e.target.files?.[0];
+                      if (picked) void handleUploadFile(f.key, picked);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+
+                {fileData && (
                   <button
                     type="button"
-                    onClick={() => handleSyncDb(h.id)}
-                    disabled={isSyncingDb}
-                    style={{ background: 'none', border: 'none', color: '#0284c7', fontSize: '11.5px', fontWeight: 800, cursor: 'pointer', padding: 0 }}
+                    onClick={() => void handleDeleteFile(f.key)}
+                    disabled={isUp || isDel}
+                    title="Eliminar este archivo"
+                    style={{
+                      background: '#ffffff',
+                      border: '1px solid #fecaca',
+                      color: '#dc2626',
+                      borderRadius: '10px',
+                      padding: '10px 14px',
+                      fontSize: '12px',
+                      cursor: isUp || isDel ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'all 0.15s ease',
+                    }}
                   >
-                    <i className="fa-solid fa-bolt"></i> Sincronizar BD
+                    <i className={isDel ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-trash-can'}></i>
                   </button>
-                ) : null}
-                {h.resultado_key && (
-                  <a href={`/api/storage/file?key=${encodeURIComponent(h.resultado_key)}`} style={{ color: '#16a34a', fontWeight: 800 }}>
-                    <i className="fa-solid fa-download"></i> Excel
-                  </a>
-                )}
-                {h.csv_key && (
-                  <a href={`/api/storage/file?key=${encodeURIComponent(h.csv_key)}`} style={{ color: '#b45309', fontWeight: 800 }}>
-                    <i className="fa-solid fa-file-csv"></i> CSV
-                  </a>
                 )}
               </div>
-            ))}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* BANNER EXPLICATIVO: ¿CÓMO SE EJECUTA EL CRUCE? */}
+      <div
+        style={{
+          background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+          border: '1.5px solid #e2e8f0',
+          borderRadius: '16px',
+          padding: '22px 24px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '14px',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '10px',
+              background: '#e0f2fe',
+              color: '#0284c7',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '17px',
+            }}
+          >
+            <i className="fa-solid fa-bolt"></i>
+          </div>
+          <div>
+            <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 900, color: '#0f172a' }}>
+              ¿Dónde y cómo se realiza el cruce con estos archivos?
+            </h4>
+            <p style={{ margin: '2px 0 0', fontSize: '12.5px', color: '#64748b' }}>
+              Los reportes que subes aquí quedan almacenados permanentemente en la nube y sincronizados con el Worker de Hostinger. No necesitas volver a cargarlos; realiza el cruce directamente desde los módulos operativos:
+            </p>
           </div>
         </div>
-      )}
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: '14px',
+            marginTop: '4px',
+          }}
+        >
+          {/* ACCESO RÁPIDO A INVENTARIO */}
+          <div
+            style={{
+              background: '#ffffff',
+              border: '1px solid #cbd5e1',
+              borderRadius: '12px',
+              padding: '16px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              gap: '12px',
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                <span
+                  style={{
+                    background: '#dcfce7',
+                    color: '#15803d',
+                    padding: '4px 8px',
+                    borderRadius: '6px',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                  }}
+                >
+                  MÓDULO 3
+                </span>
+                <strong style={{ fontSize: '14px', color: '#0f172a' }}>Inventario de Paquetes</strong>
+              </div>
+              <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>
+                Cruza directamente los paquetes físicos de almacén contra los reportes TIB mediante el botón <strong>&quot;Cruzar con TIB&quot;</strong> para actualizar estados, trackings y pesos.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => onNavigateTab?.('inventario')}
+              style={{
+                background: 'linear-gradient(135deg, #16a34a, #15803d)',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '10px 14px',
+                fontSize: '12.5px',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                boxShadow: '0 2px 6px rgba(22, 163, 74, 0.25)',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <i className="fa-solid fa-boxes-stacked"></i>
+              <span>Ir a Módulo 3: Inventario</span>
+              <i className="fa-solid fa-arrow-right" style={{ fontSize: '11px' }}></i>
+            </button>
+          </div>
+
+          {/* ACCESO RÁPIDO A COBROS */}
+          <div
+            style={{
+              background: '#ffffff',
+              border: '1px solid #cbd5e1',
+              borderRadius: '12px',
+              padding: '16px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              gap: '12px',
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                <span
+                  style={{
+                    background: '#dbeafe',
+                    color: '#1d4ed8',
+                    padding: '4px 8px',
+                    borderRadius: '6px',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                  }}
+                >
+                  MÓDULO 4
+                </span>
+                <strong style={{ fontSize: '14px', color: '#0f172a' }}>Cobros &amp; Planillas</strong>
+              </div>
+              <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>
+                Concilia los estados de entrega y cruza la planilla diaria con las entregas de TIB mediante el botón <strong>&quot;Armar Planilla&quot;</strong>.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => onNavigateTab?.('fico-cobros')}
+              style={{
+                background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '10px 14px',
+                fontSize: '12.5px',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                boxShadow: '0 2px 6px rgba(37, 99, 235, 0.25)',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <i className="fa-solid fa-hand-holding-dollar"></i>
+              <span>Ir a Módulo 4: Cobros</span>
+              <i className="fa-solid fa-arrow-right" style={{ fontSize: '11px' }}></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* GUÍA RÁPIDA DE REQUERIMIENTOS TIB */}
+      <div
+        style={{
+          background: '#ffffff',
+          border: '1px solid #e2e8f0',
+          borderRadius: '14px',
+          padding: '16px 20px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '14px',
+          fontSize: '12px',
+          color: '#64748b',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <i className="fa-solid fa-circle-check" style={{ color: '#16a34a' }}></i>
+            Formato requerido: <strong>.xlsx (Excel)</strong>
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <i className="fa-solid fa-weight-scale" style={{ color: '#0284c7' }}></i>
+            Tamaño máximo: <strong>100 MB por archivo</strong>
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <i className="fa-solid fa-shield-halved" style={{ color: '#8b5cf6' }}></i>
+            Almacenamiento seguro en Cloudflare R2
+          </span>
+        </div>
+        <span style={{ color: '#94a3b8', fontSize: '11.5px' }}>
+          Los cambios se sincronizan en tiempo real para todos los operadores.
+        </span>
+      </div>
     </div>
-  );
-}
-
-function FileRow({ label, file, onPick, disabled, pct }: {
-  label: string;
-  file: File | null;
-  onPick: (f: File | null) => void;
-  disabled?: boolean;
-  pct?: number;
-}) {
-  return (
-    <label
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '10px',
-        border: '1.5px dashed #cbd5e1',
-        borderRadius: '10px',
-        padding: '10px 14px',
-        fontSize: '13px',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        background: file ? '#f0fdf4' : '#f8fafc',
-        opacity: disabled ? 0.5 : 1,
-      }}
-    >
-      <i className="fa-solid fa-file-excel" style={{ color: '#16a34a' }}></i>
-      <span style={{ flex: 1, color: file ? '#166534' : '#64748b', fontWeight: file ? 700 : 400 }}>
-        {file ? `${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)` : label}
-      </span>
-      {pct != null && pct < 100 && <span style={{ fontSize: '12px', fontWeight: 800, color: '#16a34a' }}>{pct}%</span>}
-      <input
-        type="file"
-        accept=".xlsx"
-        disabled={disabled}
-        style={{ display: 'none' }}
-        onChange={(e) => onPick(e.target.files?.[0] || null)}
-      />
-    </label>
-  );
-}
-
-function EstadoBadge({ estado }: { estado: string }) {
-  const map: Record<string, { bg: string; fg: string; label: string }> = {
-    queued: { bg: '#fef9c3', fg: '#854d0e', label: 'En cola' },
-    processing: { bg: '#dbeafe', fg: '#1d4ed8', label: 'Procesando' },
-    done: { bg: '#dcfce7', fg: '#166534', label: 'Listo' },
-    error: { bg: '#fee2e2', fg: '#b91c1c', label: 'Error' },
-  };
-  const s = map[estado] || map.queued;
-  return (
-    <span style={{ background: s.bg, color: s.fg, borderRadius: '999px', padding: '3px 10px', fontSize: '11px', fontWeight: 800 }}>
-      {s.label}
-    </span>
   );
 }

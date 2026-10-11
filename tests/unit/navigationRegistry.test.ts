@@ -3,7 +3,9 @@ import {
   SYSTEM_MODULES,
   getModuleByTabId,
   getScannerSubmoduleById,
-  getScannerSubmoduleByTabId
+  getScannerSubmoduleByTabId,
+  getCobrosSubmoduleById,
+  getCobrosSubmoduleByTabId
 } from '@/lib/navigation/registry';
 import { tabToPath, pathToTab, migrateLegacyHash } from '@/lib/navigation/routes';
 
@@ -24,10 +26,33 @@ describe('Módulo de Navegación y Rutas — Suite de Pruebas', () => {
       expect(manifiestosTibMod?.number).toBe(17);
       expect(manifiestosTibMod?.path).toBe('/manifiestos-tib');
 
+      const tibUploadMod = getModuleByTabId('completar-inventario');
+      expect(tibUploadMod).toBeDefined();
+      expect(tibUploadMod?.number).toBe(13);
+      expect(tibUploadMod?.label).toBe('13. Subir Archivos TIB');
+      expect(tibUploadMod?.shortLabel).toBe('Archivos TIB');
+
       const configMod = getModuleByTabId('configuracion');
       expect(configMod).toBeDefined();
       expect(configMod?.number).toBe(18);
       expect(configMod?.path).toBe('/configuracion');
+    });
+
+    it('el Módulo 4 (Cobros) debe contener los 2 submódulos operativos (Cobros y Armar Planilla)', () => {
+      const cobrosMod = SYSTEM_MODULES.find(m => m.id === 'fico-cobros');
+      expect(cobrosMod).toBeDefined();
+      expect(cobrosMod?.submodules?.length).toBe(2);
+
+      const subIds = cobrosMod?.submodules?.map(s => s.id);
+      expect(subIds).toEqual(['diario', 'armar-planilla']);
+
+      const diarioSub = getCobrosSubmoduleById('diario');
+      expect(diarioSub?.tabId).toBe('cobros-diario');
+      expect(diarioSub?.path).toBe('/cobros/diario');
+
+      const planillaSub = getCobrosSubmoduleByTabId('cobros-armar-planilla');
+      expect(planillaSub?.id).toBe('armar-planilla');
+      expect(planillaSub?.path).toBe('/cobros/armar-planilla');
     });
 
     it('el Módulo 6 (Escáner de Códigos) debe contener los 5 submódulos operativos', () => {

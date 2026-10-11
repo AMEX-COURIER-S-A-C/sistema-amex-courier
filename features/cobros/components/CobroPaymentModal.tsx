@@ -23,6 +23,7 @@ import {
 import { ClienteCobroLote, ItemCobroWR, CotizacionKambista, MetodoPagoCobro, VoucherCobroItem } from '../types';
 import { KambistaService } from '../services/kambista.service';
 import { CobrosService } from '../services/cobros.service';
+import { smoothScrollManager } from '@/lib/smooth-scroll/manager';
 
 interface CobroPaymentModalProps {
   isOpen: boolean;
@@ -74,6 +75,26 @@ const CobroPaymentModalContent: React.FC<CobroPaymentModalProps & { lote: Client
   const [voucherPreviewUrl, setVoucherPreviewUrl] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Bloqueo de scroll de fondo y activación de aislamiento para modales
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    smoothScrollManager.pushModalLock();
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = originalOverflow;
+      smoothScrollManager.popModalLock();
+    };
+  }, [onClose]);
 
   // Sincronizar selección inicial
   useEffect(() => {
@@ -297,19 +318,26 @@ const CobroPaymentModalContent: React.FC<CobroPaymentModalProps & { lote: Client
 
   return (
     <div
+      className="modal-backdrop"
+      data-lenis-prevent=""
+      onWheel={(e) => e.stopPropagation()}
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 9999,
+        zIndex: 99999,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         padding: '16px',
         backgroundColor: 'rgba(15, 23, 42, 0.55)',
-        backdropFilter: 'blur(6px)'
+        backdropFilter: 'blur(6px)',
+        overflowY: 'auto',
+        overscrollBehavior: 'contain'
       }}
     >
       <div
+        data-lenis-prevent=""
+        onWheel={(e) => e.stopPropagation()}
         style={{
           position: 'relative',
           width: '100%',
@@ -394,7 +422,21 @@ const CobroPaymentModalContent: React.FC<CobroPaymentModalProps & { lote: Client
         </div>
 
         {/* MODAL BODY */}
-        <form onSubmit={handleSubmit} style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <form
+          onSubmit={handleSubmit}
+          data-lenis-prevent=""
+          onWheel={(e) => e.stopPropagation()}
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+            overscrollBehavior: 'contain',
+            padding: '20px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px'
+          }}
+        >
           
           {/* BANNER CONVERSIÓN & TIPO DE CAMBIO */}
           <div

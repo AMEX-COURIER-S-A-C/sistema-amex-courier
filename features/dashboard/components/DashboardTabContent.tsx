@@ -141,13 +141,17 @@ export default function DashboardTabContent({
         />
       )}
 
-      {activeTab === 'fico-cobros' && (
+      {(activeTab === 'fico-cobros' || activeTab === 'cobros-diario' || activeTab === 'cobros-armar-planilla') && (
         <CobrosTab
           paquetes={paquetes}
           clientes={clientes}
           onUpdatePackage={onUpdatePackage}
           onNavigateToClientes360={onNavigateToClientes360}
           filterClienteInicial={targetClienteCobros}
+          activeSubTab={activeTab === 'cobros-armar-planilla' ? 'armar-planilla' : 'diario'}
+          onChangeSubTab={(sub) => {
+            onNavigateTab(sub === 'armar-planilla' ? 'cobros-armar-planilla' : 'cobros-diario');
+          }}
         />
       )}
 
@@ -215,7 +219,7 @@ export default function DashboardTabContent({
       )}
 
       {activeTab === 'info-amex' && <InfoAmexTab />}
-      {activeTab === 'completar-inventario' && <InventarioJobsTab />}
+      {activeTab === 'completar-inventario' && <InventarioJobsTab onNavigateTab={onNavigateTab} />}
       {activeTab === 'auditoria' && <AuditoriaTab />}
       {activeTab === 'admin-usuarios' && <AdminUsersTab />}
       {activeTab === 'despacho-rutas' && <DespachoRutasTab />}

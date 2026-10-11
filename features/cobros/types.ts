@@ -49,6 +49,8 @@ export interface CobrosTabProps {
   onUpdatePackage?: (pkg: Paquete) => void;
   onNavigateToClientes360?: (clienteNombre?: string) => void;
   filterClienteInicial?: string;
+  activeSubTab?: CobrosSubtab;
+  onChangeSubTab?: (tab: CobrosSubtab) => void;
 }
 
 export interface VoucherFormValues {

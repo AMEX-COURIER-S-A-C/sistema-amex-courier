@@ -199,3 +199,49 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+/**
+ * DELETE /api/inventario-tib?tipo=delivered|sent|received
+ * Desactiva y purga el archivo TIB activo para el tipo indicado.
+ */
+export async function DELETE(req: NextRequest) {
+  try {
+    const auth = await authorizeUser();
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
+    const { searchParams } = new URL(req.url);
+    const tipo = searchParams.get('tipo')?.trim() as TibTipo;
+    if (!['delivered', 'sent', 'received'].includes(tipo)) {
+      return NextResponse.json({ error: 'Tipo de archivo TIB inválido (delivered, sent, received).' }, { status: 400 });
+    }
+
+    const admin = getSupabaseAdmin();
+    const { data: rows } = await admin
+      .from('inventario_tib_diario')
+      .select('id, r2_key')
+      .eq('tipo', tipo)
+      .eq('es_activo', true);
+
+    if (rows && rows.length > 0) {
+      for (const r of rows) {
+        if (r.r2_key) {
+          try {
+            await deleteFileFromR2(r.r2_key);
+          } catch (r2Err) {
+            console.warn(`[inventario-tib] No se pudo borrar ${r.r2_key} de R2:`, r2Err);
+          }
+        }
+      }
+      await admin
+        .from('inventario_tib_diario')
+        .update({ es_activo: false })
+        .eq('tipo', tipo);
+    }
+
+    return NextResponse.json({ ok: true, message: `Archivo ${tipo} eliminado correctamente.` });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Error al eliminar archivo TIB.';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+

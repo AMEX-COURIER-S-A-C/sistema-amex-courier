@@ -23,6 +23,9 @@ export default function Sidebar({
   const isScannerActive = activeTab === 'mobile-scanner' || activeTab.startsWith('scanner-');
   const [isScannerOpen, setIsScannerOpen] = React.useState(isScannerActive);
 
+  const isCobrosActive = activeTab === 'fico-cobros' || activeTab === 'cobros-diario' || activeTab === 'cobros-armar-planilla';
+  const [isCobrosOpen, setIsCobrosOpen] = React.useState(isCobrosActive);
+
   React.useEffect(() => {
     if (isScannerActive) {
       setIsScannerOpen(true);
@@ -30,6 +33,14 @@ export default function Sidebar({
       setIsScannerOpen(false);
     }
   }, [isScannerActive]);
+
+  React.useEffect(() => {
+    if (isCobrosActive) {
+      setIsCobrosOpen(true);
+    } else {
+      setIsCobrosOpen(false);
+    }
+  }, [isCobrosActive]);
 
   const handleLogoutClick = () => {
     if (typeof window !== 'undefined' && window.confirm('¿Estás seguro de que deseas cerrar tu sesión en el sistema?')) {
@@ -45,6 +56,7 @@ export default function Sidebar({
         className={`nav-item ${isActive ? 'active' : ''}`}
         onClick={() => {
           setIsScannerOpen(false);
+          setIsCobrosOpen(false);
           onSelectTab(tab);
         }}
         role="button"
@@ -71,7 +83,10 @@ export default function Sidebar({
   };
 
   const navSubItem = (tab: string, icon: string, label: string, accentColor: string) => {
-    const isSubActive = activeTab === tab || (tab === 'scanner-slotting' && activeTab === 'mobile-scanner');
+    const isSubActive =
+      activeTab === tab ||
+      (tab === 'scanner-slotting' && activeTab === 'mobile-scanner') ||
+      (tab === 'cobros-diario' && activeTab === 'fico-cobros');
     return (
       <div
         key={tab}
@@ -182,7 +197,65 @@ export default function Sidebar({
             )}
           {hasModuleAccess(currentUser, 'live-sheets') && navItem('live-sheets', 'fa-solid fa-table-list', '2. Amex Excel')}
           {hasModuleAccess(currentUser, 'mm-lince') && navItem('mm-lince', 'fa-solid fa-boxes-stacked', '3. Inventario')}
-          {hasModuleAccess(currentUser, 'fico-cobros') && navItem('fico-cobros', 'fa-solid fa-receipt', '4. Cobros')}
+          {/* MÓDULO 4: COBROS CON SUBMÓDULOS DESPLEGABLES */}
+          {hasModuleAccess(currentUser, 'fico-cobros') && (
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <div
+                className={`nav-item ${isCobrosActive ? 'active' : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsCobrosOpen(prev => !prev);
+                }}
+                role="button"
+                tabIndex={0}
+                style={{
+                  borderRadius: '8px',
+                  padding: '10px 14px',
+                  fontSize: '13px',
+                  fontWeight: isCobrosActive ? 800 : 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  background: isCobrosActive ? 'linear-gradient(90deg, rgba(16, 185, 129, 0.25) 0%, rgba(16, 185, 129, 0.1) 100%)' : 'transparent',
+                  borderLeft: isCobrosActive ? '3.5px solid #10b981' : '3.5px solid transparent',
+                  color: isCobrosActive ? '#ffffff' : '#cbd5e1'
+                }}
+              >
+                <i className="fa-solid fa-receipt" style={{ width: '18px', textAlign: 'center', color: isCobrosActive ? '#10b981' : '#94a3b8' }}></i>
+                <span style={{ flex: 1 }}>4. Cobros</span>
+                <i
+                  className="fa-solid fa-chevron-down"
+                  style={{
+                    fontSize: '10.5px',
+                    color: isCobrosActive ? '#10b981' : '#64748b',
+                    transition: 'transform 0.2s ease',
+                    transform: isCobrosOpen ? 'rotate(180deg)' : 'rotate(0deg)'
+                  }}
+                />
+              </div>
+
+              {/* Submódulos Desplegables Verticales */}
+              {isCobrosOpen && (
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '2px',
+                    paddingLeft: '12px',
+                    marginTop: '3px',
+                    marginBottom: '4px',
+                    borderLeft: '2px solid rgba(16, 185, 129, 0.3)',
+                    marginLeft: '20px'
+                  }}
+                >
+                  {navSubItem('cobros-diario', 'fa-solid fa-receipt', '4.1 💵 Cobros', '#10b981')}
+                  {navSubItem('cobros-armar-planilla', 'fa-solid fa-file-excel', '4.2 📋 Armar Planilla', '#38bdf8')}
+                </div>
+              )}
+            </div>
+          )}
           {hasModuleAccess(currentUser, 'directorio-clientes') && navItem('directorio-clientes', 'fa-solid fa-users', '5. Directorio de Clientes')}
 
           {/* MÓDULO 6: ESCÁNER DE CÓDIGOS CON SUBMÓDULOS DESPLEGABLES */}
@@ -254,7 +327,7 @@ export default function Sidebar({
           {hasModuleAccess(currentUser, 'formato-entrega') && navItem('formato-entrega', 'fa-solid fa-file-signature', '10. Formato de Entrega')}
           {hasModuleAccess(currentUser, 'invoices-usa') && navItem('invoices-usa', 'fa-solid fa-file-invoice-dollar', '11. Facturas / Invoices USA')}
           {hasModuleAccess(currentUser, 'info-amex') && navItem('info-amex', 'fa-solid fa-photo-film', '12. Info Imágenes AMEX')}
-          {hasModuleAccess(currentUser, 'completar-inventario') && navItem('completar-inventario', 'fa-solid fa-cloud-arrow-up', '13. Completar Inventario')}
+          {hasModuleAccess(currentUser, 'completar-inventario') && navItem('completar-inventario', 'fa-solid fa-cloud-arrow-up', '13. Subir Archivos TIB')}
           {hasModuleAccess(currentUser, 'auditoria') && navItem('auditoria', 'fa-solid fa-shield-halved', '14. Auditoría & Gobernanza')}
           {hasModuleAccess(currentUser, 'admin-usuarios') && navItem('admin-usuarios', 'fa-solid fa-user-gear', '15. Gestión de Usuarios')}
           {hasModuleAccess(currentUser, 'despacho-rutas') && navItem('despacho-rutas', 'fa-solid fa-route', '16. Rutas & Despacho Chofer')}
