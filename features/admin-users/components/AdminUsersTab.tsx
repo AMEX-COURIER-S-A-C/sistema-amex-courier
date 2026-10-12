@@ -489,8 +489,17 @@ function CleanModal({
   );
 }
 
+export interface AdminUsersTabProps {
+  currentUser?: {
+    id?: string;
+    nombre?: string;
+    email?: string;
+    rol?: string;
+  } | null;
+}
+
 /* ══════════════ COMPONENTE PRINCIPAL ══════════════ */
-export default function AdminUsersTab() {
+export default function AdminUsersTab({ currentUser }: AdminUsersTabProps = {}) {
   const [view, setView] = useState<View>('usuarios');
   const [users, setUsers] = useState<UserRow[]>([]);
   const [roles, setRoles] = useState<RolRow[]>([]);
@@ -718,10 +727,14 @@ export default function AdminUsersTab() {
     setSavingU(true);
     try {
       const isEdit = !!editU;
+      const targetUserId = editU?.id;
+      const targetUserNombre = editU?.nombre_completo || 'el usuario';
+      const isSelf = isEdit && currentUser?.id && targetUserId === currentUser.id;
+
       const body = isEdit
         ? {
             action: 'update_user',
-            user_id: editU!.id,
+            user_id: targetUserId,
             nombre_completo: uForm.nombre_completo.trim(),
             rol_id: uForm.rol_id || null,
             activo: uForm.activo,
@@ -745,7 +758,21 @@ export default function AdminUsersTab() {
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || 'Error al guardar usuario');
 
-      showToast(isEdit ? '✓ Usuario y permisos actualizados exitosamente.' : '✓ Usuario creado con accesos exitosamente.', true);
+      if (isSelf) {
+        showToast('✓ Has actualizado tus propios permisos. Reiniciando tu sesión para aplicar los cambios...', true);
+        setShowUM(false);
+        setTimeout(() => {
+          window.location.href = '/login?error=permissions-updated';
+        }, 1200);
+        return;
+      }
+
+      showToast(
+        isEdit
+          ? `✓ Permisos guardados con éxito. Se reinició la sesión de ${targetUserNombre} para aplicar los cambios inmediatamente.`
+          : '✓ Usuario creado con accesos exitosamente.',
+        true
+      );
       setShowUM(false);
       void load();
     } catch (e) {

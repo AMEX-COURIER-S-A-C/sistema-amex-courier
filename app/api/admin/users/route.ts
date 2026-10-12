@@ -112,7 +112,18 @@ export async function POST(request: Request) {
         .single();
 
       if (error) throw error;
-      return NextResponse.json({ role: data });
+
+      // Revocar sesiones de los usuarios asignados a este rol para que sus permisos se actualicen al reingresar
+      const nowIso = new Date().toISOString();
+      await supabase
+        .from('perfiles_usuarios')
+        .update({
+          session_revoked_at: nowIso,
+          actualizado_en: nowIso,
+        })
+        .eq('rol_id', id);
+
+      return NextResponse.json({ role: data, session_revoked: true });
     }
 
     // Acción 3: Crear nuevo usuario
@@ -167,7 +178,9 @@ export async function POST(request: Request) {
         if (rData?.nombre) rolNombre = rData.nombre;
       }
 
-      // Actualizar metadata de Auth
+      const nowIso = new Date().toISOString();
+
+      // Actualizar metadata de Auth con marca de revocación de sesión
       const updateData: {
         user_metadata?: Record<string, unknown>;
         app_metadata?: Record<string, unknown>;
@@ -175,10 +188,12 @@ export async function POST(request: Request) {
       } = {
         user_metadata: {
           ...(rolNombre ? { rol: rolNombre } : {}),
-          ...(nombre_completo && typeof nombre_completo === 'string' ? { nombre_completo: nombre_completo.trim() } : {})
+          ...(nombre_completo && typeof nombre_completo === 'string' ? { nombre_completo: nombre_completo.trim() } : {}),
+          session_revoked_at: nowIso,
         },
         app_metadata: {
-          ...(rolNombre ? { rol: rolNombre } : {})
+          ...(rolNombre ? { rol: rolNombre } : {}),
+          session_revoked_at: nowIso,
         }
       };
       if (password && password.trim()) {
@@ -187,18 +202,20 @@ export async function POST(request: Request) {
 
       await supabase.auth.admin.updateUserById(user_id, updateData);
 
-      // Actualizar perfiles_usuarios
+      // Actualizar perfiles_usuarios registrando session_revoked_at para forzar reinicio de sesión inmediato
       await supabase
         .from('perfiles_usuarios')
         .update({
           ...(nombre_completo && typeof nombre_completo === 'string' && { nombre_completo: nombre_completo.trim() }),
           ...(rol_id !== undefined && { rol_id }),
           ...(activo !== undefined && { activo }),
-          ...(permisos !== undefined && { permisos })
+          ...(permisos !== undefined && { permisos }),
+          session_revoked_at: nowIso,
+          actualizado_en: nowIso,
         })
         .eq('id', user_id);
 
-      return NextResponse.json({ success: true });
+      return NextResponse.json({ success: true, session_revoked: true, revoked_at: nowIso });
     }
 
     return NextResponse.json({ error: 'Acción no soportada' }, { status: 400 });

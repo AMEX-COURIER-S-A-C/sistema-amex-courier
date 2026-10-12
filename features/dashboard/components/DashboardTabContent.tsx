@@ -221,7 +221,7 @@ export default function DashboardTabContent({
       {activeTab === 'info-amex' && <InfoAmexTab />}
       {activeTab === 'completar-inventario' && <InventarioJobsTab onNavigateTab={onNavigateTab} />}
       {activeTab === 'auditoria' && <AuditoriaTab />}
-      {activeTab === 'admin-usuarios' && <AdminUsersTab />}
+      {activeTab === 'admin-usuarios' && <AdminUsersTab currentUser={currentUser} />}
       {activeTab === 'despacho-rutas' && <DespachoRutasTab />}
       {activeTab === 'manifiestos-tib' && <ManifiestosTibTab onRefreshData={onRefreshData} />}
       {activeTab === 'configuracion' && (

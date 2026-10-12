@@ -32,7 +32,14 @@ export function useDashboardSession() {
         fetch('/api/auth/logout', { method: 'POST' }),
       ]);
     } catch {}
-    const redirectUrl = reason === 'session-expired' ? '/login?error=session-expired' : '/login';
+    let redirectUrl = '/login';
+    if (reason === 'session-expired') {
+      redirectUrl = '/login?error=session-expired';
+    } else if (reason === 'permissions-updated') {
+      redirectUrl = '/login?error=permissions-updated';
+    } else if (reason === 'account-disabled') {
+      redirectUrl = '/login?error=account-disabled';
+    }
     window.location.href = redirectUrl;
   }, []);
 
@@ -57,8 +64,16 @@ export function useDashboardSession() {
       // 1. Obtener perfil persistido y permisos vigentes desde el backend seguro
       try {
         const res = await fetch('/api/auth/me', { cache: 'no-store' });
-        if (res.status === 401) {
+        if (res.status === 401 || res.status === 403) {
           const json = await res.json().catch(() => ({}));
+          if (json.code === 'SESSION_REVOKED' || json.error?.includes('actualizados') || json.error?.includes('reiniciada')) {
+            await logout('permissions-updated');
+            return;
+          }
+          if (json.code === 'ACCOUNT_DISABLED' || json.error?.includes('desactivada')) {
+            await logout('account-disabled');
+            return;
+          }
           if (json.error?.includes('expirada')) {
             await logout('session-expired');
             return;
@@ -122,18 +137,28 @@ export function useDashboardSession() {
       }
     });
 
-    // Monitor activo: Comprueba cada 30 segundos si se cumplió el límite de 8 horas
+    // Monitor activo: Comprueba cada 15 segundos si expiró el tiempo de sesión o si se revocaron permisos
     const sessionTimer = setInterval(() => {
       if (typeof document !== 'undefined') {
         const match = document.cookie.match(new RegExp('(^|;\\s*)' + SESSION_START_COOKIE + '=([^;]*)'));
         if (match && isSessionExpired(match[2])) {
           logout('session-expired');
+          return;
         }
       }
-    }, 30000);
+      void fetchSession();
+    }, 15000);
+
+    const handleFocus = () => {
+      void fetchSession();
+    };
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
 
     return () => {
       clearInterval(sessionTimer);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
       subscription.unsubscribe();
     };
   }, [fetchSession, logout]);

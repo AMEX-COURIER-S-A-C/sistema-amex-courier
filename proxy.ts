@@ -12,6 +12,7 @@ import {
   SESSION_MAX_AGE_MS,
   SESSION_START_COOKIE,
   isSessionExpired,
+  isSessionRevoked,
 } from '@/lib/auth/constants';
 
 export async function proxy(request: NextRequest) {
@@ -109,22 +110,31 @@ export async function proxy(request: NextRequest) {
      request.headers.get('apikey') === serviceKey)
   );
 
-  // Verificación estricta de tiempo límite: La sesión de inicio expira a las 8 horas exactas
+  // Verificación estricta de tiempo límite (8 horas) y de revocación por actualización de permisos
   const sessionStartStr = request.cookies.get(SESSION_START_COOKIE)?.value;
   const expired = user ? isSessionExpired(sessionStartStr) : false;
+  const userRevokedAt =
+    (user?.user_metadata?.session_revoked_at as string | undefined) ||
+    (user?.app_metadata?.session_revoked_at as string | undefined);
+  const revoked = user && userRevokedAt ? isSessionRevoked(sessionStartStr, userRevokedAt) : false;
 
-  if (expired) {
+  if (expired || revoked) {
     try {
       await supabase.auth.signOut();
     } catch {}
 
-    const expiredUrl = new URL('/login?error=session-expired', request.url);
+    const errorCode = revoked ? 'permissions-updated' : 'session-expired';
+    const expiredUrl = new URL(`/login?error=${errorCode}`, request.url);
     if (pathname !== '/' && !isLoginPage) {
       expiredUrl.searchParams.set('next', `${pathname}${request.nextUrl.search}`);
     }
 
+    const errorMsg = revoked
+      ? 'Tus permisos y accesos han sido actualizados por el Administrador. Por favor, inicia sesión nuevamente.'
+      : 'Tu sesión ha caducado tras 8 horas de uso. Por favor, inicia sesión nuevamente.';
+
     const expiredRes = isApiRoute
-      ? setRequestIdHeader(apiError('SESSION_EXPIRED', 'Tu sesión ha caducado tras 8 horas de uso. Por favor, inicia sesión nuevamente.', requestId, 401))
+      ? setRequestIdHeader(apiError(revoked ? 'SESSION_REVOKED' : 'SESSION_EXPIRED', errorMsg, requestId, 401))
       : setRequestIdHeader(NextResponse.redirect(expiredUrl));
 
     // Limpiar cookies de sesión para forzar re-autenticación

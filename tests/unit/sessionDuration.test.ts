@@ -5,6 +5,7 @@ import {
   SESSION_START_COOKIE,
   isSessionExpired,
   getRemainingSessionMs,
+  isSessionRevoked,
 } from '@/lib/auth/constants';
 
 describe('Autenticación y Sesión — Límite de 8 horas de inicio de sesión', () => {
@@ -54,3 +55,33 @@ describe('Autenticación y Sesión — Límite de 8 horas de inicio de sesión',
     expect(getRemainingSessionMs(nineHoursAgo)).toBe(0);
   });
 });
+
+describe('Autenticación y Sesión — Revocación y reinicio inmediato de sesión al modificar permisos', () => {
+  it('isSessionRevoked debe retornar false cuando el usuario no tiene fecha de revocación', () => {
+    expect(isSessionRevoked(Date.now(), null)).toBe(false);
+    expect(isSessionRevoked(Date.now(), undefined)).toBe(false);
+    expect(isSessionRevoked(Date.now(), '')).toBe(false);
+  });
+
+  it('isSessionRevoked debe retornar true cuando la sesión inició antes del momento en que se guardaron los cambios', () => {
+    const sessionStart = 1000000;
+    const revokedAt = new Date(1005000).toISOString(); // 5 segundos después
+    expect(isSessionRevoked(sessionStart, revokedAt)).toBe(true);
+    expect(isSessionRevoked(String(sessionStart), revokedAt)).toBe(true);
+  });
+
+  it('isSessionRevoked debe retornar false cuando el usuario inicia sesión nuevamente tras la modificación', () => {
+    const revokedAt = new Date(1005000).toISOString();
+    const newSessionStart = 1010000; // 5 segundos después de la revocación
+    expect(isSessionRevoked(newSessionStart, revokedAt)).toBe(false);
+    expect(isSessionRevoked(String(newSessionStart), revokedAt)).toBe(false);
+  });
+
+  it('isSessionRevoked debe retornar true si no existe marca de inicio pero sí hay revocación registrada', () => {
+    const revokedAt = new Date().toISOString();
+    expect(isSessionRevoked(null, revokedAt)).toBe(true);
+    expect(isSessionRevoked(undefined, revokedAt)).toBe(true);
+    expect(isSessionRevoked(0, revokedAt)).toBe(true);
+  });
+});
+

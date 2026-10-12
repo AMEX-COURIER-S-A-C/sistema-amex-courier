@@ -35,3 +35,26 @@ export function getRemainingSessionMs(sessionStartTime: number | string | null |
   const elapsed = Date.now() - time;
   return Math.max(0, SESSION_MAX_AGE_MS - elapsed);
 }
+
+/**
+ * Verifica si una sesión fue iniciada antes de la fecha en que se revocaron los permisos del usuario.
+ */
+export function isSessionRevoked(
+  sessionStartTime: number | string | null | undefined,
+  sessionRevokedAt: string | Date | null | undefined
+): boolean {
+  if (!sessionRevokedAt) return false;
+  const revokedTime = new Date(sessionRevokedAt).getTime();
+  if (isNaN(revokedTime) || revokedTime <= 0) return false;
+
+  const startTime = sessionStartTime
+    ? (typeof sessionStartTime === 'string' ? Number(sessionStartTime) : sessionStartTime)
+    : 0;
+
+  if (isNaN(startTime) || startTime <= 0) {
+    return true;
+  }
+
+  return startTime < revokedTime;
+}
+

@@ -20,8 +20,13 @@ export default function LoginPage() {
       setIsRecoveryMode(true);
     }
 
-    if (params.get('error') === 'session-expired') {
+    const errorParam = params.get('error');
+    if (errorParam === 'session-expired') {
       setErrorMessage('Tu sesión ha caducado automáticamente tras 8 horas de jornada por motivos de seguridad. Por favor, inicia sesión nuevamente.');
+    } else if (errorParam === 'permissions-updated') {
+      setErrorMessage('Tus permisos y accesos han sido actualizados por el Administrador. Por favor, inicia sesión nuevamente para ingresar con tus nuevos accesos.');
+    } else if (errorParam === 'account-disabled') {
+      setErrorMessage('Tu cuenta ha sido desactivada por el Administrador. Comunícate con gerencia para más información.');
     }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
