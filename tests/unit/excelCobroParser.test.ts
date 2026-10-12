@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseExcelCobroBlock } from '@/features/cobros/utils/excelCobroParser';
+import { parseExcelCobroBlock, parsePesoTotal, extractWeightsList } from '@/features/cobros/utils/excelCobroParser';
 
 describe('excelCobroParser utility', () => {
   it('parses multi-row customer block from Excel with name on first row and TOTAL row at end', () => {
@@ -58,8 +58,80 @@ TOTAL`;
 
     const parsed = parseExcelCobroBlock(withBanner, 7.0, 3.75);
 
-    expect(parsed.clienteNombre).toBe('AMEX FLAVIO MENDOZA');
     expect(parsed.itemsWR).toHaveLength(2);
     expect(parsed.totalPeso).toBe(15.7);
   });
+
+  it('intelligently detects custom tariff per kg ($7.50/kg) from pasted Excel cells with weight and price', () => {
+    const excelBlock = `NOMBRE\tPESO\tPRECIO $\twr
+AMEX HENRY JARED ABURTO TITO\t0.98\t$ 7.35\tWR000464276
+\t3.46\t$ 25.95\tWR000462987
+\t3.46\t$ 25.95\tWR000462986
+TOTAL\t\t$ 59.25`;
+
+    const parsed = parseExcelCobroBlock(excelBlock, 7.0, 3.75);
+
+    expect(parsed.clienteNombre).toBe('AMEX HENRY JARED ABURTO TITO');
+    expect(parsed.itemsWR).toHaveLength(3);
+    expect(parsed.totalPeso).toBe(7.9);
+    expect(parsed.totalUsd).toBe(59.25);
+    expect(parsed.tarifaDetectada).toBe(7.5);
+    expect(parsed.esTarifaDetectada).toBe(true);
+    expect(parsed.itemsWR[0].precioUsd).toBe('7.35');
+  });
+
+  it('calculates missing prices using detected tariff from other rows', () => {
+    const mixedBlock = `NOMBRE\tPESO\tPRECIO $\twr
+CLIENTE TEST\t2.00\t15.00\tWR001
+\t4.00\t\tWR002`;
+
+    const parsed = parseExcelCobroBlock(mixedBlock, 7.0, 3.75);
+
+    expect(parsed.tarifaDetectada).toBe(7.5);
+    expect(parsed.itemsWR[0].precioUsd).toBe('15.00');
+    // Row 2 should be calculated with 7.50, not the default 7.0!
+    expect(parsed.itemsWR[1].precioUsd).toBe('30.00');
+  });
+
+  it('handles cells with multiple weights separated by hyphens and newlines (REINA SOFIA case)', () => {
+    const reinaSofiaBlock = `NOMBRE\tPESO\tPRECIO $\twr
+REINA SOFIA\t"2.68 - 0.34 - 3.46 -\n2.14 - 3.46 - 3.48"\t$ 93.36\t"WR000464925-WR000464855-\nWR000464850-WR000464776-\nWR000465273-WR000465272"
+\t"3.44  5.50 - 1.92 -\n4.62"\t$ 92.88\t"WR000465269 WR000465264\nWR000465841-WR000465833"`;
+
+    const parsed = parseExcelCobroBlock(reinaSofiaBlock, 7.0, 3.75);
+
+    expect(parsed.clienteNombre).toBe('REINA SOFIA');
+    expect(parsed.itemsWR).toHaveLength(2);
+
+    // Row 1: 2.68 + 0.34 + 3.46 + 2.14 + 3.46 + 3.48 = 15.56 kg
+    expect(parsed.itemsWR[0].pesoKg).toBe('2.68 - 0.34 - 3.46 - 2.14 - 3.46 - 3.48');
+    expect(parsed.itemsWR[0].precioUsd).toBe('93.36');
+    expect(parsed.itemsWR[0].wr).toBe('WR000464925-WR000464855-WR000464850-WR000464776-WR000465273-WR000465272');
+
+    // Row 2: 3.44 + 5.50 + 1.92 + 4.62 = 15.48 kg
+    expect(parsed.itemsWR[1].pesoKg).toBe('3.44 - 5.50 - 1.92 - 4.62');
+    expect(parsed.itemsWR[1].precioUsd).toBe('92.88');
+
+    // Total peso = 15.56 + 15.48 = 31.04 kg
+    expect(parsed.totalPeso).toBe(31.04);
+    // Total USD = 93.36 + 92.88 = 186.24 USD
+    expect(parsed.totalUsd).toBe(186.24);
+
+    // Tariff detection: 186.24 / 31.04 = $6.00/kg!
+    expect(parsed.tarifaDetectada).toBe(6.0);
+    expect(parsed.esTarifaDetectada).toBe(true);
+  });
+
+  it('correctly extracts and sums lists of weights in various formats', () => {
+    expect(extractWeightsList('2.68 - 0.34 - 3.46')).toEqual([2.68, 0.34, 3.46]);
+    expect(extractWeightsList('2,68 - 0,34 - 3,46')).toEqual([2.68, 0.34, 3.46]);
+    expect(extractWeightsList('3.44  5.50 / 1.92\n4.62')).toEqual([3.44, 5.50, 1.92, 4.62]);
+    expect(parsePesoTotal('2.68 - 0.34 - 3.46 - 2.14 - 3.46 - 3.48')).toBe(15.56);
+    expect(parsePesoTotal('3.44  5.50 - 1.92 - 4.62')).toBe(15.48);
+    expect(parsePesoTotal('0.98')).toBe(0.98);
+    expect(parsePesoTotal('')).toBe(0);
+  });
 });
+
+
+

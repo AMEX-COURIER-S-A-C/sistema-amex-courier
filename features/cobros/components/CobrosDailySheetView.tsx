@@ -39,7 +39,6 @@ import {
   CobroVoucher,
   Cliente
 } from '../types';
-import { KambistaService } from '../services/kambista.service';
 import { CobroPaymentModal } from './CobroPaymentModal';
 import { CobroDeliveryModal } from './CobroDeliveryModal';
 import { DirectorioClienteModal } from './DirectorioClienteModal';
@@ -81,6 +80,7 @@ interface CobrosDailySheetViewProps {
   onOpenVoucherViewer?: (voucher: CobroVoucher) => void;
   onNavigateToClientes360?: (clienteNombre?: string) => void;
   getTarifaCliente?: (clienteNombre: string) => { tarifa: number; personalizada: boolean };
+  guardarTarifaCliente?: (clienteNombre: string, tarifa: number) => void;
 }
 
 export const CobrosDailySheetView: React.FC<CobrosDailySheetViewProps> = ({
@@ -104,7 +104,8 @@ export const CobrosDailySheetView: React.FC<CobrosDailySheetViewProps> = ({
   onOpenImporter,
   onOpenVoucherViewer,
   onNavigateToClientes360,
-  getTarifaCliente
+  getTarifaCliente,
+  guardarTarifaCliente
 }) => {
   const [refreshingTc, setRefreshingTc] = useState(false);
   const [isEditingTc, setIsEditingTc] = useState(false);
@@ -546,9 +547,6 @@ export const CobrosDailySheetView: React.FC<CobrosDailySheetViewProps> = ({
             <span style={{ fontSize: '18px', fontWeight: 900, fontFamily: 'monospace', color: '#0f172a', display: 'block', marginTop: '2px' }}>
               ${statsActivas.totalUsd.toFixed(2)}
             </span>
-            <span style={{ fontSize: '11px', fontFamily: 'monospace', color: '#64748b', display: 'block' }}>
-              &asymp; S/ {statsActivas.totalPen.toFixed(2)}
-            </span>
           </div>
           <div style={{ textAlign: 'right', fontSize: '12px', fontWeight: 800, color: '#475569' }}>
             {statsActivas.totalClientes} personas
@@ -574,9 +572,6 @@ export const CobrosDailySheetView: React.FC<CobrosDailySheetViewProps> = ({
             <span style={{ fontSize: '18px', fontWeight: 900, fontFamily: 'monospace', color: '#059669', display: 'block', marginTop: '2px' }}>
               ${statsActivas.pagadoUsd.toFixed(2)}
             </span>
-            <span style={{ fontSize: '11px', fontFamily: 'monospace', color: '#047857', opacity: 0.8, display: 'block' }}>
-              &asymp; S/ {statsActivas.pagadoPen.toFixed(2)}
-            </span>
           </div>
           <CheckCircle2 style={{ width: '20px', height: '20px', color: '#059669', opacity: 0.7 }} />
         </div>
@@ -599,9 +594,6 @@ export const CobrosDailySheetView: React.FC<CobrosDailySheetViewProps> = ({
             </span>
             <span style={{ fontSize: '18px', fontWeight: 900, fontFamily: 'monospace', color: '#b45309', display: 'block', marginTop: '2px' }}>
               ${statsActivas.pendienteUsd.toFixed(2)}
-            </span>
-            <span style={{ fontSize: '11px', fontFamily: 'monospace', color: '#92400e', opacity: 0.8, display: 'block' }}>
-              &asymp; S/ {statsActivas.pendientePen.toFixed(2)}
             </span>
           </div>
           <AlertCircle style={{ width: '20px', height: '20px', color: '#b45309', opacity: 0.7 }} />
@@ -698,9 +690,6 @@ export const CobrosDailySheetView: React.FC<CobrosDailySheetViewProps> = ({
                 <th style={{ padding: '10px 8px', width: '60px', textAlign: 'center' }}>CANT.</th>
                 <th style={{ padding: '10px 12px', width: '80px', textAlign: 'right' }}>PESO</th>
                 <th style={{ padding: '10px 12px', width: '100px', textAlign: 'right', fontWeight: 800, color: '#0f172a' }}>TOTAL USD ($)</th>
-                <th style={{ padding: '10px 12px', width: '110px', textAlign: 'right', fontWeight: 800, color: '#059669' }}>
-                  TOTAL S/ (PEN)
-                </th>
                 <th style={{ padding: '10px 12px', width: '160px', textAlign: 'center', color: '#7c3aed' }}>
                   VOUCHER / COMPROBANTE
                 </th>
@@ -713,7 +702,7 @@ export const CobrosDailySheetView: React.FC<CobrosDailySheetViewProps> = ({
             <tbody>
               {lotes.length === 0 ? (
                 <tr>
-                  <td colSpan={12} style={{ padding: '48px 16px', textAlign: 'center', color: '#64748b' }}>
+                  <td colSpan={11} style={{ padding: '48px 16px', textAlign: 'center', color: '#64748b' }}>
                     <User style={{ width: '32px', height: '32px', color: '#94a3b8', margin: '0 auto 8px auto', opacity: 0.6 }} />
                     <p style={{ fontWeight: 800, fontSize: '14px', color: '#0f172a', margin: 0 }}>No hay cobros registrados.</p>
                     <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
@@ -723,7 +712,6 @@ export const CobrosDailySheetView: React.FC<CobrosDailySheetViewProps> = ({
                 </tr>
               ) : (
                 lotes.map((lote, loteIdx) => {
-                  const totalPen = KambistaService.convertUsdToPen(lote.totalPrecioUsd, cotizacionKambista.venta);
                   const isPaid = lote.estadoGlobalPago === 'PAGADO';
                   const isDelivered = lote.estadoGlobalEntrega === 'ENTREGADO';
                   const isWrExpanded = Boolean(expandedWrs[lote.id]);
@@ -882,7 +870,6 @@ export const CobrosDailySheetView: React.FC<CobrosDailySheetViewProps> = ({
 
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', alignItems: 'center' }}>
                               {lote.itemsWR.map((wr) => {
-                                const wrPen = (wr.precioUsd * cotizacionKambista.venta).toFixed(2);
                                 return (
                                   <div
                                     key={wr.id}
@@ -898,7 +885,7 @@ export const CobrosDailySheetView: React.FC<CobrosDailySheetViewProps> = ({
                                       background: wr.estadoPago === 'PAGADO' ? '#ecfdf5' : '#fffbeb',
                                       color: wr.estadoPago === 'PAGADO' ? '#065f46' : '#92400e'
                                     }}
-                                    title={`WR: ${wr.wr} | Peso: ${wr.pesoKg} kg | Tarifa: $${wr.precioUsd} (S/ ${wrPen}) ${
+                                    title={`WR: ${wr.wr} | Peso: ${wr.pesoKg} kg | Tarifa: $${wr.precioUsd.toFixed(2)} ${
                                       wr.consignatarioNombre ? `| Para: ${wr.consignatarioNombre}` : ''
                                     }`}
                                   >
@@ -964,12 +951,7 @@ export const CobrosDailySheetView: React.FC<CobrosDailySheetViewProps> = ({
                         ${lote.totalPrecioUsd.toFixed(2)}
                       </td>
 
-                      {/* 7. TOTAL SOLES (S/) CON KAMBISTA */}
-                      <td style={{ padding: '10px 12px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, color: '#059669', fontSize: '13px' }}>
-                        S/ {totalPen.toFixed(2)}
-                      </td>
-
-                      {/* 8. VOUCHER / COMPROBANTE DE PAGO BANCARIO */}
+                      {/* 7. VOUCHER / COMPROBANTE DE PAGO BANCARIO */}
                       <td style={{ padding: '8px 10px', textAlign: 'center' }}>
                         {(() => {
                           const hasVouchers = Boolean(
@@ -1231,9 +1213,6 @@ export const CobrosDailySheetView: React.FC<CobrosDailySheetViewProps> = ({
                   <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', color: '#1d4ed8', fontSize: '13.5px', fontWeight: 900 }}>
                     ${statsActivas.totalUsd.toFixed(2)}
                   </td>
-                  <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', color: '#059669', fontSize: '13.5px', fontWeight: 900 }}>
-                    S/ {statsActivas.totalPen.toFixed(2)}
-                  </td>
                   <td style={{ padding: '12px 8px', textAlign: 'center', fontSize: '11px', color: '#7c3aed', fontWeight: 800 }}>
                     {lotes.filter((l) => Boolean(l.comprobanteUrl || (l.vouchersList && l.vouchersList.length > 0))).length} Vouchers
                   </td>
@@ -1261,6 +1240,7 @@ export const CobrosDailySheetView: React.FC<CobrosDailySheetViewProps> = ({
         clientes={clientes}
         cotizacionKambista={cotizacionKambista}
         getTarifaCliente={getTarifaCliente}
+        guardarTarifaCliente={guardarTarifaCliente}
         onNavigateToClientes={() => {
           setIsNuevoCobroOpen(false);
           if (onNavigateToClientes360) {

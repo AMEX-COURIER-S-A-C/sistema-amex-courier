@@ -1,7 +1,7 @@
 {
   "app/api/admin/users/route.ts": {
-    "mtime": 1791752604.896595,
-    "ast_hash": "57c9667c979fdbd3c36eb3613fb286ff",
+    "mtime": 1791763863.1547215,
+    "ast_hash": "35d843ff578d449884a7499b54a668d5",
     "semantic_hash": ""
   },
   "app/api/ai/analyze-invoice/route.ts": {
@@ -30,18 +30,18 @@
     "semantic_hash": ""
   },
   "app/api/auth/login/route.ts": {
-    "mtime": 1790997728.9167309,
-    "ast_hash": "1ff6740a91b41bcd7090d45eea650aab",
+    "mtime": 1791762310.7414408,
+    "ast_hash": "ee7261fc1f894ca2ad077a8f2f10b60b",
     "semantic_hash": ""
   },
   "app/api/auth/logout/route.ts": {
-    "mtime": 1788587337.101056,
-    "ast_hash": "236f7644711cf691a1623c5ec574d611",
-    "semantic_hash": "236f7644711cf691a1623c5ec574d611"
+    "mtime": 1791762333.3257725,
+    "ast_hash": "a1f42dd48fce07920c2b5cdbbe03e199",
+    "semantic_hash": ""
   },
   "app/api/auth/me/route.ts": {
-    "mtime": 1791752538.8455727,
-    "ast_hash": "0fc5f451da2daaaec122206709edff5a",
+    "mtime": 1791763884.390796,
+    "ast_hash": "c04e8a936430aee611fe1f5046922e24",
     "semantic_hash": ""
   },
   "app/api/inventario-jobs/[id]/route.ts": {
@@ -95,8 +95,8 @@
     "semantic_hash": "1bc3595b6172d32689d069089b2bb031"
   },
   "app/login/page.tsx": {
-    "mtime": 1790573355.185064,
-    "ast_hash": "34b0ffe4f2c13b4c2c8bc72079c9549b",
+    "mtime": 1791764020.4112134,
+    "ast_hash": "e0df40cb1de360dc345ee338c98c8ac3",
     "semantic_hash": ""
   },
   "app/page.tsx": {
@@ -275,8 +275,8 @@
     "semantic_hash": ""
   },
   "features/admin-users/components/AdminUsersTab.tsx": {
-    "mtime": 1791755837.0725217,
-    "ast_hash": "8c965041fd12a173447eaff66e994c22",
+    "mtime": 1791763985.9515557,
+    "ast_hash": "784e56c6722a2f0e5efb6bb84d164914",
     "semantic_hash": ""
   },
   "features/admin-users/index.ts": {
@@ -315,9 +315,9 @@
     "semantic_hash": ""
   },
   "features/boletas-shalom/components/ShalomPdfViewerPanel.tsx": {
-    "mtime": 1790997728.9775362,
-    "ast_hash": "210e97cff07c653c1f5f850eb589dd79",
-    "semantic_hash": "210e97cff07c653c1f5f850eb589dd79"
+    "mtime": 1791761272.4796948,
+    "ast_hash": "ad313306a4dbf7d668011b702b2ded72",
+    "semantic_hash": ""
   },
   "features/boletas-shalom/components/ShalomTable.tsx": {
     "mtime": 1791524396.1885724,
@@ -340,14 +340,14 @@
     "semantic_hash": ""
   },
   "features/boletas-shalom/modals/ShalomEditModal.tsx": {
-    "mtime": 1790997728.9840758,
-    "ast_hash": "f3f1c3c120a550d2e29e1566f93759d4",
-    "semantic_hash": "f3f1c3c120a550d2e29e1566f93759d4"
+    "mtime": 1791761258.2182639,
+    "ast_hash": "eb010039b9681fb0ed8d58e480fd70f9",
+    "semantic_hash": ""
   },
   "features/boletas-shalom/modals/ShalomUploadModal.tsx": {
-    "mtime": 1790997728.9870238,
-    "ast_hash": "c303965e3a9acf5a6f1c800cb5a8f741",
-    "semantic_hash": "c303965e3a9acf5a6f1c800cb5a8f741"
+    "mtime": 1791761241.5551095,
+    "ast_hash": "07738791fe026862fd0db4cb199c015c",
+    "semantic_hash": ""
   },
   "features/boletas-shalom/services/shalom.service.ts": {
     "mtime": 1790997728.9912944,
@@ -370,8 +370,8 @@
     "semantic_hash": ""
   },
   "features/cobros/components/CobrosDailySheetView.tsx": {
-    "mtime": 1791693865.9056494,
-    "ast_hash": "38184c1562f541694b5944e95d513e89",
+    "mtime": 1791767552.015037,
+    "ast_hash": "580f95cc0dd016bd2210a5fd3d54aa2e",
     "semantic_hash": ""
   },
   "features/cobros/components/CobrosExcelImporterModal.tsx": {
@@ -390,8 +390,8 @@
     "semantic_hash": ""
   },
   "features/cobros/components/CobrosTab.tsx": {
-    "mtime": 1791692492.3948438,
-    "ast_hash": "fc9e2b7c8b65578dab80d2fad63fe5e3",
+    "mtime": 1791766144.1090553,
+    "ast_hash": "e81c5abf94e0f130d3090303e652cce5",
     "semantic_hash": ""
   },
   "features/cobros/components/CobrosToolbar.tsx": {
@@ -420,8 +420,8 @@
     "semantic_hash": ""
   },
   "features/cobros/components/RegistrarCobroDiarioModal.tsx": {
-    "mtime": 1791698741.3465788,
-    "ast_hash": "c4d887265c717585d749f5e468136f56",
+    "mtime": 1791766818.7327151,
+    "ast_hash": "c0ba924076cef1dbfbf90c465949a729",
     "semantic_hash": ""
   },
   "features/cobros/data/initial-data.ts": {
@@ -506,8 +506,8 @@
     "semantic_hash": ""
   },
   "features/dashboard/components/DashboardTabContent.tsx": {
-    "mtime": 1791700298.5034153,
-    "ast_hash": "a20d0bf05d2b4634f6df9465aca9b177",
+    "mtime": 1791764002.9583468,
+    "ast_hash": "1be8c01a4fed6afa0d55e4787e292214",
     "semantic_hash": ""
   },
   "features/dashboard/components/ExecutiveKpiGrid.tsx": {
@@ -546,8 +546,8 @@
     "semantic_hash": ""
   },
   "features/dashboard/hooks/useDashboardSession.ts": {
-    "mtime": 1791251556.2566636,
-    "ast_hash": "44ff369fdac93fb3d2a829b22b2a02fd",
+    "mtime": 1791763948.2686238,
+    "ast_hash": "c72475c9ea4bc785b8a55243e0794795",
     "semantic_hash": ""
   },
   "features/dashboard/index.ts": {
@@ -636,8 +636,8 @@
     "semantic_hash": ""
   },
   "features/formato-entrega/components/ActaControlPanel.tsx": {
-    "mtime": 1791080213.3167346,
-    "ast_hash": "e08923658e748bc8e06c130bf5463010",
+    "mtime": 1791760887.954441,
+    "ast_hash": "c924f5e64d4dbadf90744a528ad0d7e7",
     "semantic_hash": ""
   },
   "features/formato-entrega/components/ActaDocumentPreview.tsx": {
@@ -916,8 +916,8 @@
     "semantic_hash": ""
   },
   "features/rotulos/components/RotulosSheetPreview.tsx": {
-    "mtime": 1791149552.4501605,
-    "ast_hash": "3e9cb621456ce927a8ddc2633bd8f66c",
+    "mtime": 1791761286.548794,
+    "ast_hash": "dd6a0b7a838e37bccd9264aba1adb421",
     "semantic_hash": ""
   },
   "features/rotulos/components/RotulosSlotEditor.tsx": {
@@ -971,13 +971,13 @@
     "semantic_hash": ""
   },
   "lib/auth/guards.ts": {
-    "mtime": 1791749960.7839215,
-    "ast_hash": "b458becefdffb39d7c9c993492b6f01d",
+    "mtime": 1791762401.7661107,
+    "ast_hash": "556ff4fa1196c2ed85ccf3673ff4559d",
     "semantic_hash": ""
   },
   "lib/auth/session.ts": {
-    "mtime": 1790563138.865963,
-    "ast_hash": "9880b5fc778fa5fc84e46c0988458521",
+    "mtime": 1791762449.9394543,
+    "ast_hash": "aa35569cb4bc5e509b9fc39f46282741",
     "semantic_hash": ""
   },
   "lib/dni-matrix/db.ts": {
@@ -1056,14 +1056,14 @@
     "semantic_hash": ""
   },
   "lib/supabase/client.ts": {
-    "mtime": 1791681011.6183257,
-    "ast_hash": "8f9918c8a98dba26bda1a7d169d9a95a",
+    "mtime": 1791762208.3207765,
+    "ast_hash": "06709005eafceec504017344d9d08326",
     "semantic_hash": ""
   },
   "lib/supabase/server.ts": {
-    "mtime": 1791681011.6193285,
-    "ast_hash": "585633ee19895f45a2d7624ef6c4c986",
-    "semantic_hash": "585633ee19895f45a2d7624ef6c4c986"
+    "mtime": 1791762230.7163124,
+    "ast_hash": "c8bc3df73b21f8de71229e1aa1eabe49",
+    "semantic_hash": ""
   },
   "lib/utils/imageCompressor.ts": {
     "mtime": 1790997729.1583004,
@@ -1076,8 +1076,8 @@
     "semantic_hash": "251bbc2cbda7fdcf91cfa9cb3e42f173"
   },
   "next-env.d.ts": {
-    "mtime": 1791748327.2263265,
-    "ast_hash": "c7b887684e81cfa5830eeeb7286485f6",
+    "mtime": 1791761795.9264696,
+    "ast_hash": "0e4a65e8b2b9aa3ed0f8957b9406bd41",
     "semantic_hash": ""
   },
   "next.config.ts": {
@@ -1096,8 +1096,8 @@
     "semantic_hash": "481fac0fdecd70e1821cc30b86030c1a"
   },
   "proxy.ts": {
-    "mtime": 1791681376.3998966,
-    "ast_hash": "f53a61cf3ed82676b8506bdd8f74d9eb",
+    "mtime": 1791763912.4597266,
+    "ast_hash": "b339f47992692977312a6f02416f7dba",
     "semantic_hash": ""
   },
   "scripts/benchmark-comparativo-completo.mjs": {
@@ -1562,8 +1562,8 @@
     "semantic_hash": ""
   },
   "features/rotulos/components/RotulosHistoryModal.tsx": {
-    "mtime": 1791139304.9116611,
-    "ast_hash": "7f66ef4b44a24d4116b34170d272ad15",
+    "mtime": 1791761316.5008695,
+    "ast_hash": "459375c11ba0834160009b0dacb212f6",
     "semantic_hash": ""
   },
   "tests/unit/rotulosHistory.test.ts": {
@@ -1572,8 +1572,8 @@
     "semantic_hash": ""
   },
   "features/rotulos/components/RotulosSheetDropdown.tsx": {
-    "mtime": 1791150947.3724215,
-    "ast_hash": "e5c460826ea02e09648242c2d4391f45",
+    "mtime": 1791761335.771501,
+    "ast_hash": "40d270a2020bcf2a002e276f9f2c4378",
     "semantic_hash": ""
   },
   "lib/navigation/registry.ts": {
@@ -1847,8 +1847,8 @@
     "semantic_hash": ""
   },
   "lib/smooth-scroll/manager.ts": {
-    "mtime": 1791755899.7721786,
-    "ast_hash": "d48fb08ac7325d69412c258350b0b36d",
+    "mtime": 1791761413.6777394,
+    "ast_hash": "81417635882e5fb4b603218110fc9d1f",
     "semantic_hash": ""
   },
   "tests/unit/smoothScrollManager.test.ts": {
@@ -1912,8 +1912,8 @@
     "semantic_hash": ""
   },
   "tests/unit/invoiceScrollProtection.test.ts": {
-    "mtime": 1791650147.4377215,
-    "ast_hash": "d67a2387cc14062e4be25bb45cdbecde",
+    "mtime": 1791761491.299412,
+    "ast_hash": "5223258b1f8a8e9eebcb57466f9d8f51",
     "semantic_hash": ""
   },
   "features/dashboard/components/dashboard-tab-registry.tsx": {
@@ -2002,18 +2002,28 @@
     "semantic_hash": ""
   },
   "features/cobros/utils/excelCobroParser.ts": {
-    "mtime": 1791695964.0691886,
-    "ast_hash": "ccfa0c6dfed15dd2d8b1adddc8422dfa",
+    "mtime": 1791766725.1614113,
+    "ast_hash": "a7dff5c546544cb7c1c3d7e25f7ac3ef",
     "semantic_hash": ""
   },
   "tests/unit/excelCobroParser.test.ts": {
-    "mtime": 1791696003.787367,
-    "ast_hash": "a9f6f6032efb3e7b1eddc92fb98330d6",
+    "mtime": 1791766924.9121044,
+    "ast_hash": "47af17aa7b2129ccecbccc04bbb93f68",
     "semantic_hash": ""
   },
   "scripts/setup-official-roles.mjs": {
     "mtime": 1791749878.1774487,
     "ast_hash": "c8eb5756450d50b0992cec6c42f0bad4",
+    "semantic_hash": ""
+  },
+  "lib/auth/constants.ts": {
+    "mtime": 1791763799.6258788,
+    "ast_hash": "0b3f57151f67d4329bdd6c893faf7d42",
+    "semantic_hash": ""
+  },
+  "tests/unit/sessionDuration.test.ts": {
+    "mtime": 1791763819.035566,
+    "ast_hash": "07ba5a86b67a7c2d549dadfb625d7966",
     "semantic_hash": ""
   }
 }

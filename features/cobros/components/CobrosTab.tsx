@@ -59,7 +59,8 @@ export default function CobrosTab({
     registrarNuevoCobroPersona,
     importarLotesDesdeExcel,
     getResumenCliente360,
-    getTarifaCliente
+    getTarifaCliente,
+    guardarTarifaCliente
   } = useCobrosOperaciones();
 
   // Sincronizar filtro si se navegó desde Clientes 360 con un cliente específico
@@ -220,6 +221,7 @@ export default function CobrosTab({
         onOpenVoucherViewer={setViewingVoucher}
         onNavigateToClientes360={onNavigateToClientes360}
         getTarifaCliente={getTarifaCliente}
+        guardarTarifaCliente={guardarTarifaCliente}
       />
       )}
 

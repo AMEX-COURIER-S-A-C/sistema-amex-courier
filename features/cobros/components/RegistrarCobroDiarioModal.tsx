@@ -17,11 +17,12 @@ import {
   FileSpreadsheet,
   ClipboardPaste,
   RotateCcw,
+  RefreshCw,
   DollarSign,
   AlertCircle
 } from 'lucide-react';
 import { CotizacionKambista, Cliente } from '../types';
-import { parseExcelCobroBlock } from '../utils/excelCobroParser';
+import { parseExcelCobroBlock, parsePesoTotal } from '../utils/excelCobroParser';
 import { smoothScrollManager } from '@/lib/smooth-scroll/manager';
 
 interface WrItemDraft {
@@ -41,6 +42,7 @@ interface RegistrarCobroDiarioModalProps {
   clientes?: Cliente[];
   cotizacionKambista: CotizacionKambista;
   getTarifaCliente?: (clienteNombre: string) => { tarifa: number; personalizada: boolean };
+  guardarTarifaCliente?: (clienteNombre: string, tarifa: number) => void;
   onNavigateToClientes?: () => void;
   onGuardarCobro: (params: {
     fechaLote?: string;
@@ -71,6 +73,7 @@ const RegistrarCobroDiarioModalContent: React.FC<RegistrarCobroDiarioModalProps>
   clientes = [],
   cotizacionKambista,
   getTarifaCliente,
+  guardarTarifaCliente,
   onNavigateToClientes,
   onGuardarCobro
 }) => {
@@ -82,6 +85,8 @@ const RegistrarCobroDiarioModalContent: React.FC<RegistrarCobroDiarioModalProps>
 
   // Tarifa por kilo asignada al cliente
   const [tarifaPorKg, setTarifaPorKg] = useState<number>(7.0);
+  // Tarifa detectada inteligentemente del bloque de Excel
+  const [tarifaDetectadaExcel, setTarifaDetectadaExcel] = useState<number | null>(null);
 
   // Mensaje de éxito tras pegar desde Excel
   const [pasteSuccessMessage, setPasteSuccessMessage] = useState<string | null>(null);
@@ -153,13 +158,19 @@ const RegistrarCobroDiarioModalContent: React.FC<RegistrarCobroDiarioModalProps>
     if (currentName) {
       if (getTarifaCliente) {
         const info = getTarifaCliente(currentName);
-        setTarifaPorKg(info.tarifa);
+        if (info.personalizada) {
+          // Si tiene tarifa explícita configurada en el Directorio 360, respetarla
+          setTarifaPorKg(info.tarifa);
+        } else if (!tarifaDetectadaExcel) {
+          // Solo usar fallback si no tenemos una tarifa detectada del Excel
+          setTarifaPorKg(info.tarifa);
+        }
       }
       if (selectedClientObj?.esEmpresa) {
         setEsCorporativo(true);
       }
     }
-  }, [clienteSeleccionado, clienteSearch, getTarifaCliente, selectedClientObj]);
+  }, [clienteSeleccionado, clienteSearch, getTarifaCliente, selectedClientObj, tarifaDetectadaExcel]);
 
   // Estado Inicial por defecto
   const estadoInicialPago: 'PAGADO' | 'FALTA' = 'FALTA';
@@ -202,13 +213,20 @@ const RegistrarCobroDiarioModalContent: React.FC<RegistrarCobroDiarioModalProps>
           setItemsWR(parsed.itemsWR);
         }
 
+        let tarifaMsg = '';
+        if (parsed.tarifaDetectada && parsed.tarifaDetectada > 0) {
+          setTarifaPorKg(parsed.tarifaDetectada);
+          setTarifaDetectadaExcel(parsed.tarifaDetectada);
+          tarifaMsg = ` ✨ Tarifa detectada de Excel: $${parsed.tarifaDetectada.toFixed(2)}/kg.`;
+        }
+
         setPasteSuccessMessage(
-          `¡Pegado exitoso! Se cargaron ${parsed.itemsWR.length} paquete(s) para "${parsed.clienteNombre || 'el cliente'}" (${parsed.totalPeso} kg).`
+          `¡Pegado exitoso! Se cargaron ${parsed.itemsWR.length} paquete(s) para "${parsed.clienteNombre || 'el cliente'}" (${parsed.totalPeso} kg).${tarifaMsg}`
         );
 
         setTimeout(() => {
           setPasteSuccessMessage(null);
-        }, 6000);
+        }, 7000);
       }
     },
     [tarifaPorKg, cotizacionKambista.venta]
@@ -278,8 +296,8 @@ const RegistrarCobroDiarioModalContent: React.FC<RegistrarCobroDiarioModalProps>
 
       // Si cambia el peso y no hay precio, calcular automáticamente según tarifa
       if (field === 'pesoKg' && value) {
-        const peso = parseFloat(value.replace(',', '.'));
-        if (!isNaN(peso) && peso > 0) {
+        const peso = parsePesoTotal(value);
+        if (peso > 0) {
           if (!copy[index].precioUsd || parseFloat(copy[index].precioUsd) === 0) {
             const precioSugerido = Math.round(peso * tarifaPorKg * 100) / 100;
             copy[index].precioUsd = precioSugerido.toFixed(2);
@@ -294,8 +312,7 @@ const RegistrarCobroDiarioModalContent: React.FC<RegistrarCobroDiarioModalProps>
   // Cálculos de totales
   const totalPeso = useMemo(() => {
     return itemsWR.reduce((acc, item) => {
-      const p = parseFloat(item.pesoKg.replace(',', '.')) || 0;
-      return acc + p;
+      return acc + parsePesoTotal(item.pesoKg);
     }, 0);
   }, [itemsWR]);
 
@@ -306,17 +323,37 @@ const RegistrarCobroDiarioModalContent: React.FC<RegistrarCobroDiarioModalProps>
     }, 0);
   }, [itemsWR]);
 
-  const totalPen = useMemo(() => {
-    return Math.round(totalUsd * cotizacionKambista.venta * 100) / 100;
-  }, [totalUsd, cotizacionKambista.venta]);
-
   const wrsValidos = useMemo(() => {
     return itemsWR.filter(
-      (w) => w.wr.trim().length > 0 || (parseFloat(w.pesoKg.replace(',', '.')) || 0) > 0
+      (w) => w.wr.trim().length > 0 || parsePesoTotal(w.pesoKg) > 0
     );
   }, [itemsWR]);
 
   const clienteNombreFinal = (clienteSeleccionado || clienteSearch).trim();
+
+  // Tarifa efectiva real calculada en base a los pesos y precios actuales
+  const tarifaCalculadaReal = useMemo(() => {
+    if (totalPeso > 0 && totalUsd > 0) {
+      return Math.round((totalUsd / totalPeso) * 100) / 100;
+    }
+    return tarifaPorKg;
+  }, [totalPeso, totalUsd, tarifaPorKg]);
+
+  // Recalcular precios de todos los paquetes según la tarifa especificada
+  const recalcularPreciosConTarifa = (nuevaTarifa?: number) => {
+    const t = typeof nuevaTarifa === 'number' ? nuevaTarifa : tarifaPorKg;
+    if (t <= 0) return;
+    setItemsWR((prev) =>
+      prev.map((item) => {
+        const p = parsePesoTotal(item.pesoKg);
+        if (p > 0) {
+          const nuevoPrecio = Math.round(p * t * 100) / 100;
+          return { ...item, precioUsd: nuevoPrecio.toFixed(2) };
+        }
+        return item;
+      })
+    );
+  };
 
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -331,19 +368,32 @@ const RegistrarCobroDiarioModalContent: React.FC<RegistrarCobroDiarioModalProps>
       return;
     }
 
+    // Si se detectó o configuró una tarifa para este cliente, guardarla para futuros cobros
+    if (guardarTarifaCliente && clienteNombreFinal && tarifaPorKg > 0) {
+      guardarTarifaCliente(clienteNombreFinal, tarifaPorKg);
+    }
+
     onGuardarCobro({
       fechaLote: new Date().toLocaleDateString('es-PE'),
       clienteNombre: clienteNombreFinal,
       esCorporativo,
       observaciones: observaciones.trim() || undefined,
-      itemsWR: wrsValidos.map((w, idx) => ({
-        wr: w.wr.trim().toUpperCase() || `WR-${Date.now().toString().slice(-6)}-${idx + 1}`,
-        pesoKg: parseFloat(w.pesoKg.replace(',', '.')) || 0,
-        precioUsd: parseFloat(w.precioUsd) || 0,
-        cajaNumero: w.cajaNumero?.trim() || undefined,
-        consignatarioNombre: w.consignatarioNombre?.trim() || undefined,
-        notas: w.notas?.trim() || undefined
-      })),
+      itemsWR: wrsValidos.map((w, idx) => {
+        const pTotal = parsePesoTotal(w.pesoKg);
+        const notasList: string[] = [];
+        if (w.notas?.trim()) notasList.push(w.notas.trim());
+        if (w.pesoKg.includes('-') || w.pesoKg.includes('/')) {
+          notasList.push(`Pesos: ${w.pesoKg}`);
+        }
+        return {
+          wr: w.wr.trim().toUpperCase() || `WR-${Date.now().toString().slice(-6)}-${idx + 1}`,
+          pesoKg: pTotal,
+          precioUsd: parseFloat(w.precioUsd) || 0,
+          cajaNumero: w.cajaNumero?.trim() || undefined,
+          consignatarioNombre: w.consignatarioNombre?.trim() || undefined,
+          notas: notasList.length > 0 ? notasList.join(' | ') : undefined
+        };
+      }),
       estadoInicialPago,
       estadoInicialEntrega
     });
@@ -696,6 +746,105 @@ const RegistrarCobroDiarioModalContent: React.FC<RegistrarCobroDiarioModalProps>
                 </div>
               </div>
 
+              {/* BARRA INTELIGENTE DE TARIFA */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px',
+                  backgroundColor: '#f8fafc',
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                  fontSize: '11px',
+                  flexWrap: 'wrap'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>
+                    Tarifa del Cobro:
+                  </span>
+                  <div
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      backgroundColor: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      padding: '2px 6px',
+                      gap: '2px'
+                    }}
+                  >
+                    <span style={{ color: '#64748b', fontWeight: 800 }}>$</span>
+                    <input
+                      type="number"
+                      step="0.05"
+                      min="0"
+                      value={tarifaPorKg}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        if (!isNaN(val)) setTarifaPorKg(val);
+                      }}
+                      style={{
+                        width: '52px',
+                        border: 'none',
+                        outline: 'none',
+                        fontSize: '12px',
+                        fontWeight: 900,
+                        color: '#2563eb',
+                        backgroundColor: 'transparent'
+                      }}
+                      title="Tarifa por kilo ($/kg)"
+                    />
+                    <span style={{ color: '#64748b', fontWeight: 700 }}>/kg</span>
+                  </div>
+
+                  {tarifaDetectadaExcel ? (
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                        fontSize: '10px',
+                        fontWeight: 800,
+                        backgroundColor: '#dcfce7',
+                        color: '#15803d',
+                        padding: '2px 7px',
+                        borderRadius: '9999px',
+                        border: '1px solid #86efac'
+                      }}
+                    >
+                      <Sparkles style={{ width: '10px', height: '10px' }} />
+                      Detectada de Excel: ${tarifaDetectadaExcel.toFixed(2)}/kg
+                    </span>
+                  ) : null}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => recalcularPreciosConTarifa(tarifaPorKg)}
+                  title="Recalcula el precio de todos los paquetes (peso × tarifa) usando esta tarifa"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '10.5px',
+                    fontWeight: 800,
+                    color: '#2563eb',
+                    backgroundColor: '#eff6ff',
+                    border: '1px solid #bfdbfe',
+                    borderRadius: '6px',
+                    padding: '3px 8px',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <RefreshCw style={{ width: '10px', height: '10px' }} />
+                  Recalcular precios con ${tarifaPorKg.toFixed(2)}
+                </button>
+              </div>
+
               {/* MENSAJE DE CONFIRMACIÓN TRAS PEGAR */}
               {pasteSuccessMessage && (
                 <div
@@ -735,18 +884,14 @@ const RegistrarCobroDiarioModalContent: React.FC<RegistrarCobroDiarioModalProps>
                   <thead style={{ backgroundColor: '#f1f5f9', color: '#475569', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', position: 'sticky', top: 0, zIndex: 1 }}>
                     <tr>
                       <th style={{ padding: '6px 10px' }}>CÓDIGO WR *</th>
-                      <th style={{ padding: '6px 10px', width: '85px' }}>PESO (kg) *</th>
-                      <th style={{ padding: '6px 10px', width: '95px' }}>PRECIO $</th>
-                      <th style={{ padding: '6px 10px', width: '85px', color: '#059669' }}>SOLES (S/)</th>
-                      <th style={{ padding: '6px 10px', width: '80px' }}>CAJA/TRACK</th>
+                      <th style={{ padding: '6px 10px', minWidth: '125px' }}>PESO (kg) *</th>
+                      <th style={{ padding: '6px 10px', width: '95px' }}>PRECIO ($)</th>
+                      <th style={{ padding: '6px 10px', width: '90px' }}>CAJA/TRACK</th>
                       <th style={{ padding: '6px 6px', width: '32px', textAlign: 'center' }}></th>
                     </tr>
                   </thead>
                   <tbody>
                     {itemsWR.map((wrRow, idx) => {
-                      const rowPrice = parseFloat(wrRow.precioUsd) || 0;
-                      const rowPen = (rowPrice * cotizacionKambista.venta).toFixed(2);
-
                       return (
                         <tr key={idx} style={{ borderTop: '1px solid #f1f5f9' }}>
                           <td style={{ padding: '4px 8px' }}>
@@ -771,13 +916,13 @@ const RegistrarCobroDiarioModalContent: React.FC<RegistrarCobroDiarioModalProps>
                           <td style={{ padding: '4px 8px' }}>
                             <input
                               type="text"
-                              placeholder="Ej: 2.78"
+                              placeholder="Ej: 2.78 o 2.68 - 0.34"
                               value={wrRow.pesoKg}
                               onChange={(e) => updateWrField(idx, 'pesoKg', e.target.value)}
                               style={{
                                 width: '100%',
                                 padding: '3px 6px',
-                                fontSize: '11.5px',
+                                fontSize: '11px',
                                 fontFamily: 'monospace',
                                 border: '1px solid #cbd5e1',
                                 borderRadius: '6px',
@@ -785,7 +930,24 @@ const RegistrarCobroDiarioModalContent: React.FC<RegistrarCobroDiarioModalProps>
                                 backgroundColor: '#ffffff',
                                 textAlign: 'right'
                               }}
+                              title={wrRow.pesoKg}
                             />
+                            {parsePesoTotal(wrRow.pesoKg) > 0 &&
+                              (wrRow.pesoKg.includes('-') || wrRow.pesoKg.includes('/') || wrRow.pesoKg.includes(' ')) && (
+                                <span
+                                  style={{
+                                    fontSize: '9px',
+                                    fontWeight: 800,
+                                    color: '#059669',
+                                    display: 'block',
+                                    textAlign: 'right',
+                                    marginTop: '1px'
+                                  }}
+                                  title="Suma total calculada de los pesos de esta fila"
+                                >
+                                  = {parsePesoTotal(wrRow.pesoKg).toFixed(2)} kg
+                                </span>
+                              )}
                           </td>
                           <td style={{ padding: '4px 8px' }}>
                             <input
@@ -808,9 +970,6 @@ const RegistrarCobroDiarioModalContent: React.FC<RegistrarCobroDiarioModalProps>
                                 textAlign: 'right'
                               }}
                             />
-                          </td>
-                          <td style={{ padding: '4px 8px', fontFamily: 'monospace', fontWeight: 700, color: '#059669', textAlign: 'right', fontSize: '11px' }}>
-                            S/ {rowPen}
                           </td>
                           <td style={{ padding: '4px 8px' }}>
                             <input
@@ -1005,8 +1164,31 @@ const RegistrarCobroDiarioModalContent: React.FC<RegistrarCobroDiarioModalProps>
                 </div>
 
                 <div style={{ padding: '8px 10px', borderRadius: '8px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', textAlign: 'center' }}>
-                  <span style={{ fontSize: '10px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', display: 'block' }}>Tarifa</span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginBottom: '1px' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Tarifa</span>
+                    {tarifaDetectadaExcel ? (
+                      <span
+                        title={`Tarifa inferida de las celdas copiadas de Excel ($${tarifaDetectadaExcel.toFixed(2)}/kg)`}
+                        style={{
+                          fontSize: '8.5px',
+                          fontWeight: 800,
+                          backgroundColor: '#dcfce7',
+                          color: '#15803d',
+                          padding: '1px 5px',
+                          borderRadius: '4px',
+                          border: '1px solid #86efac'
+                        }}
+                      >
+                        ✨ Excel
+                      </span>
+                    ) : null}
+                  </div>
                   <strong style={{ fontSize: '15px', color: '#2563eb', fontWeight: 900 }}>${tarifaPorKg.toFixed(2)}/kg</strong>
+                  {tarifaCalculadaReal > 0 && Math.abs(tarifaCalculadaReal - tarifaPorKg) > 0.01 && (
+                    <span style={{ fontSize: '9px', color: '#64748b', display: 'block' }} title="Precio total dividido entre peso total">
+                      Efectiva: ${tarifaCalculadaReal.toFixed(2)}/kg
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -1039,30 +1221,25 @@ const RegistrarCobroDiarioModalContent: React.FC<RegistrarCobroDiarioModalProps>
                           <th style={{ padding: '5px 8px' }}>WR</th>
                           <th style={{ padding: '5px 8px', textAlign: 'right' }}>PESO</th>
                           <th style={{ padding: '5px 8px' }}>CAJA/TRACK</th>
-                          <th style={{ padding: '5px 8px', textAlign: 'right' }}>USD ($)</th>
-                          <th style={{ padding: '5px 8px', textAlign: 'right', color: '#059669' }}>SOLES (S/)</th>
+                          <th style={{ padding: '5px 8px', textAlign: 'right' }}>PRECIO ($)</th>
                         </tr>
                       </thead>
                       <tbody>
                         {wrsValidos.map((w, i) => {
                           const pUsd = parseFloat(w.precioUsd) || 0;
-                          const pPen = (pUsd * cotizacionKambista.venta).toFixed(2);
                           return (
                             <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
                               <td style={{ padding: '4px 8px', fontFamily: 'monospace', fontWeight: 800, color: '#1e40af' }}>
                                 {w.wr || `WR-${i + 1}`}
                               </td>
                               <td style={{ padding: '4px 8px', fontFamily: 'monospace', textAlign: 'right' }}>
-                                {w.pesoKg ? `${parseFloat(w.pesoKg.replace(',', '.')).toFixed(2)} kg` : '-'}
+                                {w.pesoKg ? `${parsePesoTotal(w.pesoKg).toFixed(2)} kg` : '-'}
                               </td>
                               <td style={{ padding: '4px 8px', color: '#475569', fontSize: '10.5px' }}>
                                 {w.cajaNumero || '-'}
                               </td>
-                              <td style={{ padding: '4px 8px', fontFamily: 'monospace', textAlign: 'right', fontWeight: 700 }}>
-                                ${pUsd.toFixed(2)}
-                              </td>
                               <td style={{ padding: '4px 8px', fontFamily: 'monospace', textAlign: 'right', fontWeight: 800, color: '#059669' }}>
-                                S/ {pPen}
+                                ${pUsd.toFixed(2)}
                               </td>
                             </tr>
                           );
@@ -1073,51 +1250,40 @@ const RegistrarCobroDiarioModalContent: React.FC<RegistrarCobroDiarioModalProps>
                 </div>
               </div>
 
-              {/* RECUADRO RESUMEN FINANCIERO */}
+              {/* RECUADRO RESUMEN FINANCIERO (100% EN DÓLARES) */}
               <div
                 style={{
-                  padding: '14px',
+                  padding: '16px',
                   borderRadius: '10px',
                   backgroundColor: '#f0fdf4',
                   border: '1.5px solid #86efac',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '8px'
+                  gap: '10px'
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '11.5px', color: '#4b5563' }}>
-                  <span>Subtotal en Dólares:</span>
-                  <strong style={{ fontFamily: 'monospace', fontSize: '13px', color: '#0f172a' }}>
-                    ${totalUsd.toFixed(2)} USD
-                  </strong>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '11.5px', color: '#4b5563' }}>
-                  <span>Tipo de Cambio (Kambista):</span>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#2563eb' }}>
-                    S/ {cotizacionKambista.venta.toFixed(3)}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12px', color: '#4b5563' }}>
+                  <span>Moneda de Operación:</span>
+                  <span style={{ fontFamily: 'monospace', fontWeight: 800, color: '#15803d', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <DollarSign style={{ width: '13px', height: '13px' }} /> Dólares Americanos (USD)
                   </span>
                 </div>
 
                 <div
                   style={{
                     borderTop: '1px dashed #86efac',
-                    paddingTop: '8px',
-                    marginTop: '2px',
+                    paddingTop: '10px',
                     display: 'flex',
                     alignItems: 'baseline',
                     justifyContent: 'space-between'
                   }}
                 >
-                  <span style={{ fontSize: '13px', fontWeight: 900, color: '#166534', textTransform: 'uppercase' }}>
+                  <span style={{ fontSize: '13.5px', fontWeight: 900, color: '#166534', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                     Total a Cobrar:
                   </span>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '20px', fontWeight: 900, color: '#059669', fontFamily: 'monospace' }}>
-                      S/ {totalPen.toFixed(2)} PEN
-                    </div>
-                    <div style={{ fontSize: '11px', color: '#64748b', fontFamily: 'monospace' }}>
-                      (${totalUsd.toFixed(2)} USD)
+                    <div style={{ fontSize: '24px', fontWeight: 900, color: '#059669', fontFamily: 'monospace', letterSpacing: '-0.02em' }}>
+                      ${totalUsd.toFixed(2)} USD
                     </div>
                   </div>
                 </div>
