@@ -155,12 +155,12 @@ export default function InventoryTable({
                           fontWeight: 600
                         }}
                       >
-                        {pkg.trackingUsa || '—'}
+                        {pkg.tracking || ''}
                       </div>
                     </td>
                     <td style={{ padding: '10px 14px' }}>
                       <div style={{ fontWeight: 800, color: '#2563eb' }}>
-                        {pkg.nombreConsignatario || 'Consignatario no asignado'}
+                        {pkg.nombreConsignatario || ''}
                       </div>
                     </td>
                     <td style={{ padding: '10px 14px' }}>
@@ -173,12 +173,12 @@ export default function InventoryTable({
                         }}
                         title={pkg.descripcion || undefined}
                       >
-                        {pkg.tipoEmpaque || 'CAJA'}
+                        {pkg.tipoEmpaque || ''}
                       </div>
                     </td>
                     <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
                       <div style={{ fontWeight: 800, color: '#0f172a' }}>
-                        {Number(pkg.pesoKg || 0).toFixed(2)}
+                        {pkg.pesoKg !== null && pkg.pesoKg !== undefined && Number(pkg.pesoKg) > 0 ? Number(pkg.pesoKg).toFixed(2) : ''}
                       </div>
                     </td>
                     <td style={{ padding: '10px 14px' }}>

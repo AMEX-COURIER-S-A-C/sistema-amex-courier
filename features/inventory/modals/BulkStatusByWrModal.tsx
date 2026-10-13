@@ -66,14 +66,14 @@ export default function BulkStatusByWrModal({
       if (p.numeroReciboBodega) {
         wrMap.set(p.numeroReciboBodega.trim().toUpperCase(), p);
       }
-      if (p.trackingUsa) {
-        trackingMap.set(p.trackingUsa.trim().toUpperCase(), p);
+      if (p.tracking) {
+        trackingMap.set(p.tracking.trim().toUpperCase(), p);
       }
     });
 
     uniqueCodes.forEach(code => {
       const formattedWr = smartFormatWr(code);
-      // Buscar coincidencia exacta por WR, WR formateado (11 chars) o por Tracking USA
+      // Buscar coincidencia exacta por WR, WR formateado (11 chars) o por Tracking
       let match = wrMap.get(code) || wrMap.get(formattedWr) || trackingMap.get(code);
 
       // Si no encuentra coincidencia directa y el usuario ingresó solo dígitos, buscar sufijo de WR
@@ -81,7 +81,7 @@ export default function BulkStatusByWrModal({
         const matchingPkg = paquetes.find(
           p =>
             p.numeroReciboBodega?.toUpperCase().includes(code) ||
-            p.trackingUsa?.toUpperCase().includes(code)
+            p.tracking?.toUpperCase().includes(code)
         );
         if (matchingPkg) {
           match = matchingPkg;

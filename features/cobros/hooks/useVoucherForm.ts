@@ -95,7 +95,6 @@ export function useVoucherForm({
       const matchWR = matchesFuzzySearch(wrSearchQuery, [
         p.numeroReciboBodega,
         p.nombreConsignatario,
-        p.dniConsignatario,
         p.posicionEstante
       ]);
       return matchWR;

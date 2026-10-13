@@ -75,7 +75,7 @@ export default function SyncTibImagesModal({
       .map((p) => ({
         id: p.id,
         numeroReciboBodega: p.numeroReciboBodega,
-        tracking: p.trackingUsa || p.tracking || '',
+        tracking: p.tracking || '',
         nombreConsignatario: p.nombreConsignatario || '',
         pesoKg: p.pesoKg || 0,
       }));

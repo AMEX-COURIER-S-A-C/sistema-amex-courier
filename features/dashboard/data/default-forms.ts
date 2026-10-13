@@ -15,17 +15,13 @@ export const EMPTY_CLIENT_FORM: NewClientFormData = {
 
 export const EMPTY_PKG_FORM: NewPkgFormData = {
   numeroReciboBodega: 'WR000000',
-  trackingUsa: '',
-  tipoEmpaque: 'CAJA',
-  numeroFactura: '',
-  dniConsignatario: '',
+  tracking: '',
+  tipoEmpaque: '',
   nombreConsignatario: '',
   descripcion: '',
-  pesoKg: '1.0',
+  pesoKg: '',
   ubicacionActual: 'AmexLince',
   anaquel: 'A1',
   piso: 'P1',
-  posicionEstante: 'A1-P1',
-  metodoEntrega: 'CarroAmexDomicilio',
-  facturaPdfUrl: ''
+  posicionEstante: 'A1-P1'
 };

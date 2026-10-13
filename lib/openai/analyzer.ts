@@ -35,13 +35,13 @@ export const INVOICE_JSON_SCHEMA = {
   schema: {
     type: 'object',
     properties: {
-      tracking_usa: { type: 'string', description: 'Número de rastreo de la compra' },
+      tracking: { type: 'string', description: 'Número de rastreo de la compra' },
       invoice_number: { type: 'string', description: 'Número de factura' },
       descripcion_mercancia: { type: 'string', description: 'Descripción breve de la mercancía' },
       peso_kg: { type: 'number', description: 'Peso en kilogramos' },
       valor_usd: { type: 'number', description: 'Valor total en dólares USD' }
     },
-    required: ['tracking_usa', 'invoice_number', 'descripcion_mercancia', 'peso_kg', 'valor_usd'],
+    required: ['tracking', 'invoice_number', 'descripcion_mercancia', 'peso_kg', 'valor_usd'],
     additionalProperties: false
   }
 } as const;
@@ -196,7 +196,7 @@ export async function analyzeInvoiceDocument(fileBase64: string, mimeType: strin
   const prompt = `Analiza esta factura de compra/invoice de paquete importado. 
 Extrae la siguiente información en formato JSON estricto:
 {
-  "tracking_usa": "número de rastreo de la tienda o courier USA si aparece",
+  "tracking": "número de rastreo de la tienda o courier si aparece",
   "invoice_number": "número de factura/invoice de la compra",
   "descripcion_mercancia": "breve descripción del producto comprado",
   "peso_kg": 0.0,

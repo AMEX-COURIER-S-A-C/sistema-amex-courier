@@ -458,10 +458,8 @@ internal static class Program
             {
                 columns.Add(name, column);
                 // Alias comunes para compatibilidad con las exportaciones del ERP y reportes TIB
-                if ((name == "TRACKINGUSA" || name == "TRACKINGNUMBER") && !columns.ContainsKey("TRACKING"))
+                if (name == "TRACKINGNUMBER" && !columns.ContainsKey("TRACKING"))
                     columns.Add("TRACKING", column);
-                if (name == "TRACKING" && !columns.ContainsKey("TRACKINGUSA"))
-                    columns.Add("TRACKINGUSA", column);
 
                 if ((name == "WR" || name == "GUIA" || name == "RECIBO" || name == "NUMERORECIBOBODEGA") && !columns.ContainsKey("GUIAWR"))
                     columns.Add("GUIAWR", column);

@@ -22,7 +22,7 @@ function validateAndSimulateRelocation(
 
   // 2. Validación de existencia en inventario (Regla 6.4 Reasignar Ubicación)
   const existingPkg = inventory.find(
-    p => p.numeroReciboBodega.toUpperCase() === upper || p.trackingUsa.toUpperCase() === upper
+    p => p.numeroReciboBodega.toUpperCase() === upper || (p.tracking && p.tracking.toUpperCase() === upper)
   );
 
   if (!existingPkg) {
@@ -80,7 +80,6 @@ describe('Módulo 6: Escáner y WMS — Seguridad, Sanitización y Reasignación
         id: 'pkg-1',
         numeroReciboBodega: 'WR100200',
         tracking: '1Z888888',
-        trackingUsa: '1Z888888',
         tipoEmpaque: 'CAJA',
         descripcion: 'Mercancía General',
         ubicacionActual: 'AmexLince',

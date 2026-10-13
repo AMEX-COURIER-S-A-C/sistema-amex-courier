@@ -229,10 +229,9 @@ export default function MobileScannerModal({
 
     const foundPkg = currentPackages.find(p =>
       p.numeroReciboBodega.toUpperCase() === upper ||
-      p.trackingUsa.toUpperCase() === upper ||
-      p.dniConsignatario?.toUpperCase() === upper ||
+      p.tracking.toUpperCase() === upper ||
       (upper.length >= 4 && p.numeroReciboBodega.toUpperCase().includes(upper)) ||
-      (upper.length >= 6 && p.trackingUsa.toUpperCase().includes(upper))
+      (upper.length >= 6 && p.tracking.toUpperCase().includes(upper))
     );
 
     const foundCli = currentClients.find(c =>
@@ -294,7 +293,7 @@ export default function MobileScannerModal({
 
     const foundPkg = currentPackages.find(p =>
       p.numeroReciboBodega.toUpperCase() === upper ||
-      p.trackingUsa.toUpperCase() === upper
+      p.tracking.toUpperCase() === upper
     );
 
     const foundCli = currentClients.find(c =>

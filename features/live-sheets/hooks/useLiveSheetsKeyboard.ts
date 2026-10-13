@@ -273,7 +273,7 @@ export function useLiveSheetsKeyboard({
           targetItemIndex = visibleIdx;
         }
       } else {
-        targetItemIndex = items.findIndex(it => !it.trackingUsa || !it.trackingUsa.trim());
+        targetItemIndex = items.findIndex(it => !it.tracking || !it.tracking.trim());
       }
 
       const match = resolveScannedCodeMatch(scannedText, targetItemIndex);
@@ -293,7 +293,7 @@ export function useLiveSheetsKeyboard({
               idx === targetItemIndex
                 ? {
                     ...it,
-                    trackingUsa: cleanCode,
+                    tracking: cleanCode,
                     notas: resolvedName,
                     estado: 'ESCANEADO',
                     escaneadoEn: nowIso,
@@ -314,7 +314,7 @@ export function useLiveSheetsKeyboard({
           await supabase
             .from('hojas_cotejo_items')
             .update({
-              tracking_usa: cleanCode,
+              tracking: cleanCode,
               notas: resolvedName,
               estado: 'ESCANEADO',
               escaneado_en: nowIso,
@@ -331,7 +331,7 @@ export function useLiveSheetsKeyboard({
               codigo_wr: '',
               casillero: cleanDigits,
               consignatario: '',
-              tracking_usa: cleanCode,
+              tracking: cleanCode,
               notas: resolvedName,
               estado: 'ESCANEADO',
               escaneado_en: nowIso,
@@ -353,7 +353,7 @@ export function useLiveSheetsKeyboard({
                   codigoWr: '',
                   casillero: cleanDigits,
                   consignatario: '',
-                  trackingUsa: cleanCode,
+                  tracking: cleanCode,
                   notas: resolvedName,
                   estado: 'ESCANEADO',
                   escaneadoEn: nowIso,
@@ -384,7 +384,7 @@ export function useLiveSheetsKeyboard({
               idx === targetItemIndex
                 ? {
                     ...it,
-                    trackingUsa: cleanCode,
+                    tracking: cleanCode,
                     notas: notFoundName,
                     estado: 'NO_LISTADO',
                     escaneadoEn: nowIso,
@@ -405,7 +405,7 @@ export function useLiveSheetsKeyboard({
           await supabase
             .from('hojas_cotejo_items')
             .update({
-              tracking_usa: cleanCode,
+              tracking: cleanCode,
               notas: notFoundName,
               estado: 'NO_LISTADO',
               escaneado_en: nowIso,
@@ -422,7 +422,7 @@ export function useLiveSheetsKeyboard({
               codigo_wr: '',
               casillero: cleanDigits,
               consignatario: '',
-              tracking_usa: cleanCode,
+              tracking: cleanCode,
               notas: notFoundName,
               estado: 'NO_LISTADO',
               escaneado_en: nowIso,
@@ -444,7 +444,7 @@ export function useLiveSheetsKeyboard({
                   codigoWr: '',
                   casillero: cleanDigits,
                   consignatario: '',
-                  trackingUsa: cleanCode,
+                  tracking: cleanCode,
                   notas: notFoundName,
                   estado: 'NO_LISTADO',
                   escaneadoEn: nowIso,
@@ -516,7 +516,7 @@ export function useLiveSheetsKeyboard({
           const newItemPayload = {
             hoja_id: activeHojaId,
             codigo_wr: col === 'B' ? trimmed : '',
-            tracking_usa: col === 'D' ? trimmed : '',
+            tracking: col === 'D' ? trimmed : '',
             casillero: col === 'B' ? extractLast6Digits(trimmed) : '',
             consignatario: col === 'A' ? trimmed : '',
             peso_kg: 0,
@@ -543,7 +543,7 @@ export function useLiveSheetsKeyboard({
               id: data.id,
               hojaId: data.hoja_id,
               codigoWr: data.codigo_wr || '',
-              trackingUsa: data.tracking_usa,
+              tracking: (data as any).tracking || '',
               casillero: data.casillero,
               consignatario: data.consignatario,
               pesoKg: Number(data.peso_kg || 0),
@@ -789,7 +789,7 @@ export function useLiveSheetsKeyboard({
             codigo_wr: '',
             casillero: '',
             consignatario: '',
-            tracking_usa: '',
+            tracking: '',
             peso_kg: 0,
             posicion_estante: 'REC',
             notas: '',
@@ -874,7 +874,7 @@ export function useLiveSheetsKeyboard({
             fieldsToUpdate.casillero = newCasillero;
           }
 
-          let newTrackingUsa = existing.trackingUsa;
+          let newTracking = existing.tracking;
           let newEstado = existing.estado;
           let newNotas = existing.notas;
 
@@ -882,8 +882,8 @@ export function useLiveSheetsKeyboard({
             const cleanD = valD.trim();
             if (cleanD) {
               const matchD = resolveScannedCodeMatch(cleanD, itemIdx);
-              newTrackingUsa = matchD.cleanCode;
-              fieldsToUpdate.tracking_usa = matchD.cleanCode;
+              newTracking = matchD.cleanCode;
+              fieldsToUpdate.tracking = matchD.cleanCode;
               fieldsToUpdate.veces_escaneado = 1;
               fieldsToUpdate.escaneado_en = nowIso;
               fieldsToUpdate.escaneado_por = operatorName;
@@ -896,8 +896,8 @@ export function useLiveSheetsKeyboard({
                 fieldsToUpdate.notas = newNotas;
               }
             } else {
-              newTrackingUsa = '';
-              fieldsToUpdate.tracking_usa = '';
+              newTracking = '';
+              fieldsToUpdate.tracking = '';
               fieldsToUpdate.veces_escaneado = 0;
               fieldsToUpdate.escaneado_en = null;
               fieldsToUpdate.escaneado_por = null;
@@ -932,7 +932,7 @@ export function useLiveSheetsKeyboard({
             consignatario: newConsignatario,
             codigoWr: newCodigoWr,
             casillero: newCasillero,
-            trackingUsa: newTrackingUsa,
+            tracking: newTracking,
             estado: newEstado,
             notas: newNotas,
             actualizadoEn: nowIso
@@ -972,7 +972,7 @@ export function useLiveSheetsKeyboard({
             consignatario: finalConsignatario,
             codigo_wr: valB,
             casillero: finalCasillero,
-            tracking_usa: matchResultD?.cleanCode || valD,
+            tracking: matchResultD?.cleanCode || valD,
             peso_kg: dbMatch?.pesoKg || 0,
             posicion_estante: dbMatch?.posicionEstante || 'REC',
             notas: finalNotas,
@@ -1002,7 +1002,7 @@ export function useLiveSheetsKeyboard({
               id: r.id,
               hojaId: r.hoja_id,
               codigoWr: r.codigo_wr || '',
-              trackingUsa: r.tracking_usa,
+              tracking: (r as any).tracking || '',
               casillero: r.casillero,
               consignatario: r.consignatario,
               pesoKg: Number(r.peso_kg || 0),

@@ -139,7 +139,7 @@ export function renderPackagesTableCanvas(packages: Paquete[]): HTMLCanvasElemen
     // Columna 3: Tracking
     ctx.fillStyle = '#334155';
     ctx.font = '500 11.5px "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace';
-    const rawTracking = (pkg.tracking || pkg.trackingUsa || '-').trim();
+    const rawTracking = (pkg.tracking || '-').trim();
     const cleanTracking = rawTracking.length > 17 ? `${rawTracking.slice(0, 15)}...` : rawTracking;
     ctx.fillText(cleanTracking, colX.tracking, currentY + 24);
 

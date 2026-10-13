@@ -62,7 +62,7 @@ export const sheetsService = {
       id: i.id,
       hojaId: i.hoja_id,
       codigoWr: i.codigo_wr,
-      trackingUsa: i.tracking_usa,
+      tracking: (i as any).tracking,
       casillero: i.casillero,
       consignatario: i.consignatario,
       pesoKg: Number(i.peso_kg || 0),
@@ -191,7 +191,7 @@ export const sheetsService = {
         codigo_wr: it.codigo_wr,
         casillero: it.casillero,
         consignatario: it.consignatario,
-        tracking_usa: it.tracking_usa,
+        tracking: (it as any).tracking,
         peso_kg: it.peso_kg,
         posicion_estante: it.posicion_estante,
         notas: it.notas,
@@ -226,7 +226,7 @@ export const sheetsService = {
       .from('hojas_cotejo_items')
       .update({
         estado: 'PENDIENTE',
-        tracking_usa: null,
+        tracking: null,
         notas: null,
         escaneado_en: null,
         escaneado_por: null,
@@ -241,7 +241,7 @@ export const sheetsService = {
     const { error } = await supabase
       .from('hojas_cotejo_items')
       .update({
-        tracking_usa: null,
+        tracking: null,
         notas: null,
         estado: 'PENDIENTE',
         escaneado_en: null,

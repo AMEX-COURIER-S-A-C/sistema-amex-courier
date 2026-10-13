@@ -178,7 +178,7 @@ export default function LiveSheetsTab({
             hoja_id: data.activeHojaId,
             codigo_wr: it.codigoWr,
             casillero: it.casillero || it.codigoWr.replace(/^[A-Za-z]+0*/, ''),
-            tracking_usa: '',
+            tracking: '',
             consignatario: it.consignatario || '',
             peso_kg: it.pesoKg || 0,
             posicion_estante: it.posicionEstante || 'REC',

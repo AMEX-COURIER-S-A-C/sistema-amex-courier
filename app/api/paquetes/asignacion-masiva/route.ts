@@ -43,11 +43,11 @@ export async function GET(req: NextRequest) {
     const [byWr, byTrk] = await Promise.all([
       admin
         .from('paquetes')
-        .select('id, numero_recibo_bodega, tracking, nombre_consignatario, dni_consignatario, ubicacion_actual, anaquel, piso, posicion_estante, estado_amex, estado_tib')
+        .select('id, numero_recibo_bodega, tracking, nombre_consignatario, ubicacion_actual, anaquel, piso, posicion_estante, estado_amex, estado_tib')
         .in('numero_recibo_bodega', rawCodes),
       admin
         .from('paquetes')
-        .select('id, numero_recibo_bodega, tracking, nombre_consignatario, dni_consignatario, ubicacion_actual, anaquel, piso, posicion_estante, estado_amex, estado_tib')
+        .select('id, numero_recibo_bodega, tracking, nombre_consignatario, ubicacion_actual, anaquel, piso, posicion_estante, estado_amex, estado_tib')
         .in('tracking', rawCodes)
     ]);
 
@@ -61,7 +61,6 @@ export async function GET(req: NextRequest) {
       numeroReciboBodega: p.numero_recibo_bodega || '',
       tracking: p.tracking || '',
       nombreConsignatario: p.nombre_consignatario || '',
-      dniConsignatario: p.dni_consignatario || '',
       ubicacionActual: p.ubicacion_actual || 'AmexLince',
       anaquel: p.anaquel || 'A1',
       piso: p.piso || 'P1',
@@ -251,10 +250,11 @@ export async function POST(req: NextRequest) {
     if (autoCreateMissing && missingCodes.length > 0) {
       const newRows = missingCodes.map((code) => ({
         numero_recibo_bodega: code,
-        tracking: code,
-        tipo_empaque: 'CAJA',
+        tracking: null,
+        nombre_consignatario: null,
+        tipo_empaque: null,
         descripcion: 'Mercadería General',
-        peso_kg: 1.0,
+        peso_kg: null,
         ubicacion_actual: targetUbicacion || 'AmexLince',
         anaquel: targetAnaquel,
         piso: isLevelLess ? null : targetPiso,
@@ -292,7 +292,7 @@ export async function POST(req: NextRequest) {
       const newKardexRows = insertedPkgs.map((p) => ({
         paquete_id: p.id,
         codigo_paquete: p.numero_recibo_bodega,
-        consignatario: 'Pendiente de datos',
+        consignatario: null,
         origen_descripcion: 'INGRESO BODEGA / EXCEL',
         destino_descripcion: `${targetUbicacion} (${finalPosicion})`,
         tipo_movimiento: 'INGRESO_MASIVO_EXCEL',

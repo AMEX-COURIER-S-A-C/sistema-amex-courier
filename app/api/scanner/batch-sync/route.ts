@@ -127,7 +127,7 @@ async function handleBatchSync(req: NextRequest): Promise<NextResponse> {
     if (pkg.numero_recibo_bodega) {
       packageMap.set(pkg.numero_recibo_bodega.trim().toUpperCase(), pkg);
     }
-    const trk = (pkg as any).tracking || (pkg as any).tracking_usa;
+    const trk = (pkg as any).tracking;
     if (trk) {
       packageMap.set(String(trk).trim().toUpperCase(), pkg);
     }
@@ -239,10 +239,9 @@ async function handleBatchSync(req: NextRequest): Promise<NextResponse> {
         insertedInThisBatch.add(newWr);
         toInsertList.push({
           numero_recibo_bodega: newWr,
-          tracking: upper.startsWith('WR') ? '' : upper,
-          tipo_empaque: 'Paquete',
-          dni_consignatario: '',
-          nombre_consignatario: consignatario,
+          tracking: upper.startsWith('WR') ? null : upper,
+          tipo_empaque: null,
+          nombre_consignatario: consignatario || null,
           descripcion: 'Mercadería ingresada por Escáner',
           peso_kg: null,
           ubicacion_actual: 'AmexLince',
@@ -293,7 +292,7 @@ async function handleBatchSync(req: NextRequest): Promise<NextResponse> {
       insertedCount = createdPkgs.length;
       for (const created of createdPkgs) {
         const wrUpper = (created.numero_recibo_bodega || '').toUpperCase();
-        const trkUpper = ((created as any).tracking || (created as any).tracking_usa || '').toUpperCase();
+        const trkUpper = ((created as any).tracking || '').toUpperCase();
         for (const item of resolvedItems) {
           if (item.isNew && (item.code === wrUpper || (trkUpper && item.code === trkUpper))) {
             item.pkgId = created.id;
@@ -343,7 +342,7 @@ async function handleBatchSync(req: NextRequest): Promise<NextResponse> {
   const kardexBatch = validResolved.map((it) => ({
     paquete_id: it.pkgId,
     codigo_paquete: it.code,
-    consignatario: it.consignatario || 'Cliente AMEX',
+    consignatario: it.consignatario || null,
     origen_descripcion: it.isNew ? 'Recepción Escáner' : 'Almacén Central',
     destino_descripcion: `AmexLince (${it.location})`,
     tipo_movimiento: 'SLOTTING',

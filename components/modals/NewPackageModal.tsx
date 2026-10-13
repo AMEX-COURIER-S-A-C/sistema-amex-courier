@@ -20,20 +20,15 @@ import {
 
 export interface NewPkgFormData {
   numeroReciboBodega: string;
-  trackingUsa: string;
+  tracking: string;
   tipoEmpaque: string;
-  numeroFactura: string;
-  dniConsignatario: string;
   nombreConsignatario: string;
   descripcion: string;
   pesoKg: string;
-  valorDeclaradoUsd?: string;
   ubicacionActual: string;
   anaquel?: string;
   piso?: string;
   posicionEstante?: string;
-  metodoEntrega: string;
-  facturaPdfUrl: string;
 }
 
 interface NewPackageModalProps {
@@ -123,9 +118,9 @@ export default function NewPackageModal({
       anaquel: ana,
       piso: pis,
       ubicacionActual: form.ubicacionActual || 'AmexLince',
-      nombreConsignatario: form.nombreConsignatario || 'PENDIENTE ASIGNACIÓN TIB',
-      tipoEmpaque: form.tipoEmpaque || 'CAJA',
-      pesoKg: form.pesoKg || '0'
+      nombreConsignatario: form.nombreConsignatario || '',
+      tipoEmpaque: form.tipoEmpaque || '',
+      pesoKg: form.pesoKg || ''
     });
 
     setValidationError(null);

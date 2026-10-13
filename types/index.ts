@@ -31,10 +31,8 @@ export interface Paquete {
   embarqueId?: string;
   numeroReciboBodega: string;        // Ej: WR000451
   tracking: string;                  // Tracking
-  trackingUsa: string;               // Alias de compatibilidad (string garantizado)
   tipoEmpaque: string;               // CAJA, SOBRE, SACA
   numeroFactura?: string;
-  dniConsignatario?: string;
   nombreConsignatario?: string;
   descripcion: string;
   pesoKg: number;
@@ -184,9 +182,8 @@ export interface ItemPicking {
   ordenPickingId: string;
   paqueteId?: string;
   codigoReciboBodega: string;        // Ej: WR000451
-  trackingUsa?: string;
+  tracking?: string;
   consignatario?: string;
-  dniConsignatario?: string;
   telefonoConsignatario?: string;
   ciudadDestino?: string;
   direccionDestino?: string;
@@ -287,7 +284,7 @@ export interface ItemCotejo {
   id: string;
   hojaId: string;
   codigoWr: string;
-  trackingUsa?: string;
+  tracking?: string;
   casillero?: string;
   consignatario?: string;
   pesoKg?: number;

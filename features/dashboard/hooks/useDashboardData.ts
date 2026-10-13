@@ -42,11 +42,9 @@ function mapPaquete(row: Record<string, unknown>): Paquete {
   return {
     id: String(row.id),
     numeroReciboBodega: String(row.numero_recibo_bodega || ''),
-    tracking: String(row.tracking || row.tracking_usa || ''),
-    trackingUsa: String(row.tracking || row.tracking_usa || ''),
+    tracking: String(row.tracking || ''),
     tipoEmpaque: String(row.tipo_empaque || ''),
     numeroFactura: '',
-    dniConsignatario: String(row.dni_consignatario || ''),
     nombreConsignatario: String(row.nombre_consignatario || ''),
     descripcion: String(row.descripcion || ''),
     pesoKg: row.peso_kg !== null && row.peso_kg !== undefined ? Number(row.peso_kg) : 0,

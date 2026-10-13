@@ -91,7 +91,6 @@ export default function ScannerBulkLocationView({
     paquetes.forEach((p) => {
       if (p.numeroReciboBodega) map.set(p.numeroReciboBodega.trim().toUpperCase(), p);
       if (p.tracking) map.set(p.tracking.trim().toUpperCase(), p);
-      if (p.trackingUsa) map.set(p.trackingUsa.trim().toUpperCase(), p);
     });
     extraDbFound.forEach((p) => {
       if (p.numeroReciboBodega && !map.has(p.numeroReciboBodega.trim().toUpperCase())) {
@@ -99,9 +98,6 @@ export default function ScannerBulkLocationView({
       }
       if (p.tracking && !map.has(p.tracking.trim().toUpperCase())) {
         map.set(p.tracking.trim().toUpperCase(), p);
-      }
-      if (p.trackingUsa && !map.has(p.trackingUsa.trim().toUpperCase())) {
-        map.set(p.trackingUsa.trim().toUpperCase(), p);
       }
     });
     return map;
@@ -179,7 +175,7 @@ export default function ScannerBulkLocationView({
     e.preventDefault();
     const payloadCodes = autoCreateMissing
       ? uniqueCodes
-      : matchedPackages.map((p) => p.numeroReciboBodega || p.trackingUsa).filter(Boolean);
+      : matchedPackages.map((p) => p.numeroReciboBodega || p.tracking).filter(Boolean);
 
     if (payloadCodes.length === 0) {
       alert('No hay paquetes válidos para asignar.');
@@ -821,7 +817,7 @@ export default function ScannerBulkLocationView({
                       </tr>
                     </thead>
                     <tbody>
-                      {(autoCreateMissing ? uniqueCodes : matchedPackages.map((p) => p.numeroReciboBodega || p.trackingUsa || '')).map((code, idx) => {
+                      {(autoCreateMissing ? uniqueCodes : matchedPackages.map((p) => p.numeroReciboBodega || p.tracking || '')).map((code, idx) => {
                         const pkg = combinedPackages.get(code);
                         const isNew = !pkg;
 
@@ -843,7 +839,7 @@ export default function ScannerBulkLocationView({
                               )}
                             </td>
                             <td style={{ padding: '8px 12px', color: '#334155', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {pkg?.nombreConsignatario || (isNew ? 'Por registrar' : '—')}
+                              {pkg?.nombreConsignatario || ''}
                             </td>
                             <td style={{ padding: '8px 12px' }}>
                               <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>

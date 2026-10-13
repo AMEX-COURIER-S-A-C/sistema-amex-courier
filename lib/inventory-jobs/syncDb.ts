@@ -128,7 +128,7 @@ export async function syncCompletedExcelToDatabase(
 
       const rawTracking = colIndex.tracking !== -1 ? String(r[colIndex.tracking] || '').trim() : '';
       const rawCliente = colIndex.cliente !== -1 ? String(r[colIndex.cliente] || '').trim() : '';
-      const rawTipo = colIndex.tipoEmpaque !== -1 ? String(r[colIndex.tipoEmpaque] || '').trim() : 'CAJA';
+      const rawTipo = colIndex.tipoEmpaque !== -1 ? String(r[colIndex.tipoEmpaque] || '').trim() : '';
       const rawPesoVal = colIndex.peso !== -1 ? r[colIndex.peso] : null;
       let pesoKg: number | null = null;
       if (rawPesoVal !== null && rawPesoVal !== undefined && rawPesoVal !== '') {
@@ -211,9 +211,9 @@ export async function syncCompletedExcelToDatabase(
           payload: {
             id: existing.id,
             numero_recibo_bodega: existing.numero_recibo_bodega,
-            tracking: item.tracking || existing.tracking || existing.tracking_usa,
+            tracking: item.tracking || existing.tracking,
             nombre_consignatario: item.cliente || existing.nombre_consignatario,
-            tipo_empaque: item.tipoEmpaque || existing.tipo_empaque || 'CAJA',
+            tipo_empaque: item.tipoEmpaque || existing.tipo_empaque || null,
             peso_kg: item.pesoKg !== null ? item.pesoKg : existing.peso_kg,
             estado_tib: mappedEstado || existing.estado_tib,
             ubicacion_actual: existing.ubicacion_actual || 'AmexLince',
@@ -232,7 +232,7 @@ export async function syncCompletedExcelToDatabase(
           payload: {
             numero_recibo_bodega: item.wr,
             tracking: item.tracking,
-            tipo_empaque: item.tipoEmpaque || 'CAJA',
+            tipo_empaque: item.tipoEmpaque || null,
             nombre_consignatario: item.cliente,
             peso_kg: item.pesoKg,
             estado_tib: mappedEstado,

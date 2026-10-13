@@ -78,7 +78,7 @@ export function DniLinkClientModal({
                   updateSlot({
                     ...activeSlot,
                     paqueteId: p.id,
-                    label: `${p.numeroReciboBodega} - ${p.nombreConsignatario || p.dniConsignatario || ''}`
+                    label: `${p.numeroReciboBodega} - ${p.nombreConsignatario || ''}`
                   });
                   onClose();
                   showToast(`Vinculado con WR ${p.numeroReciboBodega}`, 'success');
@@ -90,7 +90,7 @@ export function DniLinkClientModal({
               </option>
               {paquetes.slice(0, 100).map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.numeroReciboBodega} - {p.nombreConsignatario || p.dniConsignatario || 'Sin nombre'}
+                  {p.numeroReciboBodega} - {p.nombreConsignatario || 'Sin nombre'}
                 </option>
               ))}
             </select>

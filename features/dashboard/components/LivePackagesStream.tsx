@@ -380,7 +380,7 @@ export function LivePackagesStream({
                             border: '1px solid #e2e8f0'
                           }}
                         >
-                          {pkg.trackingUsa || pkg.numeroReciboBodega}
+                          {pkg.tracking || pkg.numeroReciboBodega}
                         </span>
                         <span
                           style={{

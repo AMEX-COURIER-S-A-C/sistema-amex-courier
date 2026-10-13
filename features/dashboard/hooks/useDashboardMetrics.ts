@@ -176,7 +176,7 @@ export function useDashboardMetrics({
     const clientesActivos = new Set(
       paquetes
         .filter(p => p.estadoEntrega !== 'Entregado' && p.estadoEntrega !== 'EntregadoDomicilio' && p.estadoEntrega !== 'RecogidoAlmacen')
-        .map(p => (p.nombreConsignatario || p.dniConsignatario || p.numeroReciboBodega).toUpperCase())
+        .map(p => (p.nombreConsignatario || p.numeroReciboBodega).toUpperCase())
     );
     return clientesActivos.size;
   }, [paquetes]);
@@ -555,7 +555,7 @@ export function useDashboardMetrics({
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const matchWr = (p.numeroReciboBodega || '').toLowerCase().includes(q);
-        const matchTracking = (p.trackingUsa || '').toLowerCase().includes(q);
+        const matchTracking = (p.tracking || '').toLowerCase().includes(q);
         const matchName = (p.nombreConsignatario || '').toLowerCase().includes(q);
         const matchPos = (p.posicionEstante || '').toLowerCase().includes(q);
         const matchDesc = (p.descripcion || '').toLowerCase().includes(q);

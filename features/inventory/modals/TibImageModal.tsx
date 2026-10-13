@@ -223,7 +223,7 @@ export default function TibImageModal({
                   {paquete.numeroReciboBodega}
                 </span>
                 <span>•</span>
-                <span>Tracking: {paquete.trackingUsa || paquete.tracking || '—'}</span>
+                <span>Tracking: {paquete.tracking || '—'}</span>
               </div>
             </div>
           </div>
@@ -784,7 +784,7 @@ export default function TibImageModal({
               </span>
               <span style={{ color: '#64748b' }}>•</span>
               <span style={{ fontSize: '13px', color: '#e2e8f0', fontFamily: 'monospace' }}>
-                {paquete.trackingUsa || paquete.tracking || ''}
+                {paquete.tracking || ''}
               </span>
               <span style={{ color: '#64748b' }}>•</span>
               <span style={{ fontSize: '11.5px', color: '#38bdf8', fontWeight: 700, background: 'rgba(56, 189, 248, 0.15)', padding: '2px 8px', borderRadius: '4px' }}>

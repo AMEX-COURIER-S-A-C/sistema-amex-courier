@@ -794,7 +794,7 @@ export type Database = {
           orden: number | null
           peso_kg: number | null
           posicion_estante: string | null
-          tracking_usa: string | null
+          tracking: string | null
           veces_escaneado: number | null
         }
         Insert: {
@@ -812,7 +812,7 @@ export type Database = {
           orden?: number | null
           peso_kg?: number | null
           posicion_estante?: string | null
-          tracking_usa?: string | null
+          tracking?: string | null
           veces_escaneado?: number | null
         }
         Update: {
@@ -830,7 +830,7 @@ export type Database = {
           orden?: number | null
           peso_kg?: number | null
           posicion_estante?: string | null
-          tracking_usa?: string | null
+          tracking?: string | null
           veces_escaneado?: number | null
         }
         Relationships: [
@@ -1250,7 +1250,6 @@ export type Database = {
           creado_en: string | null
           creado_por: string | null
           descripcion: string | null
-          dni_consignatario: string | null
           eliminado_en: string | null
           eliminado_por: string | null
           estado_amex: string
@@ -1276,7 +1275,6 @@ export type Database = {
           creado_en?: string | null
           creado_por?: string | null
           descripcion?: string | null
-          dni_consignatario?: string | null
           eliminado_en?: string | null
           eliminado_por?: string | null
           estado_amex?: string
@@ -1302,7 +1300,6 @@ export type Database = {
           creado_en?: string | null
           creado_por?: string | null
           descripcion?: string | null
-          dni_consignatario?: string | null
           eliminado_en?: string | null
           eliminado_por?: string | null
           estado_amex?: string

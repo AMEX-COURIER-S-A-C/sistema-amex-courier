@@ -74,7 +74,7 @@ export function useDashboardActions({
     setPaquetes((previous) => {
       snapshot = previous;
       return previous.map((item) =>
-        item.numeroReciboBodega.toUpperCase() === upper || item.trackingUsa.toUpperCase() === upper
+        item.numeroReciboBodega.toUpperCase() === upper || item.tracking.toUpperCase() === upper
           ? { ...item, anaquel, piso, posicionEstante: location, estadoAmex: 'en_almacen', actualizadoEn: new Date().toISOString() }
           : item
       );
@@ -148,23 +148,22 @@ export function useDashboardActions({
     const posicion = newPkgForm.posicionEstante || `${newPkgForm.anaquel || 'A1'}-${newPkgForm.piso || 'P1'}`;
     const [anaquel, piso] = posicion.includes('-') ? posicion.split('-') : [posicion, 'P1'];
 
-    const numPeso = parseFloat(newPkgForm.pesoKg) || 0;
+    const rawPeso = parseFloat(newPkgForm.pesoKg);
+    const numPeso = (!isNaN(rawPeso) && rawPeso > 0) ? rawPeso : 0;
+    const pesoDb = (!isNaN(rawPeso) && rawPeso > 0) ? rawPeso : null;
     const wr = cleanWr(newPkgForm.numeroReciboBodega);
     if (!isValidWr(wr)) {
       console.error('El código WR debe comenzar con WR y tener exactamente 11 caracteres:', wr);
       return;
     }
-    const tracking = newPkgForm.trackingUsa?.trim() || '';
-    const nombre = newPkgForm.nombreConsignatario?.trim() || 'PENDIENTE ASIGNACIÓN TIB';
+    const tracking = newPkgForm.tracking?.trim() || '';
+    const nombre = newPkgForm.nombreConsignatario?.trim() || '';
 
     const newPackage: Paquete = {
       id: `p-${Date.now()}`,
       numeroReciboBodega: wr,
       tracking: tracking,
-      trackingUsa: tracking,
-      tipoEmpaque: newPkgForm.tipoEmpaque || 'CAJA',
-      numeroFactura: newPkgForm.numeroFactura?.trim() || '',
-      dniConsignatario: newPkgForm.dniConsignatario?.trim() || '',
+      tipoEmpaque: newPkgForm.tipoEmpaque || '',
       nombreConsignatario: nombre,
       descripcion: newPkgForm.descripcion?.trim() || 'MERCANCÍA GENERAL',
       pesoKg: numPeso,
@@ -172,11 +171,10 @@ export function useDashboardActions({
       anaquel,
       piso,
       posicionEstante: posicion,
-      metodoEntrega: (newPkgForm.metodoEntrega || 'CarroAmexDomicilio') as TipoMetodoEntrega,
+      metodoEntrega: 'CarroAmexDomicilio' as TipoMetodoEntrega,
       estadoTib: 'EnAlmacen',
       estadoEntrega: 'EnAlmacen' as TipoEstadoEntrega,
       estadoAmex: 'en_almacen',
-      facturaPdfUrl: newPkgForm.facturaPdfUrl || '',
       usuarioEmail: currentUser?.email || '',
       creadoPor: currentUser?.id || undefined,
       creadoEn: new Date().toISOString(),
@@ -190,11 +188,10 @@ export function useDashboardActions({
       const { data: insertedPkg, error: insertError } = await supabase.from('paquetes').insert({
         numero_recibo_bodega: wr,
         tracking: tracking || null,
-        tipo_empaque: newPkgForm.tipoEmpaque || 'CAJA',
-        dni_consignatario: newPkgForm.dniConsignatario?.trim() || null,
-        nombre_consignatario: nombre,
+        tipo_empaque: newPkgForm.tipoEmpaque || null,
+        nombre_consignatario: nombre || null,
         descripcion: newPkgForm.descripcion?.trim() || 'MERCANCÍA GENERAL',
-        peso_kg: numPeso,
+        peso_kg: pesoDb,
         ubicacion_actual: newPkgForm.ubicacionActual || 'AmexLince',
         anaquel,
         piso,
@@ -211,7 +208,7 @@ export function useDashboardActions({
         await supabase.from('movimientos_kardex').insert({
           paquete_id: insertedPkg?.id || null,
           codigo_paquete: wr,
-          consignatario: nombre,
+          consignatario: nombre || null,
           origen_descripcion: 'INGRESO BODEGA / MIAMI',
           destino_descripcion: `${newPkgForm.ubicacionActual || 'AmexLince'} (${posicion})`,
           tipo_movimiento: 'INGRESO_ALMACEN',

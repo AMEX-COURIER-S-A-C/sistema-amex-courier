@@ -98,7 +98,7 @@ export const InvoiceCloudService = {
           invoiceDate: row.invoice_date || inv.invoiceDate,
           shipToName: row.consignee_name || inv.shipToName,
           consigneeDni: row.consignee_dni || inv.consigneeDni,
-          trackingUsa: row.tracking || inv.trackingUsa,
+          tracking: row.tracking || inv.tracking,
           savedAt: row.creado_en
         };
       });
@@ -126,7 +126,7 @@ export const InvoiceCloudService = {
           invoice_date: params.data.invoiceDate || new Date().toLocaleDateString(),
           consignee_name: params.data.shipToName || params.data.billToName || 'CLIENTE AMEX',
           consignee_dni: params.data.consigneeDni || null,
-          tracking: params.data.trackingUsa || null,
+          tracking: params.data.tracking || null,
           total_value_fob: totalFob,
           items_count: Array.isArray(params.data.items) ? params.data.items.length : 0,
           invoice_data: params.data,

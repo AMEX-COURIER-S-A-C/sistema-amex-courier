@@ -262,7 +262,7 @@ export function useCobrosOperaciones() {
         const matchWR = lote.itemsWR.some(
           (w) =>
             w.wr.toUpperCase().includes(q) ||
-            w.trackingUsa?.toUpperCase().includes(q) ||
+            w.tracking?.toUpperCase().includes(q) ||
             w.consignatarioNombre?.toUpperCase().includes(q) ||
             w.notas?.toUpperCase().includes(q)
         );
@@ -712,7 +712,7 @@ export function useCobrosOperaciones() {
         pesoKg: number;
         precioUsd: number;
         cajaNumero?: string;
-        trackingUsa?: string;
+        tracking?: string;
         consignatarioNombre?: string;
         notas?: string;
       }>;
@@ -729,7 +729,7 @@ export function useCobrosOperaciones() {
         id: `wr_${Date.now()}_${idx}_${Math.random().toString(36).substr(2, 4)}`,
         wr: item.wr.trim().toUpperCase() || `WR-${Date.now().toString().slice(-6)}`,
         cajaNumero: item.cajaNumero?.trim() || undefined,
-        trackingUsa: item.trackingUsa?.trim() || undefined,
+        tracking: item.tracking?.trim() || undefined,
         pesoKg: Number(item.pesoKg) || 0,
         precioUsd: Number(item.precioUsd) || 0,
         estadoPago,

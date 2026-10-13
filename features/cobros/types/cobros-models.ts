@@ -17,7 +17,7 @@ export interface RegistroEntrega {
 export interface ItemCobroWR {
   id: string;
   wr: string; // ej: "WR000459529"
-  trackingUsa?: string; // ej: "1Z2B11530323709731"
+  tracking?: string; // ej: "1Z2B11530323709731"
   cajaNumero?: string; // ej: "15", "10 Y 13", "CE176A1"
   pesoKg: number;
   precioUsd: number;

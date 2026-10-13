@@ -8,7 +8,7 @@ import { parseClipboardSpreadsheet } from '@/features/live-sheets/utils/clipboar
 
 interface ParsedItem {
   codigoWr: string;
-  trackingUsa?: string;
+  tracking?: string;
   casillero?: string;
   consignatario?: string;
   pesoKg?: number;
@@ -93,7 +93,7 @@ export default function PasteWrListModal({
 
       items.push({
         codigoWr: normalizedCode,
-        trackingUsa: safeTib || dbMatch?.trackingUsa || '',
+        tracking: safeTib || dbMatch?.tracking || '',
         casillero: safeTib || '',
         consignatario: finalConsignee,
         pesoKg: Number(cols[3] || cols[4]) || dbMatch?.pesoKg || 0,

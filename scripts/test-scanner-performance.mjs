@@ -57,7 +57,7 @@ async function testCurrentSequentialMethod() {
     const { data: foundList } = await supabase
       .from('paquetes')
       .select('id, numero_recibo_bodega, nombre_consignatario, ubicacion_actual, posicion_estante, eliminado_en')
-      .or(`numero_recibo_bodega.eq.${upper},tracking_usa.eq.${upper}`)
+      .or(`numero_recibo_bodega.eq.${upper},tracking.eq.${upper}`)
       .limit(1);
 
     let targetPkgId = null;
@@ -94,7 +94,7 @@ async function testCurrentSequentialMethod() {
         .from('paquetes')
         .insert({
           numero_recibo_bodega: upper,
-          tracking_usa: '',
+          tracking: '',
           tipo_empaque: 'Paquete',
           descripcion: 'Mercadería de prueba escáner',
           valor_declarado_usd: 50.0,
@@ -179,13 +179,13 @@ async function testOptimizedBatchMethod() {
   roundTrips++;
   const { data: existingList } = await supabase
     .from('paquetes')
-    .select('id, numero_recibo_bodega, tracking_usa')
-    .or(`numero_recibo_bodega.in.(${codes.map(c => `"${c}"`).join(',')}),tracking_usa.in.(${codes.map(c => `"${c}"`).join(',')})`);
+    .select('id, numero_recibo_bodega, tracking')
+    .or(`numero_recibo_bodega.in.(${codes.map(c => `"${c}"`).join(',')}),tracking.in.(${codes.map(c => `"${c}"`).join(',')})`);
 
   const existingMap = new Map();
   for (const p of existingList || []) {
     if (p.numero_recibo_bodega) existingMap.set(p.numero_recibo_bodega.toUpperCase(), p);
-    if (p.tracking_usa) existingMap.set(p.tracking_usa.toUpperCase(), p);
+    if (p.tracking) existingMap.set(p.tracking.toUpperCase(), p);
   }
 
   const toInsert = [];
@@ -210,7 +210,7 @@ async function testOptimizedBatchMethod() {
     } else {
       toInsert.push({
         numero_recibo_bodega: upper,
-        tracking_usa: '',
+        tracking: '',
         tipo_empaque: 'Paquete',
         descripcion: 'Mercadería de prueba escáner batch',
         valor_declarado_usd: 50.0,

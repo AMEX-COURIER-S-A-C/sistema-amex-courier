@@ -91,13 +91,16 @@ export default function EditPackageModal({
             <div className="form-group">
               <label style={{ fontSize: '12px', fontWeight: 800, color: '#334155' }}>Tipo Empaque</label>
               <select
-                value={editFormData.tipoEmpaque || 'CAJA'}
+                value={editFormData.tipoEmpaque || ''}
                 onChange={e => setEditFormData({ ...editFormData, tipoEmpaque: e.target.value })}
                 className="form-control"
               >
+                <option value="">(Sin asignar)</option>
                 <option value="CAJA">CAJA</option>
                 <option value="SOBRE">SOBRE</option>
                 <option value="SACA">SACA</option>
+                <option value="BOLSA">BOLSA</option>
+                <option value="VALIJA">VALIJA</option>
               </select>
             </div>
           </div>

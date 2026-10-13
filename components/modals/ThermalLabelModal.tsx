@@ -19,7 +19,7 @@ export default function ThermalLabelModal({ pkg, onClose }: ThermalLabelModalPro
           <div className="shipping-label-card">
             <div className="label-header">
               <span style={{ fontWeight: 800, fontSize: '18px' }}>AMEX COURIER PERÚ</span>
-              <span style={{ background: '#000', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontWeight: 800 }}>{pkg.trackingUsa || pkg.numeroReciboBodega}</span>
+              <span style={{ background: '#000', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontWeight: 800 }}>{pkg.tracking || pkg.numeroReciboBodega}</span>
             </div>
             <div className="label-agency-box">
               {pkg.metodoEntrega === 'CarroAmexDomicilio' ? 'REPARTO DOMICILIO LINCE' : 'AGENCIA SHALOM / OLVA'}
@@ -27,7 +27,6 @@ export default function ThermalLabelModal({ pkg, onClose }: ThermalLabelModalPro
             <div className="label-section">
               <div className="label-title">Consignatario:</div>
               <div style={{ fontWeight: 800, fontSize: '15px' }}>{pkg.nombreConsignatario || 'María Torres Pérez'}</div>
-              <div>DNI: {pkg.dniConsignatario || '72819204'}</div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', borderTop: '1px solid #ccc', paddingTop: '8px' }}>
               <div>

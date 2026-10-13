@@ -242,7 +242,7 @@ describe('Cloud-First Synchronization Services (Módulos 7, 10, 11 y 6.1)', () =
           billToName: 'LUIS SALAZAR',
           shipToName: 'LUIS SALAZAR',
           consigneeDni: '77889900',
-          trackingUsa: 'TBA123456',
+          tracking: 'TBA123456',
           invoiceAmount: '$150.00',
           companyName: 'ACCESSORIES SALES',
           companyAddress: 'Miami',

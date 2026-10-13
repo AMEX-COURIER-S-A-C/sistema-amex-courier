@@ -464,7 +464,7 @@ export default function ScannerTab({
   ) => {
     // 6.4 Reasignar: la ubicación ya se persistió vía onSlotPackage; no se encola en la cola de lecturas
     if (extra?.mode === 'relocate') {
-      const foundPkg = extra.pkg || paquetes.find(p => p.numeroReciboBodega.toUpperCase() === code.toUpperCase() || p.trackingUsa.toUpperCase() === code.toUpperCase());
+      const foundPkg = extra.pkg || paquetes.find(p => p.numeroReciboBodega.toUpperCase() === code.toUpperCase() || p.tracking.toUpperCase() === code.toUpperCase());
       if (!foundPkg) {
         soundEffects.playNotFound();
         alert(`⚠️ El paquete "${code}" no existe en el inventario. Solo se pueden reubicar paquetes previamente registrados en bodega.`);
@@ -490,7 +490,7 @@ export default function ScannerTab({
 
     // Si estamos en 6.3 Despachar, registrar en la lista de despacho de la sesión
     if (currentSub === 'delivery') {
-      const foundPkg = extra?.pkg || paquetes.find(p => p.numeroReciboBodega.toUpperCase() === code.toUpperCase() || p.trackingUsa.toUpperCase() === code.toUpperCase());
+      const foundPkg = extra?.pkg || paquetes.find(p => p.numeroReciboBodega.toUpperCase() === code.toUpperCase() || p.tracking.toUpperCase() === code.toUpperCase());
       const newDispatchItem = {
         id: `dsp-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         code: code,
@@ -519,8 +519,7 @@ export default function ScannerTab({
 
     const foundPkg = paquetes.find(p =>
       p.numeroReciboBodega.toUpperCase() === q ||
-      p.trackingUsa.toUpperCase() === q ||
-      p.dniConsignatario?.toUpperCase() === q ||
+      p.tracking.toUpperCase() === q ||
       p.nombreConsignatario?.toUpperCase().includes(q)
     );
 
@@ -541,7 +540,6 @@ export default function ScannerTab({
   const matchingClientFor360 = useMemo(() => {
     if (!activePackageIn360) return null;
     return clientes.find(c =>
-      (activePackageIn360.dniConsignatario && c.documentoIdentidad === activePackageIn360.dniConsignatario) ||
       (activePackageIn360.nombreConsignatario && c.nombre.toUpperCase() === activePackageIn360.nombreConsignatario.toUpperCase())
     ) || lookupMatch?.cli || null;
   }, [activePackageIn360, clientes, lookupMatch]);
@@ -557,9 +555,8 @@ export default function ScannerTab({
     return paquetes.filter(p =>
       matchesFuzzySearch(liveSearchQuery, [
         p.numeroReciboBodega,
-        p.trackingUsa,
+        p.tracking,
         p.nombreConsignatario,
-        p.dniConsignatario,
         p.posicionEstante
       ])
     ).slice(0, 20);
@@ -1156,7 +1153,7 @@ export default function ScannerTab({
                         {activePackageIn360.numeroReciboBodega}
                       </div>
                       <div style={{ fontSize: '11.5px', color: '#64748b', fontFamily: 'monospace', marginTop: '2px' }}>
-                        Tracking USA: <strong>{activePackageIn360.trackingUsa}</strong>
+                        Tracking: <strong>{activePackageIn360.tracking || 'N/A'}</strong>
                       </div>
                     </div>
 
@@ -1197,8 +1194,8 @@ export default function ScannerTab({
                         <strong style={{ color: '#0f172a' }}>{activePackageIn360.nombreConsignatario || 'Sin nombre'}</strong>
                       </div>
                       <div>
-                        <span style={{ color: '#64748b', fontSize: '11px', display: 'block' }}>DNI / Documento:</span>
-                        <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>{activePackageIn360.dniConsignatario || 'N/A'}</strong>
+                        <span style={{ color: '#64748b', fontSize: '11px', display: 'block' }}>Documento Cliente:</span>
+                        <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>{matchingClientFor360?.documentoIdentidad || 'N/A'}</strong>
                       </div>
                       <div>
                         <span style={{ color: '#64748b', fontSize: '11px', display: 'block' }}>Teléfono:</span>

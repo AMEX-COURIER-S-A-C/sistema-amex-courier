@@ -34,9 +34,6 @@ export function parseAndMatchWrs(rawText: string, paquetes: Partial<Paquete>[]) 
     if (p.tracking) {
       trackingMap.set(p.tracking.trim().toUpperCase(), p);
     }
-    if (p.trackingUsa) {
-      trackingMap.set(p.trackingUsa.trim().toUpperCase(), p);
-    }
   });
 
   uniqueCodes.forEach(code => {
@@ -46,8 +43,7 @@ export function parseAndMatchWrs(rawText: string, paquetes: Partial<Paquete>[]) 
       const matchingPkg = paquetes.find(
         p =>
           p.numeroReciboBodega?.toUpperCase().includes(code) ||
-          p.tracking?.toUpperCase().includes(code) ||
-          p.trackingUsa?.toUpperCase().includes(code)
+          p.tracking?.toUpperCase().includes(code)
       );
       if (matchingPkg) {
         match = matchingPkg;
@@ -72,9 +68,9 @@ export function parseAndMatchWrs(rawText: string, paquetes: Partial<Paquete>[]) 
 
 describe('Bulk WR Parser & Matcher', () => {
   const samplePackages: Partial<Paquete>[] = [
-    { id: '1', numeroReciboBodega: 'WR-1001', trackingUsa: '1Z999AAA', estadoAmex: 'en_almacen' },
-    { id: '2', numeroReciboBodega: 'WR-1002', trackingUsa: 'TBA12345', estadoAmex: 'en_almacen' },
-    { id: '3', numeroReciboBodega: 'WR-1003', trackingUsa: '94001000', estadoAmex: 'listo_recojo' }
+    { id: '1', numeroReciboBodega: 'WR-1001', tracking: '1Z999AAA', estadoAmex: 'en_almacen' },
+    { id: '2', numeroReciboBodega: 'WR-1002', tracking: 'TBA12345', estadoAmex: 'en_almacen' },
+    { id: '3', numeroReciboBodega: 'WR-1003', tracking: '94001000', estadoAmex: 'listo_recojo' }
   ];
 
   it('correctly matches multiple WRs separated by newlines and commas', () => {

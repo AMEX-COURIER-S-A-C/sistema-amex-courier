@@ -172,9 +172,10 @@ export function useFormatoEntrega(
 
     // Buscar si el cliente tiene paquetes en almacén
     const clientPkgs = paquetesAlmacen.filter(p => {
-      const dniMatch = cliente.documentoIdentidad && p.dniConsignatario === cliente.documentoIdentidad;
-      const nameMatch = p.nombreConsignatario && p.nombreConsignatario.toLowerCase().includes(cliente.nombre.toLowerCase());
-      return dniMatch || nameMatch;
+      const clientDocMatch = Boolean(cliente.documentoIdentidad && (p as any).cliente?.documentoIdentidad === cliente.documentoIdentidad);
+      const clientIdMatch = Boolean(p.clienteId && p.clienteId === cliente.id);
+      const nameMatch = Boolean(p.nombreConsignatario && p.nombreConsignatario.toLowerCase().includes(cliente.nombre.toLowerCase()));
+      return clientDocMatch || clientIdMatch || nameMatch;
     });
 
     if (clientPkgs.length > 0) {

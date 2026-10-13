@@ -103,7 +103,7 @@ const DirectorioClienteModalContent: React.FC<DirectorioClienteModalProps & { cl
     return clienteResumen.historialWRs.filter(
       (w) =>
         w.wr.toUpperCase().includes(q) ||
-        w.trackingUsa?.toUpperCase().includes(q) ||
+        w.tracking?.toUpperCase().includes(q) ||
         w.consignatarioNombre?.toUpperCase().includes(q) ||
         w.notas?.toUpperCase().includes(q)
     );

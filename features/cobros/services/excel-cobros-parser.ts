@@ -260,8 +260,8 @@ export const ExcelCobrosParser = {
           };
         }
 
-        // Detección de Tracking USA o número de caja
-        let trackingUsa: string | undefined = undefined;
+        // Detección de Tracking o número de caja
+        let tracking: string | undefined = undefined;
         let cajaNumero: string | undefined = undefined;
 
         const isPaymentOrStatusKeyword =
@@ -275,7 +275,7 @@ export const ExcelCobrosParser = {
 
         if (c5 && !isPaymentOrStatusKeyword) {
           if (c5.startsWith('1Z') || c5.startsWith('TBA') || c5.length > 10) {
-            trackingUsa = c5;
+            tracking = c5;
           } else {
             cajaNumero = c5;
           }
@@ -284,7 +284,7 @@ export const ExcelCobrosParser = {
         const item: ItemCobroWR = {
           id: `wr_${sheetName}_${R}_${Math.random().toString(36).substring(2, 7)}`,
           wr: wrText,
-          trackingUsa,
+          tracking,
           cajaNumero,
           pesoKg: pesoNum,
           precioUsd: precioNum,

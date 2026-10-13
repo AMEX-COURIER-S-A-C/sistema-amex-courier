@@ -147,8 +147,8 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
   const allScannedCodes = useMemo(() => {
     const set = new Set<string>();
     items.forEach(it => {
-      if (it.trackingUsa) {
-        const clean = it.trackingUsa.toUpperCase().replace(/\s+/g, '');
+      if (it.tracking) {
+        const clean = it.tracking.toUpperCase().replace(/\s+/g, '');
         if (clean) {
           set.add(clean);
           const digits = clean.replace(/^[A-Za-z]+0*/, '');
@@ -224,7 +224,7 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
         (wrDigits && allScannedCodes.has(wrDigits));
 
       let displayEstado: 'ENCONTRADO' | 'NO ENCONTRADO' | 'PENDIENTE' | '' = '';
-      const scannedCode = (it.trackingUsa || '').trim();
+      const scannedCode = (it.tracking || '').trim();
       let scannedName = (it.notas || '').trim();
 
       if (scannedCode) {
@@ -326,7 +326,7 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
       );
     }).length;
 
-    const noEncontrados = items.filter(i => i.trackingUsa && i.estado === 'NO_LISTADO').length;
+    const noEncontrados = items.filter(i => i.tracking && i.estado === 'NO_LISTADO').length;
     const pendientes = Math.max(0, total - manifestEncontrados);
     const progreso = total > 0 ? Math.round((manifestEncontrados / total) * 100) : 0;
     return { total, encontrados: manifestEncontrados, noEncontrados, pendientes, progreso };
@@ -403,7 +403,7 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
       prev.map(i => ({
         ...i,
         estado: 'PENDIENTE',
-        trackingUsa: '',
+        tracking: '',
         notas: '',
         escaneadoEn: undefined,
         escaneadoPor: undefined,
@@ -448,7 +448,7 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
         i.id === itemId
           ? {
               ...i,
-              trackingUsa: '',
+              tracking: '',
               notas: '',
               estado: 'PENDIENTE',
               escaneadoEn: undefined,

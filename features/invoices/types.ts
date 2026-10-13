@@ -15,7 +15,7 @@ export interface InvoiceData {
   billToName: string;
   shipToName: string;
   consigneeDni?: string;
-  trackingUsa?: string;
+  tracking?: string;
   items: InvoiceItem[];
   invoiceAmount: number | string;
 
