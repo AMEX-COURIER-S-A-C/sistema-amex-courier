@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { Paquete } from '@/types';
 import { formatFechaModificadoParts } from '@/lib/excelExport';
+import { confirmDialog } from '@/lib/dialog';
 import RowActionsDropdown from './RowActionsDropdown';
 
 export interface InventoryTableProps {
@@ -291,8 +292,14 @@ export default function InventoryTable({
                         pkg={pkg}
                         index={index}
                         totalRows={paginatedPaquetes.length}
-                        onQuickDeliver={onQuickDeliver ? (p) => {
-                          if (confirm(`¿Confirmar entrega del paquete ${p.numeroReciboBodega} a ${p.nombreConsignatario || 'cliente'}?`)) {
+                        onQuickDeliver={onQuickDeliver ? async (p) => {
+                          const confirmed = await confirmDialog({
+                            title: 'Confirmar entrega',
+                            message: `¿Confirmar entrega del paquete ${p.numeroReciboBodega} a ${p.nombreConsignatario || 'cliente'}?`,
+                            confirmText: 'Entregar paquete',
+                            variant: 'info'
+                          });
+                          if (confirmed) {
                             onQuickDeliver(p);
                           }
                         } : undefined}

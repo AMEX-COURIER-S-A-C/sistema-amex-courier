@@ -5,6 +5,7 @@ import { RotuloSlotData } from '@/lib/rotulos/rotulos-pdf';
 import { DEFAULT_SLOTS, DEFAULT_REMITENTE, MAX_SHEETS, generarTextoBulto, type CloudSyncStatus, type RotuloHistorialItem } from '../types';
 import { RotulosService } from '../services/rotulos.service';
 import { extractPrimerNombre } from '@/lib/auth/userUtils';
+import { confirmDialog } from '@/lib/dialog';
 
 export function useRotulosState(currentUser?: { nombre?: string; email?: string; id?: string } | null) {
   const [slots, setSlots] = useState<RotuloSlotData[]>(DEFAULT_SLOTS);
@@ -551,7 +552,7 @@ export function useRotulosState(currentUser?: { nombre?: string; email?: string;
     playSound('complete');
   };
 
-  const handleDeleteCurrentSheet = () => {
+  const handleDeleteCurrentSheet = async () => {
     if (slots.length <= 5) {
       playSound('error');
       showToast('⚠️ No puedes eliminar la única hoja existente.');
@@ -562,7 +563,13 @@ export function useRotulosState(currentUser?: { nombre?: string; email?: string;
     const sheetSlotsToDelete = slots.slice(startIndex, startIndex + 5);
     const hasData = sheetSlotsToDelete.some((s) => Boolean(s.nombre?.trim() || s.destino?.trim()));
     if (hasData) {
-      if (!window.confirm(`La Hoja #${currentSheet} contiene datos en sus rótulos. ¿Deseas eliminar esta hoja y sus 5 espacios?`)) {
+      const confirmed = await confirmDialog({
+        title: 'Eliminar hoja de rótulos',
+        message: `La Hoja #${currentSheet} contiene datos en sus rótulos. ¿Deseas eliminar esta hoja y sus 5 espacios?`,
+        confirmText: 'Sí, eliminar hoja',
+        variant: 'danger'
+      });
+      if (!confirmed) {
         return;
       }
     }
@@ -681,10 +688,16 @@ export function useRotulosState(currentUser?: { nombre?: string; email?: string;
     showToast(`🧹 Hoja #${currentSheet} reiniciada (5 espacios limpios).`);
   };
 
-  const handleClearAll = () => {
+  const handleClearAll = async () => {
     const hasAnyData = slots.some((s) => Boolean(s.nombre?.trim() || s.destino?.trim()));
     if (hasAnyData) {
-      if (!window.confirm(`¿Estás seguro de reiniciar todas las ${totalSheets} hojas (${slots.length} espacios)? Se borrarán los datos.`)) {
+      const confirmed = await confirmDialog({
+        title: 'Reiniciar todas las hojas',
+        message: `¿Estás seguro de reiniciar todas las ${totalSheets} hojas (${slots.length} espacios)? Se borrarán los datos.`,
+        confirmText: 'Sí, reiniciar todo',
+        variant: 'warning'
+      });
+      if (!confirmed) {
         return;
       }
     }

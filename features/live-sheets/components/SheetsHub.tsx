@@ -23,6 +23,7 @@ import {
   Menu
 } from 'lucide-react';
 import { getSheetLongCode } from '../utils/codeFormatters';
+import { confirmDialog, promptDialog } from '@/lib/dialog';
 import './sheets-hub.css';
 
 interface SheetsHubProps {
@@ -108,7 +109,13 @@ export default function SheetsHub({
 
   const handleRename = async (sheet: HojaCotejo) => {
     setMenuOpenId(null);
-    const newTitle = prompt('Ingresa el nuevo título del libro:', sheet.titulo);
+    const newTitle = await promptDialog({
+      title: 'Renombrar libro',
+      message: 'Ingresa el nuevo título del libro:',
+      defaultValue: sheet.titulo,
+      placeholder: 'Título del libro...',
+      confirmText: 'Guardar'
+    });
     if (newTitle && newTitle.trim() && newTitle.trim() !== sheet.titulo) {
       await onRenameSheet(sheet.id, newTitle.trim());
       showToast('Libro renombrado con éxito');
@@ -117,7 +124,13 @@ export default function SheetsHub({
 
   const handleDelete = async (sheet: HojaCotejo) => {
     setMenuOpenId(null);
-    if (confirm(`¿Estás seguro de eliminar el libro "${sheet.titulo}" y todos sus paquetes cotejados?`)) {
+    const confirmed = await confirmDialog({
+      title: 'Eliminar libro',
+      message: `¿Estás seguro de eliminar el libro "${sheet.titulo}" y todos sus paquetes cotejados?`,
+      confirmText: 'Sí, eliminar libro',
+      variant: 'danger'
+    });
+    if (confirmed) {
       await onDeleteSheet(sheet.id);
       showToast('Libro eliminado');
     }

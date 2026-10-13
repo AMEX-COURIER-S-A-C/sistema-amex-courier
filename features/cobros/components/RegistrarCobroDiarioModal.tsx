@@ -24,6 +24,7 @@ import {
 import { CotizacionKambista, Cliente } from '../types';
 import { parseExcelCobroBlock, parsePesoTotal } from '../utils/excelCobroParser';
 import { smoothScrollManager } from '@/lib/smooth-scroll/manager';
+import { alertDialog } from '@/lib/dialog';
 
 interface WrItemDraft {
   wr: string;
@@ -244,7 +245,11 @@ const RegistrarCobroDiarioModalContent: React.FC<RegistrarCobroDiarioModalProps>
       }
     } catch (err) {
       console.warn('Acceso al portapapeles restringido:', err);
-      alert('Tu navegador requiere permiso o no permitió leer el portapapeles directamente. Puedes presionar Ctrl + V dentro de esta ventana para pegar las celdas de Excel.');
+      await alertDialog({
+        title: 'Acceso a portapapeles',
+        message: 'Tu navegador requiere permiso o no permitió leer el portapapeles directamente. Puedes presionar Ctrl + V dentro de esta ventana para pegar las celdas de Excel.',
+        variant: 'info'
+      });
     }
   };
 
@@ -355,16 +360,24 @@ const RegistrarCobroDiarioModalContent: React.FC<RegistrarCobroDiarioModalProps>
     );
   };
 
-  const handleSubmit = (e?: React.FormEvent) => {
+  const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
 
     if (!clienteNombreFinal) {
-      alert('Por favor ingresa o selecciona un cliente para este cobro.');
+      await alertDialog({
+        title: 'Cliente requerido',
+        message: 'Por favor ingresa o selecciona un cliente para este cobro.',
+        variant: 'warning'
+      });
       return;
     }
 
     if (wrsValidos.length === 0) {
-      alert('Por favor ingresa o pega al menos un número de WR o peso para este cobro.');
+      await alertDialog({
+        title: 'Paquetes requeridos',
+        message: 'Por favor ingresa o pega al menos un número de WR o peso para este cobro.',
+        variant: 'warning'
+      });
       return;
     }
 

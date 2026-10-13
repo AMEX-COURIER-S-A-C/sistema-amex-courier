@@ -24,6 +24,7 @@ import { ClienteCobroLote, ItemCobroWR, CotizacionKambista, MetodoPagoCobro, Vou
 import { KambistaService } from '../services/kambista.service';
 import { CobrosService } from '../services/cobros.service';
 import { smoothScrollManager } from '@/lib/smooth-scroll/manager';
+import { alertDialog } from '@/lib/dialog';
 
 interface CobroPaymentModalProps {
   isOpen: boolean;
@@ -116,7 +117,11 @@ const CobroPaymentModalContent: React.FC<CobroPaymentModalProps & { lote: Client
   // Procesar archivo de imagen
   const processImageFile = useCallback((file: File) => {
     if (!file.type.startsWith('image/')) {
-      alert('El archivo pegado o arrastrado debe ser una imagen (JPG, PNG, WEBP).');
+      alertDialog({
+        title: 'Formato inválido',
+        message: 'El archivo pegado o arrastrado debe ser una imagen (JPG, PNG, WEBP).',
+        variant: 'warning'
+      });
       return;
     }
     setVoucherFile(file);
@@ -217,7 +222,11 @@ const CobroPaymentModalContent: React.FC<CobroPaymentModalProps & { lote: Client
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedWrIds.length === 0) {
-      alert('Por favor selecciona al menos un WR para liquidar el pago.');
+      await alertDialog({
+        title: 'Selección requerida',
+        message: 'Por favor selecciona al menos un WR para liquidar el pago.',
+        variant: 'warning'
+      });
       return;
     }
 
@@ -310,7 +319,11 @@ const CobroPaymentModalContent: React.FC<CobroPaymentModalProps & { lote: Client
       onClose();
     } catch (err: any) {
       console.error('Error al registrar cobro y voucher:', err);
-      alert('Error al registrar el pago: ' + (err.message || 'Error desconocido'));
+      await alertDialog({
+        title: 'Error de pago',
+        message: 'Error al registrar el pago: ' + (err.message || 'Error desconocido'),
+        variant: 'danger'
+      });
     } finally {
       setIsSubmitting(false);
     }

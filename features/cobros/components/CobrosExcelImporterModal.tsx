@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { ExcelCobrosParser, WorkbookParseResult } from '../services/excel-cobros-parser';
 import { ClienteCobroLote } from '../types';
+import { alertDialog } from '@/lib/dialog';
 
 interface CobrosExcelImporterModalProps {
   isOpen: boolean;
@@ -90,10 +91,14 @@ const CobrosExcelImporterModalContent: React.FC<CobrosExcelImporterModalProps> =
     }
   };
 
-  const handleConfirmImport = () => {
+  const handleConfirmImport = async () => {
     if (!parseResult) return;
     if (selectedSheets.length === 0) {
-      alert('Por favor selecciona al menos una hoja para importar.');
+      await alertDialog({
+        title: 'Selección requerida',
+        message: 'Por favor selecciona al menos una hoja para importar.',
+        variant: 'warning'
+      });
       return;
     }
 

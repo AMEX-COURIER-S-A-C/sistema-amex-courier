@@ -4,6 +4,7 @@ import { generateInvoiceDocx } from '../services/invoiceDocxExporter';
 import { generateInvoicePdf } from '../services/invoicePdfExporter';
 import { InvoiceCloudService } from '../services/invoiceCloud.service';
 import { Cliente } from '@/types';
+import { confirmDialog, alertDialog } from '@/lib/dialog';
 
 const STORAGE_KEY_CURRENT = 'amex_invoice_current_draft';
 const STORAGE_KEY_HISTORY = 'amex_invoice_history_list';
@@ -352,8 +353,14 @@ export function useInvoice(currentUser?: { nombre?: string; email?: string; rol?
   };
 
   // Restaurar ejemplo inicial
-  const handleResetToDefault = () => {
-    if (confirm('¿Restaurar valores de la factura al ejemplo original del Word?')) {
+  const handleResetToDefault = async () => {
+    const confirmed = await confirmDialog({
+      title: 'Restaurar valores de factura',
+      message: '¿Restaurar valores de la factura al ejemplo original del Word?',
+      confirmText: 'Sí, restaurar',
+      variant: 'warning'
+    });
+    if (confirmed) {
       const resetState = {
         ...INITIAL_INVOICE_DATA,
         items: INITIAL_INVOICE_DATA.items.map(it => ({ ...it, id: `it-${Math.random()}` }))
@@ -422,7 +429,11 @@ export function useInvoice(currentUser?: { nombre?: string; email?: string; rol?
       showToast('¡Documento Word (.docx) generado y descargado!');
     } catch (err) {
       console.error('Error al exportar DOCX:', err);
-      alert('Hubo un error al generar el archivo Word. Por favor intenta nuevamente.');
+      await alertDialog({
+        title: 'Error de exportación',
+        message: 'Hubo un error al generar el archivo Word. Por favor intenta nuevamente.',
+        variant: 'danger'
+      });
     } finally {
       setIsExporting(false);
     }
@@ -437,7 +448,11 @@ export function useInvoice(currentUser?: { nombre?: string; email?: string; rol?
       showToast('¡Documento PDF generado y descargado!');
     } catch (err) {
       console.error('Error al exportar PDF:', err);
-      alert('Hubo un error al generar el archivo PDF.');
+      await alertDialog({
+        title: 'Error de exportación',
+        message: 'Hubo un error al generar el archivo PDF.',
+        variant: 'danger'
+      });
     } finally {
       setIsExporting(false);
     }

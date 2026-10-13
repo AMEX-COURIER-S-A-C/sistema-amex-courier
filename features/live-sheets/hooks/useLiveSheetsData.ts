@@ -3,6 +3,7 @@ import { HojaCotejo, ItemCotejo, Paquete, TipoProcesoCotejo } from '@/types';
 import { soundEffects } from '@/lib/audio/soundEffects';
 import writeXlsxFile from 'write-excel-file/browser';
 import { sheetsService } from '../services/sheets.service';
+import { confirmDialog, alertDialog } from '@/lib/dialog';
 import { SheetRow, SheetStats } from '../types';
 import { extractLast6Digits, getSheetLongCode } from '../utils/codeFormatters';
 
@@ -340,7 +341,11 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
     const unaddedPackages = paquetes.filter(p => !existingCodes.has(p.numeroReciboBodega.toUpperCase()));
 
     if (unaddedPackages.length === 0) {
-      alert('Todos los paquetes existentes ya se encuentran en la hoja');
+      await alertDialog({
+        title: 'Paquetes en hoja',
+        message: 'Todos los paquetes existentes ya se encuentran en la hoja.',
+        variant: 'info'
+      });
       return;
     }
 
@@ -395,7 +400,13 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
 
   const handleResetScans = async () => {
     if (!activeHojaId) return;
-    if (!confirm('¿Seguro que deseas reiniciar el cotejo? Los códigos escaneados se borrarán y volverán a PENDIENTE.')) {
+    const confirmed = await confirmDialog({
+      title: 'Reiniciar cotejo',
+      message: '¿Seguro que deseas reiniciar el cotejo? Los códigos escaneados se borrarán y volverán a PENDIENTE.',
+      confirmText: 'Sí, reiniciar cotejo',
+      variant: 'warning'
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -421,24 +432,38 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
   const handleSyncToMainPackages = async () => {
     const scannedItems = items.filter(i => i.estado === 'ESCANEADO');
     if (scannedItems.length === 0) {
-      alert('No hay paquetes marcados como ENCONTRADO para sincronizar.');
+      await alertDialog({
+        title: 'Sin paquetes encontrados',
+        message: 'No hay paquetes marcados como ENCONTRADO para sincronizar.',
+        variant: 'info'
+      });
       return;
     }
 
-    if (
-      !confirm(
-        `¿Deseas actualizar el estado de los ${scannedItems.length} paquetes cotejados en el inventario principal a 'En Almacén Central Lince'?`
-      )
-    ) {
+    const confirmed = await confirmDialog({
+      title: 'Sincronizar a Almacén Central',
+      message: `¿Deseas actualizar el estado de los ${scannedItems.length} paquetes cotejados en el inventario principal a 'En Almacén Central Lince'?`,
+      confirmText: 'Sincronizar paquetes',
+      variant: 'info'
+    });
+    if (!confirmed) {
       return;
     }
 
     try {
       const updatedCount = await sheetsService.syncScannedToMainPackages(scannedItems);
-      alert(`✅ Sincronización exitosa: Se actualizaron ${updatedCount} paquetes en la base de datos central.`);
+      await alertDialog({
+        title: 'Sincronización completada',
+        message: `Se actualizaron ${updatedCount} paquetes en la base de datos central con éxito.`,
+        variant: 'success'
+      });
     } catch (err) {
       console.error('Error syncing to main packages:', err);
-      alert('Error al sincronizar con el inventario principal.');
+      await alertDialog({
+        title: 'Error de sincronización',
+        message: 'Error al sincronizar con el inventario principal.',
+        variant: 'danger'
+      });
     }
   };
 
@@ -543,13 +568,23 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
 
   const handleDeleteTab = useCallback(async (sheetId: string) => {
     if (activeBookSheets.length <= 1) {
-      alert('Un libro de cálculo debe tener al menos una hoja.');
+      await alertDialog({
+        title: 'Límite de hojas',
+        message: 'Un libro de cálculo debe tener al menos una hoja.',
+        variant: 'warning'
+      });
       return;
     }
 
     const sheetToDelete = hojas.find(h => h.id === sheetId);
     const sheetName = sheetToDelete?.nombreHoja || sheetToDelete?.titulo || 'esta hoja';
-    if (!confirm(`¿Eliminar definitivamente la pestaña "${sheetName}" y todos sus datos cotejados?`)) {
+    const confirmed = await confirmDialog({
+      title: 'Eliminar pestaña',
+      message: `¿Eliminar definitivamente la pestaña "${sheetName}" y todos sus datos cotejados?`,
+      confirmText: 'Sí, eliminar pestaña',
+      variant: 'danger'
+    });
+    if (!confirmed) {
       return;
     }
 

@@ -20,6 +20,7 @@ import { useDespachoRutas } from '../hooks/useDespachoRutas';
 import RutaBuilderModal from './RutaBuilderModal';
 import ChoferCardParada from './ChoferCardParada';
 import { DespachoRuta } from '@/types/despacho';
+import { confirmDialog } from '@/lib/dialog';
 
 function formatFechaCreacion(isoString?: string): string {
   if (!isoString) return '';
@@ -778,8 +779,14 @@ export default function DespachoRutasTab() {
 
                       {/* Botón Eliminar */}
                       <button
-                        onClick={() => {
-                          if (confirm(`¿Eliminar la ruta "${ruta.nombreRuta}" y todas sus paradas?`)) {
+                        onClick={async () => {
+                          const confirmed = await confirmDialog({
+                            title: 'Eliminar ruta de despacho',
+                            message: `¿Eliminar la ruta "${ruta.nombreRuta}" y todas sus paradas?`,
+                            confirmText: 'Sí, eliminar ruta',
+                            variant: 'danger'
+                          });
+                          if (confirmed) {
                             handleEliminarRuta(ruta.id);
                           }
                         }}

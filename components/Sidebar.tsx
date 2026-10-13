@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { hasModuleAccess, SYSTEM_MODULES, type UserAccessContext } from '@/lib/navigation/registry';
+import { confirmDialog } from '@/lib/dialog';
 
 interface SidebarProps {
   activeTab: string;
@@ -42,8 +43,15 @@ export default function Sidebar({
     }
   }, [isCobrosActive]);
 
-  const handleLogoutClick = () => {
-    if (typeof window !== 'undefined' && window.confirm('¿Estás seguro de que deseas cerrar tu sesión en el sistema?')) {
+  const handleLogoutClick = async () => {
+    const confirmed = await confirmDialog({
+      title: 'Cerrar sesión',
+      message: '¿Estás seguro de que deseas cerrar tu sesión en el sistema?',
+      confirmText: 'Cerrar sesión',
+      cancelText: 'Permanecer',
+      variant: 'danger'
+    });
+    if (confirmed) {
       onLogout?.();
     }
   };

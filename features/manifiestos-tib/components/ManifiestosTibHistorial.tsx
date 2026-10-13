@@ -24,6 +24,7 @@ import {
 import * as XLSX from 'xlsx';
 import PdfViewerModal from '@/components/modals/PdfViewerModal';
 import { getR2ViewUrl } from '@/lib/r2/client';
+import { confirmDialog, alertDialog } from '@/lib/dialog';
 
 export interface SavedManifest {
   id: string;
@@ -140,7 +141,11 @@ export default function ManifiestosTibHistorial({
       setSelectedPdfManifest(updatedManifest);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al subir archivo';
-      alert(`Error: ${msg}`);
+      await alertDialog({
+        title: 'Error de carga',
+        message: `Error: ${msg}`,
+        variant: 'danger'
+      });
     } finally {
       setIsUploadingScanFile(false);
     }
@@ -164,7 +169,11 @@ export default function ManifiestosTibHistorial({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error al adjuntar archivo');
 
-      alert('¡Archivo PDF original adjuntado con éxito!');
+      await alertDialog({
+        title: 'Archivo adjuntado',
+        message: '¡Archivo PDF original adjuntado con éxito!',
+        variant: 'success'
+      });
       await fetchHistorial();
       setManifestDetail((prev) =>
         prev
@@ -180,7 +189,11 @@ export default function ManifiestosTibHistorial({
       );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al subir';
-      alert(`Error: ${msg}`);
+      await alertDialog({
+        title: 'Error al subir',
+        message: `Error: ${msg}`,
+        variant: 'danger'
+      });
     } finally {
       setIsUploadingScan(false);
       e.target.value = '';
@@ -232,12 +245,20 @@ export default function ManifiestosTibHistorial({
           totalDetalles: data.totalDetalles || 0,
         });
       } else {
-        alert(data.error || 'No se pudo cargar el detalle del manifiesto');
+        await alertDialog({
+          title: 'Error de detalle',
+          message: data.error || 'No se pudo cargar el detalle del manifiesto',
+          variant: 'danger'
+        });
         setSelectedManifestId(null);
       }
     } catch (err) {
       console.error(err);
-      alert('Error de conexión al cargar detalle.');
+      await alertDialog({
+        title: 'Error de conexión',
+        message: 'Error de conexión al cargar detalle.',
+        variant: 'danger'
+      });
       setSelectedManifestId(null);
     } finally {
       setIsLoadingDetail(false);
@@ -281,15 +302,22 @@ export default function ManifiestosTibHistorial({
       XLSX.writeFile(wb, filename);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al exportar';
-      alert(msg);
+      await alertDialog({
+        title: 'Error al exportar',
+        message: msg,
+        variant: 'danger'
+      });
     }
   };
 
   // Eliminar manifiesto
   const handleDeleteManifest = async (id: string, vuelo: string) => {
-    const confirm = window.confirm(
-      `¿Estás seguro de que deseas eliminar permanentemente el manifiesto del Vuelo ${vuelo}? Esta acción eliminará también sus filas de detalle.`
-    );
+    const confirm = await confirmDialog({
+      title: 'Eliminar manifiesto',
+      message: `¿Estás seguro de que deseas eliminar permanentemente el manifiesto del Vuelo ${vuelo}? Esta acción eliminará también sus filas de detalle.`,
+      confirmText: 'Sí, eliminar manifiesto',
+      variant: 'danger'
+    });
     if (!confirm) return;
 
     setIsDeletingId(id);
@@ -313,7 +341,11 @@ export default function ManifiestosTibHistorial({
       await fetchHistorial();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error inesperado';
-      alert(`No se pudo eliminar: ${msg}`);
+      await alertDialog({
+        title: 'Error al eliminar',
+        message: `No se pudo eliminar: ${msg}`,
+        variant: 'danger'
+      });
     } finally {
       setIsDeletingId(null);
     }

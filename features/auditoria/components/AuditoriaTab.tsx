@@ -6,6 +6,7 @@ import KardexView from '@/features/inventory/components/KardexView';
 import { MovimientoKardex } from '@/types';
 import { exportKardexToExcel } from '@/lib/excelExport';
 import { supabase } from '@/lib/supabase/client';
+import { confirmDialog, alertDialog } from '@/lib/dialog';
 
 interface AuditRecord {
   id: string;
@@ -131,11 +132,21 @@ export default function AuditoriaTab() {
   // Restaurar registro en 1-clic (Gobernanza de Datos)
   const handleRestaurar = async (log: AuditRecord) => {
     if (!log.registro_id) {
-      alert('Este registro no posee un identificador de destino para restaurar.');
+      await alertDialog({
+        title: 'Identificador no disponible',
+        message: 'Este registro no posee un identificador de destino para restaurar.',
+        variant: 'warning'
+      });
       return;
     }
 
-    if (!confirm(`¿Deseas restaurar este registro (${log.registro_id}) al sistema activo?`)) {
+    const confirmed = await confirmDialog({
+      title: 'Restaurar registro',
+      message: `¿Deseas restaurar este registro (${log.registro_id}) al sistema activo?`,
+      confirmText: 'Sí, restaurar',
+      variant: 'info'
+    });
+    if (!confirmed) {
       return;
     }
 

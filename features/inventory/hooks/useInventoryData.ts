@@ -14,6 +14,7 @@ import { supabase } from '@/lib/supabase/client';
 import { matchesFuzzySearch } from '@/lib/fuzzySearch';
 import { useDebounce } from '@/lib/useDebounce';
 import { exportPaquetesToExcel, exportKardexToExcel } from '@/lib/excelExport';
+import { confirmDialog, alertDialog } from '@/lib/dialog';
 import { inventoryService } from '../services/inventory.service';
 import { BatchShelfData, SinglePositionData, TransferFormData, DateFilterState } from '../types';
 import { initialDateFilter, isPackageInDateFilter, resolveDateFilterRange } from '../utils/dateFilter';
@@ -473,7 +474,13 @@ export function useInventoryData({
 
   // Eliminar paquete individual
   const handleDeletePackage = async (pkgId: string, wrCode: string) => {
-    if (!confirm(`¿Estás seguro de eliminar el paquete ${wrCode} de la base de datos de Almacén Lince?`)) return;
+    const confirmed = await confirmDialog({
+      title: 'Eliminar paquete',
+      message: `¿Estás seguro de eliminar el paquete ${wrCode} de la base de datos de Almacén Lince?`,
+      confirmText: 'Sí, eliminar',
+      variant: 'danger'
+    });
+    if (!confirmed) return;
     try {
       await inventoryService.deletePackage(pkgId);
       if (onDeletePackage) {
@@ -484,7 +491,11 @@ export function useInventoryData({
       setSelectedIds(prev => prev.filter(x => x !== pkgId));
     } catch (err) {
       console.error('Error eliminando paquete:', err);
-      alert('Error al eliminar paquete.');
+      await alertDialog({
+        title: 'Error de eliminación',
+        message: 'Error al eliminar paquete.',
+        variant: 'danger'
+      });
     }
   };
 
@@ -522,7 +533,11 @@ export function useInventoryData({
       setServerPaquetes(prev => prev.map(p => (p.id === updated.id ? updated : p)));
     } catch (err) {
       console.error('Error al entregar paquete rápido:', err);
-      alert('Error al marcar como entregado.');
+      await alertDialog({
+        title: 'Error de entrega',
+        message: 'Error al marcar como entregado.',
+        variant: 'danger'
+      });
     }
   };
 
@@ -576,7 +591,13 @@ export function useInventoryData({
   // Eliminación masiva en lote
   const handleBatchDelete = async () => {
     if (selectedIds.length === 0) return;
-    if (!confirm(`¿Estás seguro de eliminar los ${selectedIds.length} paquetes seleccionados de la base de datos?`)) return;
+    const confirmed = await confirmDialog({
+      title: 'Eliminar en lote',
+      message: `¿Estás seguro de eliminar los ${selectedIds.length} paquetes seleccionados de la base de datos?`,
+      confirmText: 'Sí, eliminar lote',
+      variant: 'danger'
+    });
+    if (!confirmed) return;
     try {
       await inventoryService.batchDelete(selectedIds);
       if (onDeletePackage) {
@@ -609,7 +630,11 @@ export function useInventoryData({
     e.preventDefault();
     const codigoEstanteClean = batchShelfData.codigoEstante.trim().toUpperCase();
     if (!codigoEstanteClean) {
-      alert('Por favor ingresa un código para el anaquel (ej: A3, B1).');
+      await alertDialog({
+        title: 'Campo requerido',
+        message: 'Por favor ingresa un código para el anaquel (ej: A3, B1).',
+        variant: 'warning'
+      });
       return;
     }
 
@@ -655,7 +680,13 @@ export function useInventoryData({
 
   // Eliminar Posición de Estantería
   const handleDeletePosition = async (posId: string) => {
-    if (!confirm('¿Estás seguro de eliminar esta posición de estantería?')) return;
+    const confirmed = await confirmDialog({
+      title: 'Eliminar posición',
+      message: '¿Estás seguro de eliminar esta posición de estantería?',
+      confirmText: 'Sí, eliminar',
+      variant: 'danger'
+    });
+    if (!confirmed) return;
     try {
       await inventoryService.deletePosition(posId);
       setPosicionesList(prev => prev.filter(p => p.id !== posId));

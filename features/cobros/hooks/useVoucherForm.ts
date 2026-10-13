@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { matchesFuzzySearch } from '@/lib/fuzzySearch';
 import { Paquete, VoucherFormValues, CobrosSubtab } from '../types';
 import { CobrosService } from '../services/cobros.service';
+import { alertDialog } from '@/lib/dialog';
 
 interface UseVoucherFormProps {
   paquetes: Paquete[];
@@ -39,7 +40,11 @@ export function useVoucherForm({
   // Procesar archivo de imagen
   const processImageFile = useCallback((file: File) => {
     if (!file.type.startsWith('image/')) {
-      alert('El archivo pegado o arrastrado debe ser una imagen (JPG, PNG, WEBP).');
+      alertDialog({
+        title: 'Formato inválido',
+        message: 'El archivo pegado o arrastrado debe ser una imagen (JPG, PNG, WEBP).',
+        variant: 'warning'
+      });
       return;
     }
     setVoucherFile(file);
@@ -106,18 +111,30 @@ export function useVoucherForm({
     e.preventDefault();
 
     if (!voucherFile && !voucherPreviewUrl) {
-      alert('Debes adjuntar, pegar con Ctrl+V o arrastrar la imagen del voucher.');
+      await alertDialog({
+        title: 'Voucher requerido',
+        message: 'Debes adjuntar, pegar con Ctrl+V o arrastrar la imagen del voucher.',
+        variant: 'warning'
+      });
       return;
     }
 
     if (!formValues.clienteNombre.trim()) {
-      alert('Por favor ingresa el nombre del cliente o consignatario.');
+      await alertDialog({
+        title: 'Nombre requerido',
+        message: 'Por favor ingresa el nombre del cliente o consignatario.',
+        variant: 'warning'
+      });
       return;
     }
 
     const montoNum = parseFloat(formValues.monto);
     if (isNaN(montoNum) || montoNum <= 0) {
-      alert('Por favor ingresa un monto válido mayor a 0.');
+      await alertDialog({
+        title: 'Monto inválido',
+        message: 'Por favor ingresa un monto válido mayor a 0.',
+        variant: 'warning'
+      });
       return;
     }
 
@@ -210,9 +227,11 @@ export function useVoucherForm({
         console.warn('Sync to Supabase cobros_vouchers failed (running in offline mode):', saveErr);
       }
 
-      alert(
-        `✅ ¡VOUCHER GUARDADO EXITOSAMENTE!\n\nCódigo: ${codigoCobro}\nCliente: ${formValues.clienteNombre}\nMonto: ${formValues.moneda === 'PEN' ? 'S/' : '$'} ${montoNum.toFixed(2)} (${formValues.metodoPago})\nAlmacenado en Cloudflare R2.`
-      );
+      await alertDialog({
+        title: 'Voucher guardado con éxito',
+        message: `Código: ${codigoCobro}\nCliente: ${formValues.clienteNombre}\nMonto: ${formValues.moneda === 'PEN' ? 'S/' : '$'} ${montoNum.toFixed(2)} (${formValues.metodoPago})\nAlmacenado con seguridad en Cloudflare R2.`,
+        variant: 'success'
+      });
 
       // Limpiar formulario
       setVoucherFile(null);
@@ -233,7 +252,11 @@ export function useVoucherForm({
       onVoucherSaved();
     } catch (err: any) {
       console.error('Error al guardar voucher:', err);
-      alert('Error al registrar el cobro: ' + (err.message || 'Error desconocido'));
+      await alertDialog({
+        title: 'Error al guardar',
+        message: 'Error al registrar el cobro: ' + (err.message || 'Error desconocido'),
+        variant: 'danger'
+      });
     } finally {
       setIsSubmitting(false);
     }

@@ -8,6 +8,7 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { Collaborator, SheetStats } from '../types';
+import { alertDialog } from '@/lib/dialog';
 
 interface LiveSheetsHeaderProps {
   activeHojaId: string;
@@ -136,7 +137,13 @@ export function LiveSheetsHeader({
               <button
                 type="button"
                 className="gsheet-menu-item"
-                onClick={() => alert('Sistema AMEX WR: Dispara la pistola de códigos directamente sobre la hoja.')}
+                onClick={() =>
+                  alertDialog({
+                    title: 'Disparo de escáner',
+                    message: 'Sistema AMEX WR: Dispara la pistola de códigos directamente sobre la hoja.',
+                    variant: 'info'
+                  })
+                }
               >
                 Ayuda
               </button>

@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase/client';
 import { matchesFuzzySearch } from '@/lib/fuzzySearch';
 import { CobroVoucher, CobrosMetrics, CobrosSubtab } from '../types';
 import { CobrosService } from '../services/cobros.service';
+import { alertDialog } from '@/lib/dialog';
 
 export function useCobrosData() {
   const [subtab, setSubtab] = useState<CobrosSubtab>('todos');
@@ -52,7 +53,11 @@ export function useCobrosData() {
       fetchCobros();
     } catch (err: any) {
       console.error('Error al actualizar estado:', err);
-      alert('Error: ' + err.message);
+      await alertDialog({
+        title: 'Error de actualización',
+        message: 'Error: ' + err.message,
+        variant: 'danger'
+      });
     }
   };
 

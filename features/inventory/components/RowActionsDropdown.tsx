@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Paquete } from '@/types';
 import { copyPackagesTableAsImage } from '../utils/clipboardTableImage';
+import { alertDialog } from '@/lib/dialog';
 
 export interface RowActionsDropdownProps {
   pkg: Paquete;
@@ -301,7 +302,11 @@ export default function RowActionsDropdown({
               setIsOpen(false);
               const res = await copyPackagesTableAsImage([pkg]);
               if (!res.success) {
-                alert(res.error || 'No se pudo copiar la imagen.');
+                await alertDialog({
+                  title: 'Portapapeles',
+                  message: res.error || 'No se pudo copiar la imagen.',
+                  variant: 'danger'
+                });
               }
             }}
             style={{

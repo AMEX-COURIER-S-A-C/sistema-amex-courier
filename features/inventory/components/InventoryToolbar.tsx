@@ -7,6 +7,7 @@ import InventoryHeader from './InventoryHeader';
 import InventoryFilterBar from './InventoryFilterBar';
 import InventorySelectionBar from './InventorySelectionBar';
 import { copyPackagesTableAsImage } from '../utils/clipboardTableImage';
+import { alertDialog } from '@/lib/dialog';
 
 export interface InventoryToolbarProps {
   paquetes: Paquete[];
@@ -120,7 +121,11 @@ export default function InventoryToolbar({
         setSelectionCopyStatus('copied');
         setTimeout(() => setSelectionCopyStatus('idle'), 3500);
       } else {
-        alert(res.error || 'No se pudo copiar la imagen.');
+        await alertDialog({
+          title: 'Portapapeles',
+          message: res.error || 'No se pudo copiar la imagen.',
+          variant: 'danger'
+        });
         setSelectionCopyStatus('idle');
       }
     } catch {

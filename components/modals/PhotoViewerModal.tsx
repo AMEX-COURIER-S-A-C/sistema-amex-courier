@@ -14,6 +14,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { getR2ViewUrl } from '@/lib/r2/client';
+import { confirmDialog } from '@/lib/dialog';
 
 export interface PhotoItem {
   url: string;
@@ -100,9 +101,15 @@ export default function PhotoViewerModal({
   const handleZoomOut = () => setZoomLevel(z => Math.max(z - 0.25, 0.5));
   const handleRotate = () => setRotation(r => (r + 90) % 360);
 
-  const handleDeleteCurrent = () => {
+  const handleDeleteCurrent = async () => {
     if (!onDeletePhoto) return;
-    if (confirm(`¿Estás seguro de eliminar la foto #${currentIndex + 1}?`)) {
+    const confirmed = await confirmDialog({
+      title: 'Eliminar fotografía',
+      message: `¿Estás seguro de eliminar la foto #${currentIndex + 1}?`,
+      confirmText: 'Sí, eliminar foto',
+      variant: 'danger'
+    });
+    if (confirmed) {
       onDeletePhoto(currentIndex);
       if (photos.length <= 1) {
         onClose();

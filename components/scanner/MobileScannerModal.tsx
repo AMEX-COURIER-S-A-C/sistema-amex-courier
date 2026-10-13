@@ -25,6 +25,7 @@ import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { Paquete, Cliente, ScanConfirmExtra } from '@/types';
 import { supabase } from '@/lib/supabase/client';
 import { soundEffects } from '@/lib/audio/soundEffects';
+import { alertDialog } from '@/lib/dialog';
 
 interface BarcodeBoundingBox {
   x: number;
@@ -352,7 +353,11 @@ export default function MobileScannerModal({
     } else if (workflow === 'relocate') {
       if (!pkg) {
         soundEffects.playNotFound();
-        alert('⚠️ Este paquete no se encuentra en el inventario. Solo se pueden reubicar paquetes previamente registrados.');
+        alertDialog({
+          title: 'Paquete no encontrado',
+          message: 'Este paquete no se encuentra en el inventario. Solo se pueden reubicar paquetes previamente registrados.',
+          variant: 'warning'
+        });
         setPendingConfirmation(null);
         return;
       }

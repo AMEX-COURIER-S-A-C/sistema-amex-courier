@@ -9,6 +9,7 @@ import GestorAlmacenView from '@/features/inventory/components/GestorAlmacenView
 import ShelfPositionModal from '@/features/inventory/modals/ShelfPositionModal';
 import EditPositionModal from '@/features/inventory/modals/EditPositionModal';
 import { supabase } from '@/lib/supabase/client';
+import { confirmDialog, alertDialog } from '@/lib/dialog';
 
 export interface ConfiguracionTabProps {
   paquetes?: Paquete[];
@@ -98,7 +99,11 @@ export default function ConfiguracionTab({
   const handleCreateBatchShelf = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!batchShelfData.codigoEstante.trim()) {
-      alert('Debes ingresar un código para el anaquel.');
+      await alertDialog({
+        title: 'Campo requerido',
+        message: 'Debes ingresar un código para el anaquel.',
+        variant: 'warning'
+      });
       return;
     }
     try {
@@ -116,11 +121,19 @@ export default function ConfiguracionTab({
         });
         await fetchInfraData();
       } else {
-        alert('No se pudieron crear las posiciones. Revisa la consola.');
+        await alertDialog({
+          title: 'Error de creación',
+          message: 'No se pudieron crear las posiciones. Revisa la consola.',
+          variant: 'danger'
+        });
       }
     } catch (err) {
       console.error('Error creando anaquel en lote:', err);
-      alert('Error creando anaquel en lote.');
+      await alertDialog({
+        title: 'Error',
+        message: 'Error creando anaquel en lote.',
+        variant: 'danger'
+      });
     }
   };
 
@@ -128,7 +141,11 @@ export default function ConfiguracionTab({
   const handleCreatePosition = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPositionData.codigoEstante.trim() || !newPositionData.nivelPiso.trim()) {
-      alert('Debes ingresar el anaquel y nivel de piso.');
+      await alertDialog({
+        title: 'Campos requeridos',
+        message: 'Debes ingresar el anaquel y nivel de piso.',
+        variant: 'warning'
+      });
       return;
     }
     try {
@@ -146,11 +163,19 @@ export default function ConfiguracionTab({
         });
         await fetchInfraData();
       } else {
-        alert('No se pudo crear la posición.');
+        await alertDialog({
+          title: 'Error de creación',
+          message: 'No se pudo crear la posición.',
+          variant: 'danger'
+        });
       }
     } catch (err) {
       console.error('Error creando posición individual:', err);
-      alert('Error creando posición.');
+      await alertDialog({
+        title: 'Error',
+        message: 'Error creando posición.',
+        variant: 'danger'
+      });
     }
   };
 
@@ -169,7 +194,11 @@ export default function ConfiguracionTab({
       await fetchInfraData();
     } catch (err) {
       console.error('Error actualizando posición:', err);
-      alert('Error actualizando posición.');
+      await alertDialog({
+        title: 'Error de actualización',
+        message: 'Error actualizando posición.',
+        variant: 'danger'
+      });
     }
   };
 
@@ -178,7 +207,13 @@ export default function ConfiguracionTab({
     const pos = posicionesList.find(p => p.id === posId);
     if (!pos) return;
 
-    if (!confirm(`¿Estás seguro de eliminar la posición física ${pos.codigoPosicion}?`)) {
+    const confirmed = await confirmDialog({
+      title: 'Eliminar posición física',
+      message: `¿Estás seguro de eliminar la posición física ${pos.codigoPosicion}?`,
+      confirmText: 'Sí, eliminar posición',
+      variant: 'danger'
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -187,7 +222,11 @@ export default function ConfiguracionTab({
       await fetchInfraData();
     } catch (err) {
       console.error('Error eliminando posición:', err);
-      alert('Error al eliminar posición.');
+      await alertDialog({
+        title: 'Error al eliminar',
+        message: 'Error al eliminar posición.',
+        variant: 'danger'
+      });
     }
   };
 

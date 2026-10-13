@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { SYSTEM_MODULES, ModulePermissionActions } from '@/lib/navigation/registry';
 import { useSmoothScroll } from '@/components/providers/SmoothScrollProvider';
+import { confirmDialog } from '@/lib/dialog';
 
 /* ──── Types ──── */
 interface UserRow {
@@ -788,7 +789,14 @@ export default function AdminUsersTab({ currentUser }: AdminUsersTabProps = {}) 
       ? `¿Deseas activar el acceso para ${u.nombre_completo}?`
       : `¿Deseas suspender el acceso de ${u.nombre_completo}? No podrá iniciar sesión.`;
 
-    if (!window.confirm(confirmMsg)) return;
+    const confirmed = await confirmDialog({
+      title: nuevoEstado ? 'Activar acceso de usuario' : 'Suspender acceso de usuario',
+      message: confirmMsg,
+      confirmText: nuevoEstado ? 'Sí, activar' : 'Sí, suspender acceso',
+      variant: nuevoEstado ? 'info' : 'danger'
+    });
+
+    if (!confirmed) return;
 
     try {
       const res = await fetch('/api/admin/users', {

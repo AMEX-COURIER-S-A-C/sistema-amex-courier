@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import ManifiestosTibHistorial from './ManifiestosTibHistorial';
+import { alertDialog } from '@/lib/dialog';
 
 interface HeaderData {
   fecha_vuelo: string;
@@ -116,7 +117,11 @@ export default function ManifiestosTibTab({ onRefreshData }: { onRefreshData?: (
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error inesperado';
-      alert(`Error al procesar manifiesto: ${msg}`);
+      await alertDialog({
+        title: 'Error al procesar',
+        message: `Error al procesar manifiesto: ${msg}`,
+        variant: 'danger'
+      });
     } finally {
       setIsProcessing(false);
       setProcessingStep('');
@@ -148,7 +153,11 @@ export default function ManifiestosTibTab({ onRefreshData }: { onRefreshData?: (
       setSaveSuccessMsg(data.mensaje || '¡Manifiesto guardado correctamente!');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al guardar';
-      alert(`Error al guardar en base de datos: ${msg}`);
+      await alertDialog({
+        title: 'Error de guardado',
+        message: `Error al guardar en base de datos: ${msg}`,
+        variant: 'danger'
+      });
     } finally {
       setIsSaving(false);
     }

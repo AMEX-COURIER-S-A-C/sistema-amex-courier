@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { ClienteCobroLote, TipoRetirante } from '../types';
 import { smoothScrollManager } from '@/lib/smooth-scroll/manager';
+import { confirmDialog, alertDialog } from '@/lib/dialog';
 
 interface CobroDeliveryModalProps {
   isOpen: boolean;
@@ -128,22 +129,33 @@ const CobroDeliveryModalContent: React.FC<CobroDeliveryModalProps & { lote: Clie
     );
   }, [lote.itemsWR, selectedWrIds]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedWrIds.length === 0) {
-      alert('Por favor selecciona al menos un paquete para marcar entrega.');
+      await alertDialog({
+        title: 'Selección requerida',
+        message: 'Por favor selecciona al menos un paquete para marcar entrega.',
+        variant: 'warning'
+      });
       return;
     }
 
     if (!nombreRetirante.trim()) {
-      alert('Por favor especifica el nombre de quien retira el paquete.');
+      await alertDialog({
+        title: 'Nombre requerido',
+        message: 'Por favor especifica el nombre de quien retira el paquete.',
+        variant: 'warning'
+      });
       return;
     }
 
     if (hasUnpaidSelected) {
-      const confirmUnpaid = window.confirm(
-        '¡ATENCIÓN! Algunos paquetes seleccionados aún figuran como PENDIENTES DE PAGO (FALTA). ¿Confirmas que fueron entregados de todas formas?'
-      );
+      const confirmUnpaid = await confirmDialog({
+        title: 'Paquetes con pago pendiente',
+        message: '¡ATENCIÓN! Algunos paquetes seleccionados aún figuran como PENDIENTES DE PAGO (FALTA). ¿Confirmas que fueron entregados de todas formas?',
+        confirmText: 'Sí, confirmar entrega',
+        variant: 'warning'
+      });
       if (!confirmUnpaid) return;
     }
 

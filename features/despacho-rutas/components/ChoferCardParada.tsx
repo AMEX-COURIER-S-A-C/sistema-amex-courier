@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { DespachoParada, EstadoParada } from '@/types/despacho';
 import { getWhatsAppUrl, getGoogleMapsUrl, normalizePhoneNumber } from '@/lib/utils/phoneUtils';
+import { confirmDialog, alertDialog } from '@/lib/dialog';
 
 interface ChoferCardParadaProps {
   parada: DespachoParada;
@@ -74,7 +75,11 @@ export default function ChoferCardParada({
     try {
       await onSubirFoto(parada.id, file, parada.destinatario);
     } catch (err: any) {
-      alert(err.message || 'Error al subir la imagen');
+      await alertDialog({
+        title: 'Error de imagen',
+        message: err.message || 'Error al subir la imagen',
+        variant: 'danger'
+      });
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -84,7 +89,13 @@ export default function ChoferCardParada({
 
   const handleEliminar = async (fotoUrl: string) => {
     if (!onEliminarFoto) return;
-    if (!confirm('¿Deseas eliminar esta foto de evidencia?')) return;
+    const confirmed = await confirmDialog({
+      title: 'Eliminar foto',
+      message: '¿Deseas eliminar esta foto de evidencia?',
+      confirmText: 'Sí, eliminar foto',
+      variant: 'danger'
+    });
+    if (!confirmed) return;
     setDeletingFotoUrl(fotoUrl);
     try {
       await onEliminarFoto(parada.id, fotoUrl);
@@ -92,7 +103,11 @@ export default function ChoferCardParada({
         setSelectedFotoModal(null);
       }
     } catch (err: any) {
-      alert(err.message || 'Error al eliminar la foto');
+      await alertDialog({
+        title: 'Error de eliminación',
+        message: err.message || 'Error al eliminar la foto',
+        variant: 'danger'
+      });
     } finally {
       setDeletingFotoUrl(null);
     }

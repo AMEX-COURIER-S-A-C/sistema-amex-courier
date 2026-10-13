@@ -13,6 +13,7 @@ import {
   X
 } from 'lucide-react';
 import { Paquete, TipoEstadoAmex, TipoEstadoEntrega } from '@/types';
+import { alertDialog } from '@/lib/dialog';
 import { smartFormatWr } from '@/lib/validations/wr';
 
 export interface BulkStatusByWrModalProps {
@@ -119,7 +120,11 @@ export default function BulkStatusByWrModal({
       onClose();
     } catch (err) {
       console.error('Error aplicando cambio de estado por lista de WRs:', err);
-      alert('Ocurrió un error al actualizar los paquetes.');
+      await alertDialog({
+        title: 'Error de actualización',
+        message: 'Ocurrió un error al actualizar los paquetes.',
+        variant: 'danger'
+      });
     } finally {
       setIsSubmitting(false);
     }

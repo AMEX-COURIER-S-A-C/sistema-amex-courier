@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { Paquete } from '@/types';
 import * as XLSX from 'xlsx';
+import { alertDialog } from '@/lib/dialog';
 
 export interface ScannerBulkLocationViewProps {
   paquetes?: Paquete[];
@@ -145,7 +146,11 @@ export default function ScannerBulkLocationView({
         }
       }
     } catch {
-      alert('Por favor usa Ctrl+V dentro del cuadro de texto para pegar tu columna de Excel.');
+      await alertDialog({
+        title: 'Portapapeles',
+        message: 'Por favor usa Ctrl+V dentro del cuadro de texto para pegar tu columna de Excel.',
+        variant: 'info'
+      });
     }
   };
 
@@ -178,7 +183,11 @@ export default function ScannerBulkLocationView({
       : matchedPackages.map((p) => p.numeroReciboBodega || p.tracking).filter(Boolean);
 
     if (payloadCodes.length === 0) {
-      alert('No hay paquetes válidos para asignar.');
+      await alertDialog({
+        title: 'Asignación no válida',
+        message: 'No hay paquetes válidos para asignar.',
+        variant: 'warning'
+      });
       return;
     }
 

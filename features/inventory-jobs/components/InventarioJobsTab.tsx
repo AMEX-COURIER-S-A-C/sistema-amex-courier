@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { confirmDialog } from '@/lib/dialog';
 
 type FuenteKey = 'delivered' | 'sent' | 'received';
 
@@ -198,9 +199,12 @@ export default function InventarioJobsTab({ onNavigateTab }: InventarioJobsTabPr
 
   const handleDeleteFile = async (slot: FuenteKey) => {
     const fuenteConfig = FUENTES.find((f) => f.key === slot);
-    const confirmed = window.confirm(
-      `¿Estás seguro de quitar el archivo ${fuenteConfig?.label}? Esto lo desactivará de los cruces automáticos.`
-    );
+    const confirmed = await confirmDialog({
+      title: 'Quitar archivo TIB',
+      message: `¿Estás seguro de quitar el archivo ${fuenteConfig?.label}? Esto lo desactivará de los cruces automáticos.`,
+      confirmText: 'Sí, quitar archivo',
+      variant: 'danger'
+    });
     if (!confirmed) return;
 
     setDeletingTib((p) => ({ ...p, [slot]: true }));

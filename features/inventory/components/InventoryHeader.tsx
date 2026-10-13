@@ -7,6 +7,7 @@ import ExcelExportDropdown from './ExcelExportDropdown';
 import TibOperationsDropdown from './TibOperationsDropdown';
 import InventoryStatsCards from './InventoryStatsCards';
 import { copyPackagesTableAsImage } from '../utils/clipboardTableImage';
+import { alertDialog } from '@/lib/dialog';
 
 export interface InventoryHeaderProps {
   paquetes: Paquete[];
@@ -54,7 +55,11 @@ export default function InventoryHeader({
         : filteredPaquetes;
 
     if (targetPackages.length === 0) {
-      alert('No hay paquetes visibles o seleccionados para copiar.');
+      await alertDialog({
+        title: 'Portapapeles',
+        message: 'No hay paquetes visibles o seleccionados para copiar.',
+        variant: 'warning'
+      });
       return;
     }
 
@@ -66,7 +71,11 @@ export default function InventoryHeader({
         setCopyStatus('copied');
         setTimeout(() => setCopyStatus('idle'), 3500);
       } else {
-        alert(res.error || 'No se pudo copiar la imagen.');
+        await alertDialog({
+          title: 'Portapapeles',
+          message: res.error || 'No se pudo copiar la imagen.',
+          variant: 'danger'
+        });
         setCopyStatus('idle');
       }
     } catch {

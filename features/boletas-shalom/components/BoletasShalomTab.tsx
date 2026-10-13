@@ -13,6 +13,7 @@ import { ShalomUploadModal } from '../modals/ShalomUploadModal';
 import { ShalomEditModal } from '../modals/ShalomEditModal';
 import { ShalomDeleteModal } from '../modals/ShalomDeleteModal';
 import { shalomService } from '../services/shalom.service';
+import { alertDialog } from '@/lib/dialog';
 
 export default function BoletasShalomTab() {
   const {
@@ -78,7 +79,11 @@ export default function BoletasShalomTab() {
       }
       fetchBoletas();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Error al eliminar boleta');
+      await alertDialog({
+        title: 'Error de eliminación',
+        message: err instanceof Error ? err.message : 'Error al eliminar boleta',
+        variant: 'danger'
+      });
     } finally {
       setIsDeleting(false);
     }

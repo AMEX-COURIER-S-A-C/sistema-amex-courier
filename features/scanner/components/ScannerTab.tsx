@@ -41,6 +41,7 @@ import { matchesFuzzySearch } from '@/lib/fuzzySearch';
 import { Paquete, Cliente, ScannedLog, ScanConfirmExtra } from '@/types';
 import { supabase } from '@/lib/supabase/client';
 import { soundEffects } from '@/lib/audio/soundEffects';
+import { confirmDialog, alertDialog } from '@/lib/dialog';
 
 const MobileScannerModal = dynamic(
   () => import('@/components/scanner/MobileScannerModal'),
@@ -255,9 +256,15 @@ export default function ScannerTab({
   };
 
   // Eliminar seleccionados
-  const handleDeleteSelected = () => {
+  const handleDeleteSelected = async () => {
     if (selectedIds.length === 0) return;
-    if (confirm(`¿Estás seguro de descartar ${selectedIds.length} lectura(s) de la cola local?`)) {
+    const confirmed = await confirmDialog({
+      title: 'Descartar lecturas',
+      message: `¿Estás seguro de descartar ${selectedIds.length} lectura(s) de la cola local?`,
+      confirmText: 'Sí, descartar',
+      variant: 'danger'
+    });
+    if (confirmed) {
       const updated = scannedLogs.filter(l => !selectedIds.includes(l.id));
       saveLogsToStorage(updated);
       setSelectedIds([]);
@@ -303,7 +310,11 @@ export default function ScannerTab({
   // Subida Confirmada a Supabase Master
   const handleExecuteMasterSync = async () => {
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      alert('Sin conexión a Internet. Las lecturas permanecen guardadas y seguras en tu dispositivo. Vuelve a intentarlo al recuperar la señal.');
+      await alertDialog({
+        title: 'Sin conexión a Internet',
+        message: 'Las lecturas permanecen guardadas y seguras en tu dispositivo. Vuelve a intentarlo al recuperar la señal.',
+        variant: 'warning'
+      });
       return;
     }
 
@@ -312,7 +323,11 @@ export default function ScannerTab({
       : pendingLogs;
 
     if (targetLogs.length === 0) {
-      alert('No hay lecturas seleccionadas o pendientes para sincronizar.');
+      await alertDialog({
+        title: 'Sin lecturas pendientes',
+        message: 'No hay lecturas seleccionadas o pendientes para sincronizar.',
+        variant: 'info'
+      });
       return;
     }
 
@@ -437,7 +452,11 @@ export default function ScannerTab({
       console.error('Error sincronizando lote de escáner:', err);
       soundEffects.playNotFound();
       const msg = err instanceof Error ? err.message : 'Error desconocido';
-      alert(`Ocurrió una interrupción al sincronizar: ${msg}.\n\n✓ Las lecturas procesadas hasta el momento han sido guardadas con seguridad en tu dispositivo.\nPuedes volver a pulsar "Subir a BD Master" para continuar con las pendientes.`);
+      await alertDialog({
+        title: 'Interrupción al sincronizar',
+        message: `Ocurrió una interrupción al sincronizar: ${msg}.\n\n✓ Las lecturas procesadas hasta el momento han sido guardadas con seguridad en tu dispositivo.\nPuedes volver a pulsar "Subir a BD Master" para continuar con las pendientes.`,
+        variant: 'danger'
+      });
     } finally {
       window.removeEventListener('beforeunload', preventClose);
       if (wakeLockSentinel) {
@@ -467,7 +486,11 @@ export default function ScannerTab({
       const foundPkg = extra.pkg || paquetes.find(p => p.numeroReciboBodega.toUpperCase() === code.toUpperCase() || p.tracking.toUpperCase() === code.toUpperCase());
       if (!foundPkg) {
         soundEffects.playNotFound();
-        alert(`⚠️ El paquete "${code}" no existe en el inventario. Solo se pueden reubicar paquetes previamente registrados en bodega.`);
+        alertDialog({
+          title: 'Paquete no encontrado',
+          message: `El paquete "${code}" no existe en el inventario. Solo se pueden reubicar paquetes previamente registrados en bodega.`,
+          variant: 'warning'
+        });
         return;
       }
       setRelocatedSessionLogs(prev => [{

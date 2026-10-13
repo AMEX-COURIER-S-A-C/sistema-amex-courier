@@ -14,6 +14,7 @@ import {
 import { BoletaShalom, ModalidadPagoShalom } from '@/types';
 import { FormFields, DEFAULT_FORM } from '../types';
 import { shalomService } from '../services/shalom.service';
+import { alertDialog } from '@/lib/dialog';
 
 interface ShalomEditModalProps {
   isOpen: boolean;
@@ -60,7 +61,11 @@ export const ShalomEditModal: React.FC<ShalomEditModalProps> = ({
       onUpdated(updated);
       onClose();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Error al actualizar boleta');
+      await alertDialog({
+        title: 'Error de actualización',
+        message: err instanceof Error ? err.message : 'Error al actualizar boleta',
+        variant: 'danger'
+      });
     } finally {
       setIsSaving(false);
     }

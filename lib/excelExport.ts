@@ -1,5 +1,6 @@
 import writeXlsxFile from 'write-excel-file/browser';
 import { Paquete, MovimientoKardex, Cliente, OrdenPicking, ItemPicking } from '@/types';
+import { alertDialog } from '@/lib/dialog';
 
 /**
  * Utilidad genérica para exportar cualquier arreglo de objetos a un archivo Excel (.xlsx) profesional
@@ -11,7 +12,11 @@ export function exportToExcel(
   data: Record<string, any>[]
 ) {
   if (!data || data.length === 0) {
-    alert('No hay datos disponibles para exportar a Excel.');
+    alertDialog({
+      title: 'Exportación vacía',
+      message: 'No hay datos disponibles para exportar a Excel.',
+      variant: 'warning'
+    });
     return;
   }
 
