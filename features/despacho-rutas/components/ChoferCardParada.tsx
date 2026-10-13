@@ -18,7 +18,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { DespachoParada, EstadoParada } from '@/types/despacho';
-import { getWhatsAppUrl, getGoogleMapsUrl, normalizePhoneNumber } from '@/lib/utils/phoneUtils';
+import { getWhatsAppUrl, getGoogleMapsUrl, normalizePhoneNumber, parseWrAndBultos } from '@/lib/utils/phoneUtils';
 import { confirmDialog, alertDialog } from '@/lib/dialog';
 
 interface ChoferCardParadaProps {
@@ -203,22 +203,72 @@ export default function ChoferCardParada({
 
       {/* Bultos y WRs */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
-        <span
-          style={{
-            background: '#eff6ff',
-            color: '#1d4ed8',
-            border: '1px solid #bfdbfe',
-            fontSize: '12px',
-            fontWeight: 800,
-            padding: '3px 10px',
-            borderRadius: '6px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '5px'
-          }}
-        >
-          📦 {parada.wrBultos}
-        </span>
+        {(() => {
+          const rawText = parada.wrCodes ? `${parada.wrCodes} ${parada.bultos || ''}` : (parada.wrBultos || '');
+          const parsed = parseWrAndBultos(rawText);
+
+          if (parsed.count > 1) {
+            return (
+              <>
+                <span
+                  style={{
+                    background: '#eff6ff',
+                    color: '#1d4ed8',
+                    border: '1px solid #bfdbfe',
+                    fontSize: '12px',
+                    fontWeight: 800,
+                    padding: '3px 10px',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px'
+                  }}
+                >
+                  📦 {parada.bultos || parsed.bultos || `${parsed.count} CJS`}
+                </span>
+                {parsed.wrs.map((wr, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      background: '#f8fafc',
+                      color: '#0f172a',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '11px',
+                      fontFamily: 'monospace',
+                      fontWeight: 800,
+                      padding: '2px 7px',
+                      borderRadius: '5px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '3px'
+                    }}
+                  >
+                    🏷️ {wr}
+                  </span>
+                ))}
+              </>
+            );
+          }
+
+          return (
+            <span
+              style={{
+                background: '#eff6ff',
+                color: '#1d4ed8',
+                border: '1px solid #bfdbfe',
+                fontSize: '12px',
+                fontWeight: 800,
+                padding: '3px 10px',
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px'
+              }}
+            >
+              📦 {parada.wrBultos}
+            </span>
+          );
+        })()}
 
         {parada.montoCobro > 0 && (
           <span

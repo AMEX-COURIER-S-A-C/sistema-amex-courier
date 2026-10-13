@@ -265,8 +265,121 @@ export function normalizeDistrito(input: string): string {
 }
 
 /**
+ * Verifica si una cadena corresponde a un distrito conocido de Lima/Callao
+ */
+export function isKnownDistrito(val: string | null | undefined): boolean {
+  if (!val) return false;
+  const raw = String(val).trim().toUpperCase();
+  const unaccented = raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (['SURCO', 'MOLINA', 'SJL', 'SJM', 'SMP', 'VMT', 'VES', 'LIMA', 'CERCADO', 'MAGDALENA', 'BRENA'].includes(unaccented)) {
+    return true;
+  }
+  return ZONAS_LIMA_DISTRITOS.some(z =>
+    z.distritos.some(d => {
+      const dVal = d.value.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const dLab = d.label.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      return dVal === unaccented || dLab === unaccented;
+    })
+  );
+}
+
+/**
+ * Extrae y normaliza códigos WR de un texto, soportando separadores por guion (-), slash (/), comas, etc.
+ */
+export function parseWrCodes(raw: string | null | undefined): string[] {
+  if (!raw || !String(raw).trim()) return [];
+  let str = String(raw).trim();
+
+  // Preservar prefijo WR- evitando que el guion sea interpretado como separador
+  const placeholder = '__WR_HYPHEN__';
+  str = str.replace(/\b(WR)-/gi, (_match, p1) => `${p1}${placeholder}`);
+
+  // Separadores: slashes /, \, comas ,, punto y coma ;, saltos de línea, tabulaciones, o guiones -
+  const tokens = str.split(/[\/,;\\\n\r\t]+|\s*-\s*/);
+  const wrs: string[] = [];
+
+  for (const token of tokens) {
+    const clean = token.replace(new RegExp(placeholder, 'g'), '-').trim().toUpperCase();
+    if (!clean) continue;
+
+    // Descartar tokens que claramente sean sólo palabras de bultos/notas
+    const isBultoTextOnly = /^(MAS|MÁS|\+)?\s*\d*\s*(CJ|CJS|CAJA|CAJAS|BULTO|BULTOS|PAQ|PAQUETE|PAQUETES|SOBRE|SOBRES|UND|PZA|PZAS)$/i.test(clean) ||
+      /^(MAS|MÁS|CJ|CJS|CAJA|CAJAS|SOBRE|SOBRES)$/i.test(clean);
+    
+    if (isBultoTextOnly) continue;
+
+    wrs.push(clean);
+  }
+
+  return wrs;
+}
+
+/**
+ * Formatea una lista de WRs con separador estandarizado limpio ' / '
+ */
+export function formatNormalizedWrs(wrs: string[]): string {
+  return wrs.filter(Boolean).join(' / ');
+}
+
+export interface WrAndBultosParsed {
+  wrs: string[];
+  normalizedWrs: string;
+  bultos: string;
+  count: number;
+}
+
+/**
+ * Parsea una celda que contiene códigos WR y/o descripción de bultos.
+ * Detecta WRs separados por guion o slash y autocalcula la cantidad de bultos
+ * (1 WR -> '1 CJ', 2+ WRs -> 'N CJS').
+ */
+export function parseWrAndBultos(raw: string | null | undefined): WrAndBultosParsed {
+  if (!raw || !String(raw).trim()) {
+    return { wrs: [], normalizedWrs: '', bultos: '', count: 0 };
+  }
+
+  let str = String(raw).trim();
+  const placeholder = '__WR_HYPHEN__';
+  str = str.replace(/\b(WR)-/gi, (_match, p1) => `${p1}${placeholder}`);
+
+  const tokens = str.split(/[\/,;\\\n\r\t]+|\s*-\s*/);
+  const wrs: string[] = [];
+  const bultoTokens: string[] = [];
+
+  for (const token of tokens) {
+    const clean = token.replace(new RegExp(placeholder, 'g'), '-').trim();
+    if (!clean) continue;
+
+    const isBultoOrNote = /\b(cj|cjs|caja|cajas|bulto|bultos|paq|paquete|paquetes|sobre|sobres|mas|más)\b/i.test(clean);
+    if (isBultoOrNote) {
+      bultoTokens.push(clean);
+    } else {
+      wrs.push(clean.toUpperCase());
+    }
+  }
+
+  let bultos = '';
+  if (bultoTokens.length > 0) {
+    bultos = bultoTokens.join(' ').replace(/^MAS\s+/i, '').replace(/^MÁS\s+/i, '').trim();
+  } else if (wrs.length > 0) {
+    bultos = wrs.length === 1 ? '1 CJ' : `${wrs.length} CJS`;
+  }
+
+  return {
+    wrs,
+    normalizedWrs: wrs.join(' / '),
+    bultos,
+    count: wrs.length
+  };
+}
+
+/**
  * Parser de filas pegadas desde Excel (Quick Paste)
- * Convierte texto tabulado (\t) copiado del portapapeles a paradas estructuradas
+ * Convierte texto tabulado (\t) copiado del portapapeles a paradas estructuradas.
+ * Detección inteligente flexible:
+ * - Detecta automáticamente si la celda de WRs contiene múltiples códigos separados por guion (-) o slash (/).
+ * - Autocalcula bultos según cantidad de WRs (1 WR -> '1 CJ', N WRs -> 'N CJS').
+ * - Soporta tanto formato de 5 columnas como de 6 columnas (con columna explícita de Bultos).
  */
 export function parseQuickPasteRows(clipboardText: string): CrearParadaInput[] {
   if (!clipboardText || !clipboardText.trim()) return [];
@@ -288,22 +401,69 @@ export function parseQuickPasteRows(clipboardText: string): CrearParadaInput[] {
     }
 
     const destinatario = col0;
-    const wrBultos = String(cols[1] || '1 CJ').trim() || '1 CJ';
-    const direccion = String(cols[2] || '').trim() || 'Dirección pendiente';
-    const distrito = normalizeDistrito(String(cols[3] || 'LIMA').trim());
-    const telefono = String(cols[4] || '').trim();
+    const col1 = String(cols[1] || '').trim();
+    const col2 = String(cols[2] || '').trim();
+    const col3 = String(cols[3] || '').trim();
+    const col4 = String(cols[4] || '').trim();
+    const col5 = String(cols[5] || '').trim();
+    const col6 = String(cols[6] || '').trim();
 
-    // Opcional: Monto de cobro si viene en col 5 o col 6
+    // Determinar si cols tiene columna de bultos separada (6+ columnas)
+    const isCol3Dist = isKnownDistrito(col3);
+    const isCol4Dist = isKnownDistrito(col4);
+    const col2LooksLikeBultos = /^\d+\s*(cj|cjs|caja|cajas|paq|bulto|bultos|sobre|sobres|pza|und)?$/i.test(col2);
+
+    let wrCodes = '';
+    let bultos = '';
+    let wrBultos = '';
+    let direccion = '';
+    let distrito = 'MIRAFLORES';
+    let telefono = '';
     let montoCobro = 0;
-    if (cols[5]) {
-      const rawNum = String(cols[5]).replace(/[^0-9.]/g, '');
-      const num = parseFloat(rawNum);
-      if (!isNaN(num) && num > 0) montoCobro = num;
+
+    if ((isCol4Dist && !isCol3Dist) || (col2LooksLikeBultos && cols.length >= 6)) {
+      // 6 columnas: Destinatario | WRs | Bultos | Dirección | Distrito | Teléfono | Cobro
+      const parsedWr = parseWrAndBultos(col1);
+      wrCodes = parsedWr.normalizedWrs || col1;
+      bultos = col2 || parsedWr.bultos || '1 CJ';
+      wrBultos = wrCodes ? (bultos ? `${wrCodes} · ${bultos}` : wrCodes) : bultos;
+      direccion = col3 || 'Dirección pendiente';
+      distrito = normalizeDistrito(col4 || 'LIMA');
+      telefono = col5;
+
+      if (col6) {
+        const rawNum = String(col6).replace(/[^0-9.]/g, '');
+        const num = parseFloat(rawNum);
+        if (!isNaN(num) && num > 0) montoCobro = num;
+      }
+    } else {
+      // 5 columnas estándar: Destinatario | WRs (o WR/Bultos) | Dirección | Distrito | Teléfono | Cobro
+      const parsedWr = parseWrAndBultos(col1);
+      wrCodes = parsedWr.normalizedWrs;
+      bultos = parsedWr.bultos || '1 CJ';
+
+      // Preservar col1 o normalizar si tiene múltiples WRs
+      wrBultos = col1 || '1 CJ';
+      if (parsedWr.wrs.length > 1) {
+        wrBultos = parsedWr.normalizedWrs;
+      }
+
+      direccion = col2 || 'Dirección pendiente';
+      distrito = normalizeDistrito(col3 || 'LIMA');
+      telefono = col4;
+
+      if (col5) {
+        const rawNum = String(col5).replace(/[^0-9.]/g, '');
+        const num = parseFloat(rawNum);
+        if (!isNaN(num) && num > 0) montoCobro = num;
+      }
     }
 
     paradas.push({
       destinatario,
       wrBultos,
+      wrCodes,
+      bultos,
       direccion,
       distrito,
       telefono,

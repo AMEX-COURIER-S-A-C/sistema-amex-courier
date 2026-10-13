@@ -29,6 +29,8 @@ export interface DespachoParada {
   orden: number;
   destinatario: string;
   wrBultos: string;
+  wrCodes?: string;
+  bultos?: string;
   direccion: string;
   distrito: string;
   telefonoRaw: string;
@@ -59,6 +61,8 @@ export interface CrearParadaInput {
   orden?: number;
   destinatario: string;
   wrBultos: string;
+  wrCodes?: string;
+  bultos?: string;
   direccion: string;
   distrito: string;
   telefono: string;

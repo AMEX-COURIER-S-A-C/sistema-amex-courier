@@ -3,7 +3,12 @@
 import React, { useState } from 'react';
 import { Plus, Trash2, Clipboard, CheckCircle2, X, AlertCircle } from 'lucide-react';
 import { CrearRutaInput, CrearParadaInput } from '@/types/despacho';
-import { ZONAS_LIMA_DISTRITOS, parseQuickPasteRows, normalizeDistrito } from '@/lib/utils/phoneUtils';
+import {
+  ZONAS_LIMA_DISTRITOS,
+  parseQuickPasteRows,
+  normalizeDistrito,
+  parseWrAndBultos
+} from '@/lib/utils/phoneUtils';
 
 interface RutaBuilderModalProps {
   isOpen: boolean;
@@ -13,10 +18,9 @@ interface RutaBuilderModalProps {
 
 export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBuilderModalProps) {
   // Datos de cabecera de la ruta
-  const [nombreRuta, setNombreRuta] = useState('');
   const [choferNombre, setChoferNombre] = useState('');
   const [choferTelefono, setChoferTelefono] = useState('');
-  const [vehiculoPlaca, setVehiculoPlaca] = useState('');
+  const [vehiculoPlaca, setVehiculoPlaca] = useState('CFM-085');
   const [fechaDespacho, setFechaDespacho] = useState(new Date().toISOString().slice(0, 10));
   const [notas, setNotas] = useState('');
 
@@ -24,6 +28,8 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
   const [paradas, setParadas] = useState<CrearParadaInput[]>([
     {
       destinatario: '',
+      wrCodes: '',
+      bultos: '1 CJ',
       wrBultos: '1 CJ',
       direccion: '',
       distrito: 'MIRAFLORES',
@@ -49,6 +55,8 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
       ...prev,
       {
         destinatario: '',
+        wrCodes: '',
+        bultos: '1 CJ',
         wrBultos: '1 CJ',
         direccion: '',
         distrito: 'MIRAFLORES',
@@ -62,7 +70,65 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
   // Modificar campo de una fila
   const handleUpdateFila = (index: number, field: keyof CrearParadaInput, value: string | number | undefined) => {
     setParadas(prev =>
-      prev.map((p, idx) => (idx === index ? { ...p, [field]: value } : p))
+      prev.map((p, idx) => {
+        if (idx !== index) return p;
+        const updated = { ...p, [field]: value };
+        if (field === 'bultos' || field === 'wrCodes') {
+          const wrCodes = String(updated.wrCodes || '').trim();
+          const bultos = String(updated.bultos || '').trim();
+          updated.wrBultos = wrCodes
+            ? (bultos && bultos !== '1 CJ' ? `${wrCodes} · ${bultos}` : wrCodes)
+            : (bultos || '1 CJ');
+        }
+        return updated;
+      })
+    );
+  };
+
+  // Cambio dinámico en la celda de WRs (detecta separación por guion o slash)
+  const handleWrChange = (index: number, val: string) => {
+    const parsed = parseWrAndBultos(val);
+    setParadas(prev =>
+      prev.map((p, idx) => {
+        if (idx !== index) return p;
+        const currentBultos = (p.bultos || '').trim();
+        const shouldAutoUpdateBultos = !currentBultos || currentBultos === '1 CJ' || /^\d+\s*CJS?$/i.test(currentBultos);
+        const newBultos = shouldAutoUpdateBultos && parsed.bultos ? parsed.bultos : (p.bultos || '1 CJ');
+        return {
+          ...p,
+          wrCodes: val,
+          bultos: newBultos,
+          wrBultos: val
+        };
+      })
+    );
+  };
+
+  // Al salir del campo WR, normaliza visualmente los separadores a ' / ' si fueron escritos con guion o slash
+  const handleWrBlur = (index: number) => {
+    setParadas(prev =>
+      prev.map((p, idx) => {
+        if (idx !== index) return p;
+        const raw = (p.wrCodes || p.wrBultos || '').trim();
+        if (!raw) return p;
+        const parsed = parseWrAndBultos(raw);
+        if (parsed.wrs.length > 0) {
+          const normalized = parsed.normalizedWrs;
+          const currentBultos = (p.bultos || '').trim();
+          const shouldAutoUpdateBultos = !currentBultos || currentBultos === '1 CJ' || /^\d+\s*CJS?$/i.test(currentBultos);
+          const finalBultos = shouldAutoUpdateBultos ? parsed.bultos : (p.bultos || '1 CJ');
+          const finalWrBultos = (finalBultos && finalBultos !== '1 CJ')
+            ? `${normalized} · ${finalBultos}`
+            : normalized;
+          return {
+            ...p,
+            wrCodes: normalized,
+            bultos: finalBultos,
+            wrBultos: finalWrBultos
+          };
+        }
+        return p;
+      })
     );
   };
 
@@ -71,7 +137,7 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
     setParadas(prev => prev.filter((_, idx) => idx !== index));
   };
 
-  // Procesar pegado de Excel
+  // Procesar pegado de Excel (Quick Paste)
   const handleProcessQuickPaste = () => {
     if (!pasteText.trim()) {
       setPasteError('Pega texto de filas copiado de Excel antes de procesar.');
@@ -80,7 +146,7 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
 
     const parsed = parseQuickPasteRows(pasteText);
     if (parsed.length === 0) {
-      setPasteError('No se reconocieron paradas válidas. Asegúrate de copiar filas con columnas de Nombre, WR/Bultos, Dirección y Celular.');
+      setPasteError('No se reconocieron paradas válidas. Asegúrate de copiar filas con columnas de Destinatario, WRs, Dirección y Celular.');
       return;
     }
 
@@ -99,11 +165,6 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
   const handleGuardarRuta = async () => {
     setErrorMsg('');
 
-    if (!nombreRuta.trim()) {
-      setErrorMsg('Ingresa un nombre para la ruta (ej: Ruta Sur - 05/10).');
-      return;
-    }
-
     if (!choferNombre.trim()) {
       setErrorMsg('Ingresa el nombre del chofer o motorizado responsable.');
       return;
@@ -115,18 +176,35 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
       return;
     }
 
+    // Nombre de ruta generado automáticamente por el sistema
+    const nombreRutaGenerado = `Ruta ${fechaDespacho} - ${choferNombre.trim() || 'Chofer'}`;
+
     setIsSubmitting(true);
     try {
       await onSaveRuta(
         {
-          nombreRuta: nombreRuta.trim(),
+          nombreRuta: nombreRutaGenerado,
           choferNombre: choferNombre.trim(),
           choferTelefono: choferTelefono.trim(),
-          vehiculoPlaca: vehiculoPlaca.trim(),
+          vehiculoPlaca: (vehiculoPlaca.trim() || 'CFM-085').toUpperCase(),
           fechaDespacho,
           notas: notas.trim()
         },
-        paradasValidas.map((p, idx) => ({ ...p, orden: idx + 1 }))
+        paradasValidas.map((p, idx) => {
+          const wrCodes = (p.wrCodes || '').trim();
+          const bultos = (p.bultos || '1 CJ').trim();
+          const wrBultos = wrCodes
+            ? (bultos && bultos !== '1 CJ' ? `${wrCodes} · ${bultos}` : wrCodes)
+            : (bultos || p.wrBultos || '1 CJ');
+
+          return {
+            ...p,
+            wrCodes,
+            bultos,
+            wrBultos,
+            orden: idx + 1
+          };
+        })
       );
       onClose();
     } catch (err: unknown) {
@@ -158,7 +236,7 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
           background: '#ffffff',
           borderRadius: '16px',
           width: '100%',
-          maxWidth: '1050px',
+          maxWidth: '1100px',
           maxHeight: '92vh',
           display: 'flex',
           flexDirection: 'column',
@@ -179,10 +257,10 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
         >
           <div>
             <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#0f172a' }}>
-              🚚 Armar Nueva Hoja de Ruta y Despacho Diario
+              🚚 Armar Hoja de Ruta y Despacho Diario
             </h2>
             <p style={{ margin: '4px 0 0 0', fontSize: '12.5px', color: '#64748b' }}>
-              Reemplazo del Excel manual: arma las paradas, pega filas directamente y publícalo para el chofer
+              Reemplazo del Excel manual: ingresa o pega paradas, detecta WRs múltiples automáticamente y publícalo para el chofer
             </p>
           </div>
 
@@ -221,7 +299,7 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
             </div>
           )}
 
-          {/* Formulario de Datos de la Ruta */}
+          {/* Formulario de Datos de la Ruta (Sin Nombre de Ruta, Placa CFM-085 por defecto) */}
           <div
             style={{
               background: '#f8fafc',
@@ -229,29 +307,10 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
               borderRadius: '12px',
               padding: '16px',
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
               gap: '14px'
             }}
           >
-            <div>
-              <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
-                Nombre de la Ruta *
-              </label>
-              <input
-                type="text"
-                placeholder="Ej: Ruta Sur (Miraflores - Surco)"
-                value={nombreRuta}
-                onChange={e => setNombreRuta(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '8px 10px',
-                  borderRadius: '6px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '13px'
-                }}
-              />
-            </div>
-
             <div>
               <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
                 Chofer / Repartidor *
@@ -266,7 +325,8 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
                   padding: '8px 10px',
                   borderRadius: '6px',
                   border: '1px solid #cbd5e1',
-                  fontSize: '13px'
+                  fontSize: '13px',
+                  fontWeight: 600
                 }}
               />
             </div>
@@ -292,11 +352,11 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
 
             <div>
               <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
-                Vehículo / Placa
+                Placa
               </label>
               <input
                 type="text"
-                placeholder="Ej: Furgón AMX-912"
+                placeholder="CFM-085"
                 value={vehiculoPlaca}
                 onChange={e => setVehiculoPlaca(e.target.value)}
                 style={{
@@ -304,7 +364,10 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
                   padding: '8px 10px',
                   borderRadius: '6px',
                   border: '1px solid #cbd5e1',
-                  fontSize: '13px'
+                  fontSize: '13px',
+                  fontFamily: 'monospace',
+                  fontWeight: 700,
+                  textTransform: 'uppercase'
                 }}
               />
             </div>
@@ -327,7 +390,7 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
               />
             </div>
 
-            <div style={{ gridColumn: 'span 2' }}>
+            <div style={{ gridColumn: '1 / -1' }}>
               <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
                 Observaciones / Instrucciones de Ruta
               </label>
@@ -413,14 +476,14 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
                 📋 Pegar Filas desde Excel (Copia las filas en Excel y pégalas aquí):
               </div>
               <p style={{ margin: 0, fontSize: '11px', color: '#4b5563' }}>
-                Detecta automáticamente: Nombre Destinatario | WRs / Bultos | Dirección | Distrito | Teléfono | Cobro
+                Detecta celdas con WRs múltiples separados por guion (-) o slash (/) y autocalcula la cantidad de bultos (soporta con o sin columna de bultos en el Excel).
               </p>
 
               <textarea
                 rows={4}
                 value={pasteText}
                 onChange={e => setPasteText(e.target.value)}
-                placeholder={'DANIEL VALDIVIA\t405148\tCALLE FRANCIA 510\tMIRAFLORES\t997 370 290\nLISS CASTILLO\t5 CJS\tAV CACERES 136\tMIRAFLORES\t969 738 878\t14.70'}
+                placeholder={'DANIEL VALDIVIA\t405148\tCALLE FRANCIA 510\tMIRAFLORES\t997 370 290\nLISS CASTILLO\t405148-405149\tAV CACERES 136\tMIRAFLORES\t969 738 878\t14.70'}
                 style={{
                   width: '100%',
                   padding: '8px',
@@ -470,160 +533,214 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
             </div>
           )}
 
-          {/* Tabla Editable de Paradas */}
+          {/* Tabla Editable de Paradas: Columnas Códigos WR y Bultos Separadas */}
           <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '850px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '950px' }}>
               <thead>
                 <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 800 }}>
-                  <th style={{ padding: '8px 10px', width: '40px' }}>#</th>
-                  <th style={{ padding: '8px 10px' }}>Destinatario *</th>
-                  <th style={{ padding: '8px 10px', width: '140px' }}>Bultos / WR *</th>
-                  <th style={{ padding: '8px 10px' }}>Dirección Completa *</th>
-                  <th style={{ padding: '8px 10px', width: '180px' }}>Distrito (Zona)</th>
-                  <th style={{ padding: '8px 10px', width: '130px' }}>Teléfono Celular</th>
-                  <th style={{ padding: '8px 10px', width: '100px' }}>Cobrar ($)</th>
-                  <th style={{ padding: '8px 10px', width: '40px' }}></th>
+                  <th style={{ padding: '8px 10px', width: '38px', textAlign: 'center' }}>#</th>
+                  <th style={{ padding: '8px 10px', minWidth: '150px' }}>Destinatario *</th>
+                  <th style={{ padding: '8px 10px', minWidth: '170px' }}>Códigos WR *</th>
+                  <th style={{ padding: '8px 10px', width: '105px' }}>Bultos / Cant.</th>
+                  <th style={{ padding: '8px 10px', minWidth: '180px' }}>Dirección Completa *</th>
+                  <th style={{ padding: '8px 10px', width: '170px' }}>Distrito (Zona)</th>
+                  <th style={{ padding: '8px 10px', width: '120px' }}>Teléfono Celular</th>
+                  <th style={{ padding: '8px 10px', width: '90px' }}>Cobrar ($)</th>
+                  <th style={{ padding: '8px 10px', width: '38px' }}></th>
                 </tr>
               </thead>
               <tbody>
-                {paradas.map((parada, idx) => (
-                  <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '6px 10px', fontWeight: 800, color: '#64748b', textAlign: 'center' }}>
-                      {idx + 1}
-                    </td>
+                {paradas.map((parada, idx) => {
+                  const wrValue = parada.wrCodes !== undefined ? parada.wrCodes : (parada.wrBultos || '');
+                  const parsedInfo = parseWrAndBultos(wrValue);
 
-                    <td style={{ padding: '6px 8px' }}>
-                      <input
-                        type="text"
-                        placeholder="Ej: Daniel Valdivia"
-                        value={parada.destinatario}
-                        onChange={e => handleUpdateFila(idx, 'destinatario', e.target.value)}
-                        style={{
-                          width: '100%',
-                          padding: '6px 8px',
-                          borderRadius: '4px',
-                          border: '1px solid #cbd5e1',
-                          fontWeight: 700
-                        }}
-                      />
-                    </td>
+                  return (
+                    <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '6px 10px', fontWeight: 800, color: '#64748b', textAlign: 'center' }}>
+                        {idx + 1}
+                      </td>
 
-                    <td style={{ padding: '6px 8px' }}>
-                      <input
-                        type="text"
-                        placeholder="Ej: 5 CJS / 405148"
-                        value={parada.wrBultos}
-                        onChange={e => handleUpdateFila(idx, 'wrBultos', e.target.value)}
-                        style={{
-                          width: '100%',
-                          padding: '6px 8px',
-                          borderRadius: '4px',
-                          border: '1px solid #cbd5e1',
-                          fontFamily: 'monospace'
-                        }}
-                      />
-                    </td>
-
-                    <td style={{ padding: '6px 8px' }}>
-                      <input
-                        type="text"
-                        placeholder="Calle, número, dpto, ref..."
-                        value={parada.direccion}
-                        onChange={e => handleUpdateFila(idx, 'direccion', e.target.value)}
-                        style={{
-                          width: '100%',
-                          padding: '6px 8px',
-                          borderRadius: '4px',
-                          border: '1px solid #cbd5e1'
-                        }}
-                      />
-                    </td>
-
-                    <td style={{ padding: '6px 8px' }}>
-                      <select
-                        value={normalizeDistrito(parada.distrito)}
-                        onChange={e => handleUpdateFila(idx, 'distrito', e.target.value)}
-                        style={{
-                          width: '100%',
-                          padding: '6px 8px',
-                          borderRadius: '4px',
-                          border: '1px solid #cbd5e1',
-                          background: '#ffffff',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          color: '#0f172a',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        <option value="" disabled>
-                          Seleccionar Distrito...
-                        </option>
-                        {ZONAS_LIMA_DISTRITOS.map(zona => (
-                          <optgroup key={zona.zona} label={zona.zona} style={{ fontWeight: 800, color: '#1e293b' }}>
-                            {zona.distritos.map(d => (
-                              <option key={d.value} value={d.value} style={{ fontWeight: 500, color: '#334155' }}>
-                                {d.label}
-                              </option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </select>
-                    </td>
-
-                    <td style={{ padding: '6px 8px' }}>
-                      <input
-                        type="text"
-                        placeholder="997 370 290"
-                        value={parada.telefono}
-                        onChange={e => handleUpdateFila(idx, 'telefono', e.target.value)}
-                        style={{
-                          width: '100%',
-                          padding: '6px 8px',
-                          borderRadius: '4px',
-                          border: '1px solid #cbd5e1',
-                          fontFamily: 'monospace'
-                        }}
-                      />
-                    </td>
-
-                    <td style={{ padding: '6px 8px' }}>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0.00"
-                        value={parada.montoCobro || ''}
-                        onChange={e => handleUpdateFila(idx, 'montoCobro', parseFloat(e.target.value) || 0)}
-                        style={{
-                          width: '100%',
-                          padding: '6px 8px',
-                          borderRadius: '4px',
-                          border: '1px solid #cbd5e1',
-                          textAlign: 'right'
-                        }}
-                      />
-                    </td>
-
-                    <td style={{ padding: '6px 8px', textAlign: 'center' }}>
-                      {paradas.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveFila(idx)}
+                      <td style={{ padding: '6px 8px' }}>
+                        <input
+                          type="text"
+                          placeholder="Ej: Daniel Valdivia"
+                          value={parada.destinatario}
+                          onChange={e => handleUpdateFila(idx, 'destinatario', e.target.value)}
                           style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: '#ef4444',
-                            cursor: 'pointer',
-                            padding: '4px'
+                            width: '100%',
+                            padding: '6px 8px',
+                            borderRadius: '4px',
+                            border: '1px solid #cbd5e1',
+                            fontWeight: 700
                           }}
-                          title="Eliminar fila"
+                        />
+                      </td>
+
+                      {/* Columna Códigos WR con Detección de Guiones / Slash y Badge */}
+                      <td style={{ padding: '6px 8px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                          <input
+                            type="text"
+                            placeholder="Ej: 405148 / 405149"
+                            value={wrValue}
+                            onChange={e => handleWrChange(idx, e.target.value)}
+                            onBlur={() => handleWrBlur(idx)}
+                            style={{
+                              width: '100%',
+                              padding: '6px 8px',
+                              borderRadius: '4px',
+                              border: '1px solid #cbd5e1',
+                              fontFamily: 'monospace',
+                              fontWeight: 600,
+                              fontSize: '12px'
+                            }}
+                          />
+                          {parsedInfo.count > 1 ? (
+                            <span
+                              style={{
+                                fontSize: '10px',
+                                color: '#15803d',
+                                background: '#dcfce7',
+                                border: '1px solid #bbf7d0',
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                                fontWeight: 800,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                width: 'fit-content'
+                              }}
+                            >
+                              ✨ {parsedInfo.count} WRs detectados
+                            </span>
+                          ) : parsedInfo.count === 1 ? (
+                            <span style={{ fontSize: '10px', color: '#2563eb', fontWeight: 700, paddingLeft: '2px' }}>
+                              🏷️ 1 WR detectado
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
+
+                      {/* Columna Bultos / Cantidad (Autocalculada y Editable) */}
+                      <td style={{ padding: '6px 8px' }}>
+                        <input
+                          type="text"
+                          placeholder="1 CJ"
+                          value={parada.bultos !== undefined ? parada.bultos : '1 CJ'}
+                          onChange={e => handleUpdateFila(idx, 'bultos', e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '6px 8px',
+                            borderRadius: '4px',
+                            border: '1px solid #cbd5e1',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            textAlign: 'center'
+                          }}
+                        />
+                      </td>
+
+                      <td style={{ padding: '6px 8px' }}>
+                        <input
+                          type="text"
+                          placeholder="Calle, número, dpto, ref..."
+                          value={parada.direccion}
+                          onChange={e => handleUpdateFila(idx, 'direccion', e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '6px 8px',
+                            borderRadius: '4px',
+                            border: '1px solid #cbd5e1'
+                          }}
+                        />
+                      </td>
+
+                      <td style={{ padding: '6px 8px' }}>
+                        <select
+                          value={normalizeDistrito(parada.distrito)}
+                          onChange={e => handleUpdateFila(idx, 'distrito', e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '6px 8px',
+                            borderRadius: '4px',
+                            border: '1px solid #cbd5e1',
+                            background: '#ffffff',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            color: '#0f172a',
+                            cursor: 'pointer'
+                          }}
                         >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                          <option value="" disabled>
+                            Seleccionar Distrito...
+                          </option>
+                          {ZONAS_LIMA_DISTRITOS.map(zona => (
+                            <optgroup key={zona.zona} label={zona.zona} style={{ fontWeight: 800, color: '#1e293b' }}>
+                              {zona.distritos.map(d => (
+                                <option key={d.value} value={d.value} style={{ fontWeight: 500, color: '#334155' }}>
+                                  {d.label}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                      </td>
+
+                      <td style={{ padding: '6px 8px' }}>
+                        <input
+                          type="text"
+                          placeholder="997 370 290"
+                          value={parada.telefono}
+                          onChange={e => handleUpdateFila(idx, 'telefono', e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '6px 8px',
+                            borderRadius: '4px',
+                            border: '1px solid #cbd5e1',
+                            fontFamily: 'monospace'
+                          }}
+                        />
+                      </td>
+
+                      <td style={{ padding: '6px 8px' }}>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0.00"
+                          value={parada.montoCobro || ''}
+                          onChange={e => handleUpdateFila(idx, 'montoCobro', parseFloat(e.target.value) || 0)}
+                          style={{
+                            width: '100%',
+                            padding: '6px 8px',
+                            borderRadius: '4px',
+                            border: '1px solid #cbd5e1',
+                            textAlign: 'right'
+                          }}
+                        />
+                      </td>
+
+                      <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                        {paradas.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveFila(idx)}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: '#ef4444',
+                              cursor: 'pointer',
+                              padding: '4px'
+                            }}
+                            title="Eliminar fila"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

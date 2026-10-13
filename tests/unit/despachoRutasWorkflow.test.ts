@@ -5,6 +5,9 @@ import {
   getGoogleMapsUrl,
   normalizeDistrito,
   parseQuickPasteRows,
+  parseWrCodes,
+  parseWrAndBultos,
+  formatNormalizedWrs,
   ZONAS_LIMA_DISTRITOS
 } from '@/lib/utils/phoneUtils';
 
@@ -144,6 +147,98 @@ describe('Módulo de Despacho y Rutas: Utilidades y Flujo de Chofer', () => {
       const paradas = parseQuickPasteRows(raw);
       expect(paradas).toHaveLength(1);
       expect(paradas[0].destinatario).toBe('VICTOR SCALISI');
+    });
+
+    it('detecta celdas con WRs múltiples separados por guion (-) o slash (/) y autocalcula bultos', () => {
+      const raw = [
+        'CARLOS GOMEZ\t405148 - 405149\tAV LARCO 456\tMIRAFLORES\t998 123 456',
+        'MARIA LOPEZ\t405148/405149/405150\tCALLE LAS FLORES 200\tSURCO\t997 654 321\t15.00'
+      ].join('\n');
+
+      const paradas = parseQuickPasteRows(raw);
+      expect(paradas).toHaveLength(2);
+
+      // Fila 1: Separado por guión (-)
+      expect(paradas[0].destinatario).toBe('CARLOS GOMEZ');
+      expect(paradas[0].wrCodes).toBe('405148 / 405149');
+      expect(paradas[0].bultos).toBe('2 CJS');
+      expect(paradas[0].direccion).toBe('AV LARCO 456');
+      expect(paradas[0].distrito).toBe('MIRAFLORES');
+
+      // Fila 2: Separado por slash (/) con cobro
+      expect(paradas[1].destinatario).toBe('MARIA LOPEZ');
+      expect(paradas[1].wrCodes).toBe('405148 / 405149 / 405150');
+      expect(paradas[1].bultos).toBe('3 CJS');
+      expect(paradas[1].montoCobro).toBe(15.00);
+      expect(paradas[1].distrito).toBe('SANTIAGO DE SURCO');
+    });
+
+    it('soporta pegado flexible de 6 columnas con columna explícita de Bultos', () => {
+      const raw = 'JOSE SANCHEZ\t405148-405149\t5 CJS\tAV BOLOGNESI 123\tBARRANCO\t998 776 655\t20.00';
+      const paradas = parseQuickPasteRows(raw);
+
+      expect(paradas).toHaveLength(1);
+      expect(paradas[0].destinatario).toBe('JOSE SANCHEZ');
+      expect(paradas[0].wrCodes).toBe('405148 / 405149');
+      expect(paradas[0].bultos).toBe('5 CJS');
+      expect(paradas[0].direccion).toBe('AV BOLOGNESI 123');
+      expect(paradas[0].distrito).toBe('BARRANCO');
+      expect(paradas[0].telefono).toBe('998 776 655');
+      expect(paradas[0].montoCobro).toBe(20.00);
+    });
+  });
+
+  describe('Detección y Normalización de Códigos WR (Guion y Slash)', () => {
+    it('detecta códigos separados por guion con y sin espacios', () => {
+      expect(parseWrCodes('405148-405149')).toEqual(['405148', '405149']);
+      expect(parseWrCodes('405148 - 405149')).toEqual(['405148', '405149']);
+      expect(parseWrCodes('405148 - 405149 - 405150')).toEqual(['405148', '405149', '405150']);
+    });
+
+    it('detecta códigos separados por slash con y sin espacios', () => {
+      expect(parseWrCodes('405148/405149')).toEqual(['405148', '405149']);
+      expect(parseWrCodes('405148 / 405149')).toEqual(['405148', '405149']);
+      expect(parseWrCodes('405148 / 405149 / 405150')).toEqual(['405148', '405149', '405150']);
+    });
+
+    it('maneja separadores mixtos de guion, slash y coma', () => {
+      expect(parseWrCodes('405148 - 405149 / 405150, 405151')).toEqual([
+        '405148',
+        '405149',
+        '405150',
+        '405151'
+      ]);
+    });
+
+    it('preserva prefijos de tipo WR- sin fragmentarlos', () => {
+      expect(parseWrCodes('WR-405148 - WR-405149')).toEqual(['WR-405148', 'WR-405149']);
+      expect(parseWrCodes('WR000474478 / WR000474479')).toEqual(['WR000474478', 'WR000474479']);
+    });
+
+    it('formatea la lista de WRs a una cadena estándar limpia con slash', () => {
+      expect(formatNormalizedWrs(['405148', '405149'])).toBe('405148 / 405149');
+    });
+
+    it('autocalcula bultos a partir de la cantidad de WRs detectados', () => {
+      const single = parseWrAndBultos('405148');
+      expect(single.count).toBe(1);
+      expect(single.bultos).toBe('1 CJ');
+      expect(single.normalizedWrs).toBe('405148');
+
+      const duo = parseWrAndBultos('405148 - 405149');
+      expect(duo.count).toBe(2);
+      expect(duo.bultos).toBe('2 CJS');
+      expect(duo.normalizedWrs).toBe('405148 / 405149');
+
+      const trio = parseWrAndBultos('405148 / 405149 / 405150');
+      expect(trio.count).toBe(3);
+      expect(trio.bultos).toBe('3 CJS');
+    });
+
+    it('respeta descripciones explícitas de bultos presentes en el texto', () => {
+      const explicit = parseWrAndBultos('404403- MAS 8 CJS');
+      expect(explicit.wrs).toEqual(['404403']);
+      expect(explicit.bultos).toBe('8 CJS');
     });
   });
 
