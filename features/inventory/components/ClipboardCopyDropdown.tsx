@@ -6,12 +6,6 @@ import {
   ChevronDown,
   Camera,
   Columns,
-  MessageSquare,
-  FileText,
-  Hash,
-  Table,
-  Barcode,
-  MapPin,
   Check,
   Loader2,
   Sparkles
@@ -20,13 +14,7 @@ import { Paquete } from '@/types';
 import { copyPackagesTableAsImage } from '../utils/clipboardTableImage';
 import {
   copyTextToClipboard,
-  formatClientAndWrTabbed,
-  formatClientAndWrHyphen,
-  formatOnlyWrs,
-  formatWhatsAppSummary,
-  formatFullTableTsv,
-  formatClientWrAndLocation,
-  formatTrackingAndWr
+  formatClientAndWrTabbed
 } from '../utils/clipboardFormats';
 import { alertDialog } from '@/lib/dialog';
 import { soundEffects } from '@/lib/audio/soundEffects';
@@ -122,17 +110,8 @@ export default function ClipboardCopyDropdown({
     }
   };
 
-  // Manejador para copiar en formatos de texto plano
-  const handleCopyTextFormat = async (
-    formatType:
-      | 'client_wr_tab'
-      | 'client_wr_hyphen'
-      | 'only_wrs'
-      | 'whatsapp_summary'
-      | 'full_tsv'
-      | 'client_wr_location'
-      | 'tracking_wr'
-  ) => {
+  // Manejador para copiar 2 columnas: Nombre a la izquierda y WR a la derecha (Tabulado para Excel)
+  const handleCopyTwoColumns = async () => {
     if (activePackages.length === 0) {
       soundEffects.playNotFound();
       await alertDialog({
@@ -144,44 +123,11 @@ export default function ClipboardCopyDropdown({
     }
 
     setIsOpen(false);
-    let textToCopy = '';
-    let successMessage = '';
-
-    switch (formatType) {
-      case 'client_wr_tab':
-        textToCopy = formatClientAndWrTabbed(activePackages);
-        successMessage = `¡${activePackages.length} pares Cliente-WR copiados (2 col)!`;
-        break;
-      case 'client_wr_hyphen':
-        textToCopy = formatClientAndWrHyphen(activePackages);
-        successMessage = `¡${activePackages.length} líneas Cliente-WR copiadas!`;
-        break;
-      case 'only_wrs':
-        textToCopy = formatOnlyWrs(activePackages);
-        successMessage = `¡${activePackages.length} guías WR copiadas!`;
-        break;
-      case 'whatsapp_summary':
-        textToCopy = formatWhatsAppSummary(activePackages);
-        successMessage = `¡Mensaje WhatsApp estructurado copiado!`;
-        break;
-      case 'full_tsv':
-        textToCopy = formatFullTableTsv(activePackages);
-        successMessage = `¡Tabla completa copiada (${activePackages.length} filas)!`;
-        break;
-      case 'client_wr_location':
-        textToCopy = formatClientWrAndLocation(activePackages);
-        successMessage = `¡Cliente + WR + Ubicación copiado (3 col)!`;
-        break;
-      case 'tracking_wr':
-        textToCopy = formatTrackingAndWr(activePackages);
-        successMessage = `¡Trackings y WRs copiados!`;
-        break;
-    }
-
+    const textToCopy = formatClientAndWrTabbed(activePackages);
     const ok = await copyTextToClipboard(textToCopy);
     if (ok) {
       soundEffects.playSuccess();
-      setCopiedLabel(successMessage);
+      setCopiedLabel(`¡${activePackages.length} pares Nombre-WR copiados!`);
       setCopyStatus('copied');
       setTimeout(() => setCopyStatus('idle'), 3000);
     } else {
@@ -358,11 +304,7 @@ export default function ClipboardCopyDropdown({
             </div>
           </div>
 
-          {/* 1. SECCIÓN: IMAGEN VISUAL PARA WHATSAPP */}
-          <div style={{ padding: '2px 8px', fontSize: '9.5px', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Imagen para WhatsApp
-          </div>
-
+          {/* 1. Opción: Imagen Corporativa para WhatsApp */}
           <button
             type="button"
             onClick={handleCopyImage}
@@ -376,7 +318,7 @@ export default function ClipboardCopyDropdown({
               </div>
               <div style={{ textAlign: 'left' }}>
                 <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '12px' }}>
-                  Copiar Imagen de Tabla
+                  Copiar Imagen de Tabla (WhatsApp)
                 </div>
                 <div style={{ fontSize: '10.5px', color: '#64748b' }}>
                   Render HD con logo corporativo, WR, cliente, peso y ubicación
@@ -385,17 +327,12 @@ export default function ClipboardCopyDropdown({
             </div>
           </button>
 
-          <div style={{ height: '1px', background: '#f1f5f9', margin: '3px 0' }} />
+          <div style={{ height: '1px', background: '#f1f5f9', margin: '4px 0' }} />
 
-          {/* 2. SECCIÓN: TEXTO PLANO Y COLUMNAS (EXCEL & CHATS) */}
-          <div style={{ padding: '2px 8px', fontSize: '9.5px', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Texto Plano y Columnas
-          </div>
-
-          {/* Opción A: 2 Columnas: Nombre a la izquierda y WR a la derecha (Tabulado) */}
+          {/* 2. Opción: 2 Columnas: Nombre a la izquierda y WR a la derecha (Tabulado para Excel) */}
           <button
             type="button"
-            onClick={() => handleCopyTextFormat('client_wr_tab')}
+            onClick={handleCopyTwoColumns}
             style={dropdownButtonStyle}
             onMouseEnter={e => itemHover(e, true)}
             onMouseLeave={e => itemHover(e, false)}
@@ -410,151 +347,6 @@ export default function ClipboardCopyDropdown({
                 </div>
                 <div style={{ fontSize: '10.5px', color: '#64748b' }}>
                   Nombre a la izq. y WR a la der. (pega en 2 columnas separadas)
-                </div>
-              </div>
-            </div>
-          </button>
-
-          {/* Opción B: 2 Columnas con Guion (Chat / WhatsApp) */}
-          <button
-            type="button"
-            onClick={() => handleCopyTextFormat('client_wr_hyphen')}
-            style={dropdownButtonStyle}
-            onMouseEnter={e => itemHover(e, true)}
-            onMouseLeave={e => itemHover(e, false)}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={iconBoxStyle('#f0f9ff', '#0284c7')}>
-                <FileText className="w-4 h-4 text-sky-600" />
-              </div>
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '12px' }}>
-                  Cliente - WR (Formato Chat)
-                </div>
-                <div style={{ fontSize: '10.5px', color: '#64748b' }}>
-                  Texto limpio para WhatsApp: <code>AMEX CLIENTE - WR000123</code>
-                </div>
-              </div>
-            </div>
-          </button>
-
-          {/* Opción C: Solo Guías WR (1 por línea) */}
-          <button
-            type="button"
-            onClick={() => handleCopyTextFormat('only_wrs')}
-            style={dropdownButtonStyle}
-            onMouseEnter={e => itemHover(e, true)}
-            onMouseLeave={e => itemHover(e, false)}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={iconBoxStyle('#faf5ff', '#9333ea')}>
-                <Hash className="w-4 h-4 text-purple-600" />
-              </div>
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '12px' }}>
-                  Solo Guías WR (1 por línea)
-                </div>
-                <div style={{ fontSize: '10.5px', color: '#64748b' }}>
-                  Lista vertical de códigos para cruces TIB, filtros y búsquedas
-                </div>
-              </div>
-            </div>
-          </button>
-
-          <div style={{ height: '1px', background: '#f1f5f9', margin: '3px 0' }} />
-
-          {/* 3. SECCIÓN: REPORTES ESTRUCTURADOS Y DETALLADOS */}
-          <div style={{ padding: '2px 8px', fontSize: '9.5px', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Reportes y Detallados
-          </div>
-
-          {/* Opción D: Resumen WhatsApp con Emojis */}
-          <button
-            type="button"
-            onClick={() => handleCopyTextFormat('whatsapp_summary')}
-            style={dropdownButtonStyle}
-            onMouseEnter={e => itemHover(e, true)}
-            onMouseLeave={e => itemHover(e, false)}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={iconBoxStyle('#f0fdf4', '#16a34a')}>
-                <MessageSquare className="w-4 h-4 text-green-600" />
-              </div>
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '12px' }}>
-                  Resumen WhatsApp con Emojis
-                </div>
-                <div style={{ fontSize: '10.5px', color: '#64748b' }}>
-                  Mensaje listo con encabezado, cliente, WR, anaquel y peso
-                </div>
-              </div>
-            </div>
-          </button>
-
-          {/* Opción E: Cliente + WR + Ubicación (3 columnas) */}
-          <button
-            type="button"
-            onClick={() => handleCopyTextFormat('client_wr_location')}
-            style={dropdownButtonStyle}
-            onMouseEnter={e => itemHover(e, true)}
-            onMouseLeave={e => itemHover(e, false)}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={iconBoxStyle('#fef3c7', '#d97706')}>
-                <MapPin className="w-4 h-4 text-amber-600" />
-              </div>
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '12px' }}>
-                  Cliente + WR + Ubicación (3 col)
-                </div>
-                <div style={{ fontSize: '10.5px', color: '#64748b' }}>
-                  Tabulado para control físico, slotting y despacho en bodega
-                </div>
-              </div>
-            </div>
-          </button>
-
-          {/* Opción F: Tabla Completa TSV (Excel / Sheets) */}
-          <button
-            type="button"
-            onClick={() => handleCopyTextFormat('full_tsv')}
-            style={dropdownButtonStyle}
-            onMouseEnter={e => itemHover(e, true)}
-            onMouseLeave={e => itemHover(e, false)}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={iconBoxStyle('#f0fdfa', '#0d9488')}>
-                <Table className="w-4 h-4 text-teal-600" />
-              </div>
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '12px' }}>
-                  Tabla Completa (TSV / Excel)
-                </div>
-                <div style={{ fontSize: '10.5px', color: '#64748b' }}>
-                  Con cabeceras: WR, Trk, Cliente, Tipo, Peso, Ubic, Estado
-                </div>
-              </div>
-            </div>
-          </button>
-
-          {/* Opción G: Tracking y Guía WR */}
-          <button
-            type="button"
-            onClick={() => handleCopyTextFormat('tracking_wr')}
-            style={dropdownButtonStyle}
-            onMouseEnter={e => itemHover(e, true)}
-            onMouseLeave={e => itemHover(e, false)}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={iconBoxStyle('#fff7ed', '#ea580c')}>
-                <Barcode className="w-4 h-4 text-orange-600" />
-              </div>
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ fontWeight: 800, color: '#0f172a', fontSize: '12px' }}>
-                  Tracking y Guía WR
-                </div>
-                <div style={{ fontSize: '10.5px', color: '#64748b' }}>
-                  Para transportistas y cruces con guías de courier
                 </div>
               </div>
             </div>
