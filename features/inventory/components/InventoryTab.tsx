@@ -264,7 +264,7 @@ export default function InventoryTab({
         onExportExcel={handleExportExcel}
         onRefreshData={async () => {
           if (onRefreshData) await onRefreshData();
-          await fetchServerPaquetes();
+          await Promise.all([fetchServerPaquetes(), fetchData()]);
         }}
         onNewPackage={onNewPackage}
         serverExistenciasActivas={serverExistenciasActivas}

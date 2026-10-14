@@ -8,6 +8,7 @@ import TibOperationsDropdown from './TibOperationsDropdown';
 import InventoryStatsCards from './InventoryStatsCards';
 import { copyPackagesTableAsImage } from '../utils/clipboardTableImage';
 import { alertDialog } from '@/lib/dialog';
+import { soundEffects } from '@/lib/audio/soundEffects';
 
 export interface InventoryHeaderProps {
   paquetes: Paquete[];
@@ -43,7 +44,8 @@ export default function InventoryHeader({
   serverPesoTotalKg,
   children
 }: InventoryHeaderProps) {
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshState, setRefreshState] = useState<'idle' | 'loading' | 'success'>('idle');
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copying' | 'copied'>('idle');
   const [copiedCount, setCopiedCount] = useState<number>(0);
 
@@ -84,12 +86,29 @@ export default function InventoryHeader({
   };
 
   const handleRefresh = async () => {
-    if (!onRefreshData || isRefreshing) return;
-    setIsRefreshing(true);
+    if (!onRefreshData || refreshState === 'loading') return;
+    setRefreshState('loading');
+    const startTime = Date.now();
     try {
       await onRefreshData();
-    } finally {
-      setIsRefreshing(false);
+      // Garantizar que la animación se aprecie fluidamente (mínimo 650ms)
+      const elapsed = Date.now() - startTime;
+      if (elapsed < 650) {
+        await new Promise(resolve => setTimeout(resolve, 650 - elapsed));
+      }
+      setRefreshState('success');
+      const now = new Date();
+      setLastRefreshedAt(
+        now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      );
+      soundEffects.playSuccess();
+      setTimeout(() => {
+        setRefreshState('idle');
+      }, 2200);
+    } catch (err) {
+      console.error('Error al sincronizar datos de inventario:', err);
+      soundEffects.playNotFound();
+      setRefreshState('idle');
     }
   };
 
@@ -200,38 +219,44 @@ export default function InventoryHeader({
             </span>
           </button>
 
-          {/* Botón Actualizar */}
+          {/* Botón Actualizar Profesional y Animado */}
           {onRefreshData && (
             <button
               type="button"
               onClick={handleRefresh}
-              disabled={isRefreshing}
-              className="btn"
-              style={{
-                background: '#ffffff',
-                border: '1px solid #cbd5e1',
-                color: '#334155',
-                height: '33px',
-                padding: '0 12px',
-                borderRadius: '8px',
-                fontSize: '12px',
-                fontWeight: 700,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                cursor: isRefreshing ? 'wait' : 'pointer',
-                transition: 'all 0.15s ease',
-                boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
-              }}
-              title="Sincronizar inventario en tiempo real"
+              disabled={refreshState === 'loading'}
+              className={`inv-refresh-btn ${
+                refreshState === 'loading'
+                  ? 'is-loading'
+                  : refreshState === 'success'
+                  ? 'is-success'
+                  : ''
+              }`}
+              title={
+                lastRefreshedAt
+                  ? `Última sincronización exitosa a las ${lastRefreshedAt}. Clic para actualizar nuevamente.`
+                  : 'Sincronizar inventario en tiempo real con Supabase'
+              }
             >
-              <RefreshCw
-                className="w-3.5 h-3.5 text-blue-600"
-                style={{
-                  animation: isRefreshing ? 'spin 1s linear infinite' : 'none'
-                }}
-              />
-              <span>{isRefreshing ? 'Actualizando...' : 'Actualizar'}</span>
+              {refreshState === 'loading' ? (
+                <RefreshCw className="w-3.5 h-3.5 text-blue-600 inv-refresh-icon-spin" />
+              ) : refreshState === 'success' ? (
+                <Check className="w-3.5 h-3.5 text-emerald-600 inv-refresh-pop" />
+              ) : (
+                <RefreshCw className="w-3.5 h-3.5 text-blue-600 inv-refresh-icon-spin" />
+              )}
+              <span>
+                {refreshState === 'loading'
+                  ? 'Sincronizando...'
+                  : refreshState === 'success'
+                  ? '¡Actualizado!'
+                  : 'Actualizar'}
+              </span>
+              {lastRefreshedAt && refreshState === 'idle' && (
+                <span className="inv-refresh-timestamp">
+                  {lastRefreshedAt.slice(0, 5)}
+                </span>
+              )}
             </button>
           )}
 
