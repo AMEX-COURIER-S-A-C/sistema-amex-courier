@@ -73,13 +73,20 @@ export default function TibImageModal({
     setIsFullscreen(false);
 
     // Si el paquete ya tiene la URL cargada
-    if (paquete.tibImagenUrl) {
+    if (paquete.tibImagenUrl && paquete.tibImagenUrl !== 'NO_IMAGE') {
       setImageUrl(paquete.tibImagenUrl);
       setTicketUrl(paquete.tibTicketPdfUrl || null);
+    } else if (paquete.tibImagenUrl === 'NO_IMAGE') {
+      setImageUrl(null);
+      setErrorMsg(`Consultado con TIB: La guía ${paquete.numeroReciboBodega} no cuenta con evidencia fotográfica en Miami.`);
     }
 
-    // Consultar o confirmar con la API
-    void fetchTibImage(paquete.numeroReciboBodega, paquete.id, false);
+    // Consultar o confirmar con la API si no es NO_IMAGE
+    if (paquete.tibImagenUrl !== 'NO_IMAGE') {
+      void fetchTibImage(paquete.numeroReciboBodega, paquete.id, false);
+    } else {
+      setLoading(false);
+    }
   }, [isOpen, paquete]);
 
   // Cerrar al presionar la tecla Escape
@@ -115,7 +122,7 @@ export default function TibImageModal({
         throw new Error(data.error || 'Error al conectar con el servidor.');
       }
 
-      if (data.found && data.tibImagenUrl) {
+      if (data.found && data.tibImagenUrl && data.tibImagenUrl !== 'NO_IMAGE') {
         setImageUrl(data.tibImagenUrl);
         setTicketUrl(data.tibTicketPdfUrl || null);
         if (data.tibData) {
@@ -125,7 +132,11 @@ export default function TibImageModal({
           onImageLoaded(wr, data.tibImagenUrl, data.tibTicketPdfUrl || undefined);
         }
       } else {
+        setImageUrl(null);
         setErrorMsg(data.message || `No se encontró evidencia fotográfica en TIB para la guía ${wr}.`);
+        if (onImageLoaded && (data.tibImagenUrl === 'NO_IMAGE' || data.markedNoImage)) {
+          onImageLoaded(wr, 'NO_IMAGE');
+        }
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al obtener la imagen de TIB';

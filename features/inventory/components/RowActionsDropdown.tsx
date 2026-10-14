@@ -291,7 +291,13 @@ export default function RowActionsDropdown({
               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
             >
               <Camera className="w-4 h-4 text-indigo-600 flex-shrink-0" />
-              <span>{pkg.tibImagenUrl ? 'Ver Foto TIB' : 'Consultar Foto TIB'}</span>
+              <span>
+                {pkg.tibImagenUrl && pkg.tibImagenUrl !== 'NO_IMAGE'
+                  ? 'Ver Foto TIB'
+                  : pkg.tibImagenUrl === 'NO_IMAGE'
+                  ? 'Sin Foto en TIB'
+                  : 'Consultar Foto TIB'}
+              </span>
             </button>
           )}
 

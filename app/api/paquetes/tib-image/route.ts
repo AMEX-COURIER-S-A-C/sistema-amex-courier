@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
 
     const all = packages || [];
     let withImageCount = 0;
+    let noImageCount = 0;
     let missingImage = 0;
     let missingTracking = 0;
     let missingPeso = 0;
@@ -41,7 +42,10 @@ export async function GET(req: NextRequest) {
     const missingList: any[] = [];
 
     for (const p of all) {
-      const isMissingImage = !p.tib_imagen_url;
+      const isNoImage = p.tib_imagen_url === 'NO_IMAGE';
+      const hasRealImage = Boolean(p.tib_imagen_url && p.tib_imagen_url !== 'NO_IMAGE');
+      const isMissingImage = (!p.tib_imagen_url || p.tib_imagen_url.trim() === '') && !isNoImage;
+
       const isMissingTracking = !p.tracking || p.tracking === '-' || p.tracking.trim() === '';
       const isMissingPeso = !p.peso_kg || Number(p.peso_kg) <= 0;
       const isMissingCliente =
@@ -51,7 +55,8 @@ export async function GET(req: NextRequest) {
       const isMissingEmpaque = !p.tipo_empaque || p.tipo_empaque.trim() === '';
       const isMissingEstadoTib = !p.estado_tib || p.estado_tib.trim() === '';
 
-      if (!isMissingImage) withImageCount++;
+      if (hasRealImage) withImageCount++;
+      if (isNoImage) noImageCount++;
       if (isMissingImage) missingImage++;
       if (isMissingTracking) missingTracking++;
       if (isMissingPeso) missingPeso++;
@@ -95,9 +100,11 @@ export async function GET(req: NextRequest) {
       ok: true,
       totalPackages: all.length,
       withImage: withImageCount,
+      noImageCount,
       totalMissing: missingList.length,
       stats: {
         missingImage,
+        noImageCount,
         missingTracking,
         missingPeso,
         missingCliente,
@@ -122,6 +129,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const rawWr = String(body.wr || '').trim();
     const id = body.id ? String(body.id).trim() : null;
+    const action = body.action ? String(body.action).trim() : null;
     const forceRefresh = Boolean(body.forceRefresh);
     const syncOptions = body.syncOptions || {};
 
@@ -138,7 +146,27 @@ export async function POST(req: NextRequest) {
 
     const admin = getSupabaseAdmin();
 
-    // 1. Obtener registro actual en AMEX
+    // 1. Manejar acción manual de ignorar / marcar como sin foto
+    if (action === 'ignore') {
+      const updatePayload = {
+        tib_imagen_url: 'NO_IMAGE',
+        actualizado_en: new Date().toISOString(),
+      };
+      if (id) {
+        await admin.from('paquetes').update(updatePayload).eq('id', id);
+      } else {
+        await admin.from('paquetes').update(updatePayload).ilike('numero_recibo_bodega', rawWr);
+      }
+      return NextResponse.json({
+        ok: true,
+        ignored: true,
+        wr: rawWr,
+        tibImagenUrl: 'NO_IMAGE',
+        message: `La guía ${rawWr} fue marcada como 'Sin Foto' y será ignorada en futuras sincronizaciones.`,
+      });
+    }
+
+    // 2. Obtener registro actual en AMEX
     let query = admin
       .from('paquetes')
       .select('id, numero_recibo_bodega, tracking, nombre_consignatario, peso_kg, tipo_empaque, estado_tib, tib_imagen_url, tib_ticket_pdf_url');
@@ -151,9 +179,10 @@ export async function POST(req: NextRequest) {
 
     const { data: currentPkg } = await query.maybeSingle();
 
-    // 2. Si no se fuerza refresco, verificar si ya cuenta con todos los campos solicitados
+    // 3. Si no se fuerza refresco, verificar si ya cuenta con todos los campos solicitados
     if (!forceRefresh && currentPkg) {
-      const needsImage = syncImages && !currentPkg.tib_imagen_url;
+      const isNoImage = currentPkg.tib_imagen_url === 'NO_IMAGE';
+      const needsImage = syncImages && (!currentPkg.tib_imagen_url || currentPkg.tib_imagen_url.trim() === '') && !isNoImage;
       const needsTracking = syncTracking && (!currentPkg.tracking || currentPkg.tracking === '-' || currentPkg.tracking.trim() === '');
       const needsPeso = syncPeso && (!currentPkg.peso_kg || Number(currentPkg.peso_kg) <= 0);
       const needsCliente = syncCliente && (!currentPkg.nombre_consignatario || currentPkg.nombre_consignatario.trim() === '' || currentPkg.nombre_consignatario.toUpperCase().includes('CLIENTE AMEX'));
@@ -175,13 +204,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 3. Extraer dígitos significativos del WR (WR000475750 -> 475750)
+    // 4. Extraer dígitos significativos del WR (WR000475750 -> 475750)
     const cleanNumericWr = rawWr.replace(/\D/g, '').replace(/^0+/, '');
     if (!cleanNumericWr) {
       return NextResponse.json({ error: 'Formato de WR inválido.' }, { status: 400 });
     }
 
-    // 4. Consultar la API backend de TIBCARGO
+    // 5. Consultar la API backend de TIBCARGO
     const tibResponse = await fetch(TIB_API_URL, {
       method: 'POST',
       headers: {
@@ -201,11 +230,26 @@ export async function POST(req: NextRequest) {
 
     const tibData = await tibResponse.json();
 
+    // 6. Si no existe en TIB, marcar como NO_IMAGE para no volver a consultar en bucle
     if (!Array.isArray(tibData) || tibData.length === 0) {
+      if (syncImages && (!currentPkg?.tib_imagen_url || currentPkg.tib_imagen_url === '')) {
+        const updatePayload = {
+          tib_imagen_url: 'NO_IMAGE',
+          actualizado_en: new Date().toISOString(),
+        };
+        if (currentPkg?.id) {
+          await admin.from('paquetes').update(updatePayload).eq('id', currentPkg.id);
+        } else {
+          await admin.from('paquetes').update(updatePayload).ilike('numero_recibo_bodega', rawWr);
+        }
+      }
+
       return NextResponse.json({
         ok: true,
         found: false,
-        message: `No se encontró información en TIB para el WR ${rawWr}.`,
+        markedNoImage: true,
+        tibImagenUrl: 'NO_IMAGE',
+        message: `No se encontró información en TIB para ${rawWr}. Marcado como 'Sin Foto' para omitir en futuras consultas.`,
       });
     }
 
@@ -213,7 +257,7 @@ export async function POST(req: NextRequest) {
     const tibImagenUrl = pkg.img ? `${TIB_BASE_URL}${pkg.img}` : null;
     const tibTicketPdfUrl = pkg.ticket ? `${TIB_BASE_URL}${pkg.ticket}` : null;
 
-    // 5. Construir campos a actualizar de forma inteligente
+    // 7. Construir campos a actualizar de forma inteligente
     const updatePayload: Record<string, any> = {
       actualizado_en: new Date().toISOString(),
     };
@@ -221,10 +265,15 @@ export async function POST(req: NextRequest) {
 
     // Fotos y Tickets
     if (syncImages) {
-      if (tibImagenUrl && (forceRefresh || !currentPkg?.tib_imagen_url)) {
+      if (tibImagenUrl && (forceRefresh || !currentPkg?.tib_imagen_url || currentPkg.tib_imagen_url === 'NO_IMAGE')) {
         updatePayload.tib_imagen_url = tibImagenUrl;
         updatedFields.push('foto');
+      } else if (!tibImagenUrl && (!currentPkg?.tib_imagen_url || currentPkg.tib_imagen_url === '')) {
+        // TIB tiene el WR registrado pero sin foto en bodega -> marcar como NO_IMAGE
+        updatePayload.tib_imagen_url = 'NO_IMAGE';
+        updatedFields.push('sin_foto');
       }
+
       if (tibTicketPdfUrl && (forceRefresh || !currentPkg?.tib_ticket_pdf_url)) {
         updatePayload.tib_ticket_pdf_url = tibTicketPdfUrl;
         updatedFields.push('ticket');
@@ -293,7 +342,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 6. Guardar en Supabase si hay campos para actualizar
+    // 8. Guardar en Supabase si hay campos para actualizar
     if (Object.keys(updatePayload).length > 1) {
       if (currentPkg?.id) {
         await admin.from('paquetes').update(updatePayload).eq('id', currentPkg.id);
@@ -310,8 +359,8 @@ export async function POST(req: NextRequest) {
       found: true,
       cached: false,
       updatedFields,
-      tibImagenUrl,
-      tibTicketPdfUrl,
+      tibImagenUrl: updatePayload.tib_imagen_url || currentPkg?.tib_imagen_url || null,
+      tibTicketPdfUrl: updatePayload.tib_ticket_pdf_url || currentPkg?.tib_ticket_pdf_url || null,
       updatedData: {
         ...(currentPkg || {}),
         ...updatePayload,

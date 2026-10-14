@@ -120,31 +120,42 @@ export default function InventoryTable({
                         >
                           {pkg.numeroReciboBodega}
                         </div>
-                        {onOpenTibImage && (
-                          <button
-                            type="button"
-                            title={pkg.tibImagenUrl ? "Ver Foto TIB (Guardada)" : "Consultar Foto de Bodega TIB"}
-                            onClick={() => onOpenTibImage(pkg)}
-                            style={{
-                              background: pkg.tibImagenUrl ? '#eff6ff' : '#f8fafc',
-                              border: pkg.tibImagenUrl ? '1px solid #bfdbfe' : '1px solid #e2e8f0',
-                              color: pkg.tibImagenUrl ? '#2563eb' : '#64748b',
-                              padding: '2px 6px',
-                              borderRadius: '5px',
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '3px',
-                              fontSize: '10px',
-                              fontWeight: 700,
-                              boxShadow: pkg.tibImagenUrl ? '0 1px 2px rgba(37,99,235,0.08)' : 'none',
-                              transition: 'all 0.15s ease'
-                            }}
-                          >
-                            <Camera style={{ width: '11px', height: '11px' }} />
-                            <span>{pkg.tibImagenUrl ? 'Foto' : 'Ver'}</span>
-                          </button>
-                        )}
+                        {onOpenTibImage && (() => {
+                          const hasPhoto = Boolean(pkg.tibImagenUrl && pkg.tibImagenUrl !== 'NO_IMAGE');
+                          const isNoImage = pkg.tibImagenUrl === 'NO_IMAGE';
+
+                          return (
+                            <button
+                              type="button"
+                              title={
+                                hasPhoto
+                                  ? "Ver Foto TIB (Guardada)"
+                                  : isNoImage
+                                  ? "Consultado en TIB: sin evidencia fotográfica en Miami"
+                                  : "Consultar Foto de Bodega TIB"
+                              }
+                              onClick={() => onOpenTibImage(pkg)}
+                              style={{
+                                background: hasPhoto ? '#eff6ff' : isNoImage ? '#f1f5f9' : '#f8fafc',
+                                border: hasPhoto ? '1px solid #bfdbfe' : '1px solid #e2e8f0',
+                                color: hasPhoto ? '#2563eb' : isNoImage ? '#94a3b8' : '#64748b',
+                                padding: '2px 6px',
+                                borderRadius: '5px',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                fontSize: '10px',
+                                fontWeight: 700,
+                                boxShadow: hasPhoto ? '0 1px 2px rgba(37,99,235,0.08)' : 'none',
+                                transition: 'all 0.15s ease'
+                              }}
+                            >
+                              <Camera style={{ width: '11px', height: '11px', opacity: isNoImage ? 0.6 : 1 }} />
+                              <span>{hasPhoto ? 'Foto' : isNoImage ? 'Sin Foto' : 'Ver'}</span>
+                            </button>
+                          );
+                        })()}
                       </div>
                     </td>
                     <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>

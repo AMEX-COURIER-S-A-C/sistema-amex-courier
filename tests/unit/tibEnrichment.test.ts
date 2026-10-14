@@ -109,4 +109,44 @@ describe('TIB Package Data Enrichment Logic', () => {
 
     expect(cleaned).toEqual(['477223', '1234', '475750', '5']);
   });
+
+  it('treats NO_IMAGE as ignored/verified and excludes it from missing photo diagnosis', () => {
+    const pkgWithNoImage = {
+      id: 'p3',
+      numeroReciboBodega: 'WR000471492',
+      tracking: 'INK23957',
+      nombreConsignatario: 'AMEX INK EVELYN ESPINOZA',
+      pesoKg: 3.22,
+      tipoEmpaque: 'CAJA',
+      estadoTib: 'Entregado',
+      tibImagenUrl: 'NO_IMAGE', // Explicitly marked as no photo in TIB
+    };
+
+    const isNoImage = pkgWithNoImage.tibImagenUrl === 'NO_IMAGE';
+    const isMissingImage = (!pkgWithNoImage.tibImagenUrl || pkgWithNoImage.tibImagenUrl.trim() === '') && !isNoImage;
+
+    expect(isNoImage).toBe(true);
+    expect(isMissingImage).toBe(false);
+  });
+
+  it('allows forceRefresh to overwrite NO_IMAGE if a photo is later uploaded to TIB', () => {
+    const currentPkg = {
+      id: 'p4',
+      tib_imagen_url: 'NO_IMAGE',
+    };
+
+    const tibResponseWithPhoto = {
+      img: 'files/packageimg/new_foto.jpg',
+    };
+
+    const forceRefresh = true;
+    const TIB_BASE_URL = 'https://www.tibcourier.com/global-courier/ajax/';
+    let newImageUrl: string | null = null;
+
+    if (tibResponseWithPhoto.img && (forceRefresh || !currentPkg.tib_imagen_url || currentPkg.tib_imagen_url === 'NO_IMAGE')) {
+      newImageUrl = `${TIB_BASE_URL}${tibResponseWithPhoto.img}`;
+    }
+
+    expect(newImageUrl).toBe('https://www.tibcourier.com/global-courier/ajax/files/packageimg/new_foto.jpg');
+  });
 });

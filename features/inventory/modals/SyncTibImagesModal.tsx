@@ -22,7 +22,8 @@ import {
   User,
   Box,
   Activity,
-  Check
+  Check,
+  EyeOff
 } from 'lucide-react';
 import { Paquete } from '@/types';
 
@@ -80,6 +81,10 @@ export default function SyncTibImagesModal({
   const [forceRefresh, setForceRefresh] = useState(false);
   const [limitSelection, setLimitSelection] = useState<number | 'all'>('all');
 
+  // WRs ignorados en la sesión actual
+  const [ignoredWrSet, setIgnoredWrSet] = useState<Set<string>>(new Set());
+  const [ignoringWr, setIgnoringWr] = useState<string | null>(null);
+
   // Opciones de sincronización (Campos a enriquecer)
   const [syncOptions, setSyncOptions] = useState({
     images: true,
@@ -94,9 +99,11 @@ export default function SyncTibImagesModal({
   const [dbStats, setDbStats] = useState<{
     totalPackages: number;
     withImage: number;
+    noImageCount: number;
     totalMissing: number;
     stats: {
       missingImage: number;
+      noImageCount: number;
       missingTracking: number;
       missingPeso: number;
       missingCliente: number;
@@ -110,6 +117,7 @@ export default function SyncTibImagesModal({
   // Estadísticas del inventario cargado en memoria
   const currentIncomplete = useMemo(() => {
     let missingImage = 0;
+    let noImageCount = 0;
     let missingTracking = 0;
     let missingPeso = 0;
     let missingCliente = 0;
@@ -120,8 +128,11 @@ export default function SyncTibImagesModal({
 
     paquetesActuales.forEach((p) => {
       if (!p.numeroReciboBodega || p.numeroReciboBodega.trim() === '') return;
+      if (ignoredWrSet.has(p.numeroReciboBodega)) return;
 
-      const isMissingImage = !p.tibImagenUrl;
+      const isNoImage = p.tibImagenUrl === 'NO_IMAGE';
+      const isMissingImage = (!p.tibImagenUrl || p.tibImagenUrl.trim() === '') && !isNoImage;
+
       const isMissingTracking = !p.tracking || p.tracking === '-' || p.tracking.trim() === '';
       const isMissingPeso = !p.pesoKg || Number(p.pesoKg) <= 0;
       const isMissingCliente =
@@ -131,6 +142,7 @@ export default function SyncTibImagesModal({
       const isMissingEmpaque = !p.tipoEmpaque || p.tipoEmpaque.trim() === '';
       const isMissingEstadoTib = !p.estadoTib || p.estadoTib.trim() === '';
 
+      if (isNoImage) noImageCount++;
       if (isMissingImage) missingImage++;
       if (isMissingTracking) missingTracking++;
       if (isMissingPeso) missingPeso++;
@@ -173,6 +185,7 @@ export default function SyncTibImagesModal({
       list,
       stats: {
         missingImage,
+        noImageCount,
         missingTracking,
         missingPeso,
         missingCliente,
@@ -180,7 +193,7 @@ export default function SyncTibImagesModal({
         missingEstadoTib,
       },
     };
-  }, [paquetesActuales]);
+  }, [paquetesActuales, ignoredWrSet]);
 
   // Ejecución y progreso
   const [totalToProcess, setTotalToProcess] = useState(0);
@@ -226,9 +239,11 @@ export default function SyncTibImagesModal({
         setDbStats({
           totalPackages: data.totalPackages,
           withImage: data.withImage,
+          noImageCount: data.noImageCount || 0,
           totalMissing: data.totalMissing,
           stats: data.stats || {
             missingImage: 0,
+            noImageCount: 0,
             missingTracking: 0,
             missingPeso: 0,
             missingCliente: 0,
@@ -255,20 +270,54 @@ export default function SyncTibImagesModal({
     }
   };
 
-  // Calcular la lista final que se va a procesar
+  // Calcular la lista final que se va a procesar (filtrando los ignorados en sesión)
   const itemsToProcess = useMemo<ItemToProcess[]>(() => {
     let source: ItemToProcess[] = [];
     if (scope === 'current') {
       source = currentIncomplete.list;
     } else {
-      source = dbStats?.missingList || [];
+      source = (dbStats?.missingList || []).filter(item => !ignoredWrSet.has(item.numeroReciboBodega));
     }
 
     if (limitSelection !== 'all') {
       return source.slice(0, Number(limitSelection));
     }
     return source;
-  }, [scope, currentIncomplete.list, dbStats, limitSelection]);
+  }, [scope, currentIncomplete.list, dbStats, limitSelection, ignoredWrSet]);
+
+  // Ignorar un WR individual y marcarlo como NO_IMAGE
+  const handleIgnoreWr = async (wr: string, id?: string) => {
+    setIgnoringWr(wr);
+    try {
+      const res = await fetch('/api/paquetes/tib-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wr, id, action: 'ignore' }),
+      });
+      if (res.ok) {
+        setIgnoredWrSet(prev => new Set(prev).add(wr));
+        if (onPackageUpdated) {
+          onPackageUpdated(wr, 'NO_IMAGE');
+        }
+      }
+    } catch (err) {
+      console.error('Error al ignorar WR:', err);
+    } finally {
+      setIgnoringWr(null);
+    }
+  };
+
+  // Ignorar todas las guías que solo les falta la foto
+  const handleIgnoreAllPhotoOnly = async () => {
+    const photoOnlyItems = itemsToProcess.filter(
+      item => item.missingFields.length === 1 && item.missingFields[0] === 'foto'
+    );
+    if (photoOnlyItems.length === 0) return;
+
+    for (const item of photoOnlyItems) {
+      await handleIgnoreWr(item.numeroReciboBodega, item.id);
+    }
+  };
 
   // Iniciar la sincronización y enriquecimiento masivo
   const handleStartSync = async () => {
@@ -326,7 +375,7 @@ export default function SyncTibImagesModal({
               if (onPackageUpdated) {
                 onPackageUpdated(
                   item.numeroReciboBodega,
-                  data.tibImagenUrl,
+                  data.tibImagenUrl || 'NO_IMAGE',
                   data.tibTicketPdfUrl,
                   data.updatedData
                 );
@@ -336,8 +385,11 @@ export default function SyncTibImagesModal({
               addLog(
                 item.numeroReciboBodega,
                 'not_found',
-                data.message || 'Sin registro en servidor TIB.'
+                data.message || 'Sin registro en TIB. Marcado como sin foto.'
               );
+              if (onPackageUpdated && (data.markedNoImage || data.tibImagenUrl === 'NO_IMAGE')) {
+                onPackageUpdated(item.numeroReciboBodega, 'NO_IMAGE', undefined, data.updatedData);
+              }
             } else {
               currentErrors++;
               addLog(
@@ -422,7 +474,7 @@ export default function SyncTibImagesModal({
       <div
         className="modal-dialog"
         style={{
-          maxWidth: '840px',
+          maxWidth: '860px',
           width: '100%',
           maxHeight: '92vh',
           display: 'flex',
@@ -622,7 +674,7 @@ export default function SyncTibImagesModal({
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(115px, 1fr))',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))',
                     gap: '8px'
                   }}
                 >
@@ -632,6 +684,15 @@ export default function SyncTibImagesModal({
                     </div>
                     <div style={{ fontSize: '16px', fontWeight: 800, color: activeStats.missingImage > 0 ? '#dc2626' : '#16a34a', marginTop: '2px' }}>
                       {activeStats.missingImage}
+                    </div>
+                  </div>
+
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 10px' }}>
+                    <div style={{ fontSize: '11px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <EyeOff className="w-3 h-3 text-slate-500" /> Sin Foto (Ignoradas)
+                    </div>
+                    <div style={{ fontSize: '16px', fontWeight: 800, color: '#64748b', marginTop: '2px' }}>
+                      {activeStats.noImageCount}
                     </div>
                   </div>
 
@@ -828,13 +889,36 @@ export default function SyncTibImagesModal({
                   gap: '10px'
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
                   <span style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a' }}>
                     Guías que serán procesadas ({itemsToProcess.length})
                   </span>
-                  <span style={{ fontSize: '11.5px', color: '#64748b' }}>
-                    Alcance: {scope === 'current' ? 'Vista actual' : 'Base de datos'}
-                  </span>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '11.5px', color: '#64748b' }}>
+                      Alcance: {scope === 'current' ? 'Vista actual' : 'Base de datos'}
+                    </span>
+
+                    {itemsToProcess.some(item => item.missingFields.length === 1 && item.missingFields[0] === 'foto') && (
+                      <button
+                        type="button"
+                        onClick={handleIgnoreAllPhotoOnly}
+                        style={{
+                          background: '#f1f5f9',
+                          border: '1px solid #cbd5e1',
+                          color: '#475569',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          padding: '3px 8px',
+                          borderRadius: '6px',
+                          cursor: 'pointer'
+                        }}
+                        title="Marcar como 'Sin Foto' todas las guías que solo tienen pendiente la foto"
+                      >
+                        Ignorar todas las que solo faltan foto
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {itemsToProcess.length === 0 ? (
@@ -874,6 +958,7 @@ export default function SyncTibImagesModal({
                           <th style={{ padding: '6px 10px', fontWeight: 700 }}>Consignatario</th>
                           <th style={{ padding: '6px 10px', fontWeight: 700, textAlign: 'right' }}>Peso</th>
                           <th style={{ padding: '6px 10px', fontWeight: 700 }}>Faltantes</th>
+                          <th style={{ padding: '6px 10px', fontWeight: 700, textAlign: 'center' }}>Acción</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -915,6 +1000,45 @@ export default function SyncTibImagesModal({
                                   </span>
                                 ))}
                               </div>
+                            </td>
+                            <td style={{ padding: '6px 10px', textAlign: 'center' }}>
+                              <button
+                                type="button"
+                                disabled={ignoringWr === item.numeroReciboBodega}
+                                onClick={() => handleIgnoreWr(item.numeroReciboBodega, item.id)}
+                                title="Marcar como 'Sin Foto' para no volver a consultar esta guía en TIB"
+                                style={{
+                                  background: '#f8fafc',
+                                  border: '1px solid #cbd5e1',
+                                  color: '#64748b',
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  padding: '3px 8px',
+                                  borderRadius: '6px',
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  transition: 'all 0.15s ease'
+                                }}
+                                onMouseEnter={e => {
+                                  e.currentTarget.style.background = '#fee2e2';
+                                  e.currentTarget.style.color = '#b91c1c';
+                                  e.currentTarget.style.borderColor = '#fca5a5';
+                                }}
+                                onMouseLeave={e => {
+                                  e.currentTarget.style.background = '#f8fafc';
+                                  e.currentTarget.style.color = '#64748b';
+                                  e.currentTarget.style.borderColor = '#cbd5e1';
+                                }}
+                              >
+                                {ignoringWr === item.numeroReciboBodega ? (
+                                  <RefreshCw className="w-3 h-3 animate-spin text-slate-400" />
+                                ) : (
+                                  <EyeOff className="w-3 h-3 text-slate-400" />
+                                )}
+                                <span>Ignorar</span>
+                              </button>
                             </td>
                           </tr>
                         ))}
@@ -1122,7 +1246,7 @@ export default function SyncTibImagesModal({
                   Sincronización y Enriquecimiento Finalizado
                 </h4>
                 <p style={{ margin: '6px 0 0 0', fontSize: '13px', color: '#64748b' }}>
-                  Se completó la verificación con el servidor de TIBCARGO y se guardaron los datos y fotos en la base de datos.
+                  Se completó la verificación con el servidor de TIBCARGO y se guardaron los datos y evidencias en la base de datos.
                 </p>
               </div>
 
@@ -1177,7 +1301,7 @@ export default function SyncTibImagesModal({
               <div style={{ fontSize: '12px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Info className="w-4 h-4 text-slate-400" />
                 <span>
-                  Se consultará a la API de TIB y se actualizarán automáticamente los campos seleccionados en Supabase.
+                  Las guías no encontradas se marcarán automáticamente como &apos;Sin Foto&apos; para no volver a consultarlas.
                 </span>
               </div>
 
