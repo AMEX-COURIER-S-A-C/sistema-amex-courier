@@ -1148,14 +1148,24 @@ export default function MobileScannerModal({
           backgroundColor: '#020617',
           borderRadius: '14px',
           overflow: 'hidden',
-          minHeight: '260px',
-          maxHeight: '48vh',
+          minHeight: pendingConfirmation || lookupResult ? '440px' : '260px',
+          maxHeight: pendingConfirmation || lookupResult ? '74vh' : '48vh',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          border: recentFlash ? '3px solid #22c55e' : '2px solid #3b82f6',
-          boxShadow: recentFlash ? '0 0 25px rgba(34,197,94,0.5)' : '0 6px 24px rgba(37, 99, 235, 0.18)',
-          transition: 'border-color 0.2s, box-shadow 0.2s'
+          border: pendingConfirmation
+            ? '3px solid #22c55e'
+            : lookupResult
+            ? '3px solid #3b82f6'
+            : recentFlash
+            ? '3px solid #22c55e'
+            : '2px solid #3b82f6',
+          boxShadow: pendingConfirmation
+            ? '0 0 25px rgba(34,197,94,0.45)'
+            : recentFlash
+            ? '0 0 25px rgba(34,197,94,0.5)'
+            : '0 6px 24px rgba(37, 99, 235, 0.18)',
+          transition: 'min-height 0.25s ease, max-height 0.25s ease, border-color 0.2s, box-shadow 0.2s'
         }}
       >
         <video
@@ -1276,7 +1286,6 @@ export default function MobileScannerModal({
               {workflowMode === 'slotting' ? `ASIGNANDO ➔ ${currentShelfLocation}` : workflowMode === 'relocate' ? `REASIGNANDO ➔ ${currentShelfLocation}` : workflowMode.toUpperCase()}
             </div>
 
-
             {/* Controles Flotantes */}
             <div
               style={{
@@ -1291,6 +1300,7 @@ export default function MobileScannerModal({
             >
               {hasTorch && (
                 <button
+                  type="button"
                   onClick={toggleTorch}
                   style={{
                     background: isTorchOn ? '#eab308' : 'rgba(2, 6, 23, 0.85)',
@@ -1326,6 +1336,7 @@ export default function MobileScannerModal({
                   {[1, 1.5, 2].map(z => (
                     <button
                       key={z}
+                      type="button"
                       onClick={() => setZoom(z)}
                       style={{
                         background: currentZoom === z ? '#2563eb' : 'transparent',
@@ -1383,232 +1394,297 @@ export default function MobileScannerModal({
               position: 'absolute',
               inset: 0,
               zIndex: 50,
-              backgroundColor: 'rgba(2, 6, 23, 0.92)',
+              backgroundColor: 'rgba(2, 6, 23, 0.94)',
               backdropFilter: 'blur(6px)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              padding: '12px',
+              padding: '8px',
               animation: 'fadeIn 0.2s ease-out'
             }}
           >
             <div
               style={{
                 width: '100%',
-                maxWidth: '400px',
-                maxHeight: '92vh',
-                overflowY: 'auto',
-                WebkitOverflowScrolling: 'touch',
+                maxWidth: '420px',
+                height: '100%',
+                maxHeight: '100%',
+                display: 'flex',
+                flexDirection: 'column',
                 background: '#ffffff',
-                borderRadius: '16px',
-                padding: '18px',
-                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
-                border: '2.5px solid #22c55e',
-                textAlign: 'left'
+                borderRadius: '12px',
+                padding: '10px 12px',
+                boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5)',
+                border: '2px solid #22c55e',
+                textAlign: 'left',
+                boxSizing: 'border-box',
+                overflow: 'hidden'
               }}
             >
-              {/* Encabezado */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
+              {/* Encabezado fijo superior */}
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '6px',
+                  borderBottom: '1px solid #e2e8f0',
+                  paddingBottom: '6px',
+                  flexShrink: 0
+                }}
+              >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#dcfce7', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 10px rgba(34,197,94,0.3)' }}>
-                    <CheckCircle2 className="w-5 h-5" />
+                  <div
+                    style={{
+                      width: '28px',
+                      height: '28px',
+                      borderRadius: '50%',
+                      background: '#dcfce7',
+                      color: '#16a34a',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 0 8px rgba(34,197,94,0.3)',
+                      flexShrink: 0
+                    }}
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
                   </div>
                   <div>
-                    <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 800, color: '#0f172a' }}>
+                    <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 800, color: '#0f172a', lineHeight: '1.2' }}>
                       Confirmar Código Escaneado
                     </h4>
-                    <span style={{ fontSize: '11px', color: '#64748b' }}>
+                    <span style={{ fontSize: '10px', color: '#64748b' }}>
                       Asignación y clasificación WMS
                     </span>
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={handleCancelScan}
                   title="Descartar lectura"
                   style={{
                     background: '#f1f5f9',
                     border: 'none',
                     borderRadius: '50%',
-                    width: '28px',
-                    height: '28px',
+                    width: '26px',
+                    height: '26px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     cursor: 'pointer',
                     color: '#64748b',
                     fontWeight: 800,
-                    fontSize: '13px'
+                    fontSize: '12px'
                   }}
                 >
                   ✕
                 </button>
               </div>
 
-              {/* Visor del Código Escaneado */}
+              {/* Contenido scrolleable central */}
               <div
                 style={{
-                  background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-                  borderRadius: '10px',
-                  padding: '12px 14px',
-                  marginBottom: '12px',
-                  border: '1.5px solid #334155',
-                  color: '#ffffff'
+                  flex: 1,
+                  overflowY: 'auto',
+                  WebkitOverflowScrolling: 'touch',
+                  minHeight: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                  paddingRight: '2px'
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                  <span style={{ fontSize: '10px', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Código de Barras / QR:
-                  </span>
-                  <span style={{ fontSize: '9.5px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: '#3b82f6', color: '#ffffff' }}>
-                    {pendingConfirmation.format}
-                  </span>
-                </div>
-                <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '18px', fontWeight: 900, color: '#4ade80', wordBreak: 'break-all', letterSpacing: '0.5px' }}>
-                  {pendingConfirmation.code}
-                </div>
-              </div>
-
-              {/* Información del Paquete si existe en BD */}
-              {pendingConfirmation.pkg && (
-                <div style={{ background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: '10px', padding: '10px 12px', marginBottom: '12px', fontSize: '11.5px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#1e3a8a', fontWeight: 800 }}>
-                      <User className="w-3.5 h-3.5 text-blue-600" />
-                      <span>{pendingConfirmation.pkg.nombreConsignatario || pendingConfirmation.cli?.nombre || 'Cliente'}</span>
-                    </div>
-                  </div>
-
-                  {pendingConfirmation.pkg.descripcion && (
-                    <div style={{ color: '#334155', fontSize: '11px', fontWeight: 600, marginBottom: '6px' }}>
-                      📦 {pendingConfirmation.pkg.descripcion}
-                    </div>
-                  )}
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '10.5px', background: '#ffffff', padding: '6px 8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                    <div>
-                      <span style={{ color: '#64748b' }}>Peso:</span> <strong>{pendingConfirmation.pkg.pesoKg} Kg</strong>
-                    </div>
-                    <div>
-                      <span style={{ color: '#64748b' }}>Estado:</span> <strong style={{ color: '#16a34a' }}>{pendingConfirmation.pkg.estadoEntrega}</strong>
-                    </div>
-                    <div style={{ gridColumn: 'span 2' }}>
-                      <span style={{ color: '#64748b' }}>Ubicación Actual:</span> <strong>{pendingConfirmation.pkg.posicionEstante || pendingConfirmation.pkg.ubicacionActual || 'Recepción'}</strong>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Selector de Destino en Modo Asignar Anaquel (Slotting) */}
-              {(pendingConfirmation.workflow === 'slotting' || pendingConfirmation.workflow === 'relocate') && (
-                <div style={{ background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: '10px', padding: '10px 12px', marginBottom: '14px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                    <label style={{ fontSize: '11px', fontWeight: 800, color: '#166534', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <Layers className="w-3.5 h-3.5 text-green-600" /> Asignar a Anaquel y Piso:
-                    </label>
-                    <span style={{ fontFamily: 'JetBrains Mono', fontSize: '12px', fontWeight: 900, color: '#15803d', background: '#dcfce7', padding: '2px 8px', borderRadius: '4px' }}>
-                      {pendingConfirmation.anaquel === 'OFI' || pendingConfirmation.anaquel === 'DSP-Z1' || pendingConfirmation.anaquel === 'DSP-Z2'
-                        ? pendingConfirmation.anaquel
-                        : `${pendingConfirmation.anaquel}-${pendingConfirmation.piso}`}
+                {/* Visor del Código Escaneado */}
+                <div
+                  style={{
+                    background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+                    borderRadius: '8px',
+                    padding: '8px 10px',
+                    border: '1.5px solid #334155',
+                    color: '#ffffff',
+                    flexShrink: 0
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                    <span style={{ fontSize: '9px', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      CÓDIGO DE BARRAS / QR:
+                    </span>
+                    <span style={{ fontSize: '9px', fontWeight: 800, padding: '1.5px 5px', borderRadius: '4px', background: '#3b82f6', color: '#ffffff' }}>
+                      {pendingConfirmation.format}
                     </span>
                   </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '6px' }}>
-                    <select
-                      value={pendingConfirmation.anaquel}
-                      onChange={e => {
-                        const val = e.target.value as any;
-                        const isNoFloor = val === 'OFI' || val === 'DSP-Z1' || val === 'DSP-Z2';
-                        setPendingConfirmation(prev => prev ? { ...prev, anaquel: val, location: isNoFloor ? val : `${val}-${prev.piso}` } : null);
-                      }}
-                      style={{
-                        height: '36px',
-                        borderRadius: '6px',
-                        border: '1.5px solid #86efac',
-                        background: '#ffffff',
-                        fontWeight: 800,
-                        fontSize: '11px',
-                        color: '#14532d',
-                        padding: '0 4px',
-                        outline: 'none'
-                      }}
-                    >
-                      <option value="A1">🟦 Anaquel 1 (A1)</option>
-                      <option value="A2">🟩 Anaquel 2 (A2)</option>
-                      <option value="OFI">🏢 Oficina (OFI)</option>
-                      <option value="DSP-Z1">📦 Despacho Z1</option>
-                      <option value="DSP-Z2">🚚 Despacho Z2</option>
-                    </select>
-
-                    <select
-                      value={pendingConfirmation.piso}
-                      disabled={pendingConfirmation.anaquel === 'OFI' || pendingConfirmation.anaquel === 'DSP-Z1' || pendingConfirmation.anaquel === 'DSP-Z2'}
-                      onChange={e => {
-                        const val = e.target.value as 'P1' | 'P2' | 'P3' | 'P4';
-                        setPendingConfirmation(prev => prev ? { ...prev, piso: val, location: `${prev.anaquel}-${val}` } : null);
-                      }}
-                      style={{
-                        height: '36px',
-                        borderRadius: '6px',
-                        border: '1.5px solid #86efac',
-                        background: pendingConfirmation.anaquel === 'OFI' || pendingConfirmation.anaquel === 'DSP-Z1' || pendingConfirmation.anaquel === 'DSP-Z2' ? '#f1f5f9' : '#ffffff',
-                        fontWeight: 800,
-                        fontSize: '12px',
-                        color: '#14532d',
-                        padding: '0 6px',
-                        outline: 'none'
-                      }}
-                    >
-                      <option value="P1">Piso 1</option>
-                      <option value="P2">Piso 2</option>
-                      <option value="P3">Piso 3</option>
-                      <option value="P4">Piso 4</option>
-                    </select>
+                  <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '16px', fontWeight: 900, color: '#4ade80', wordBreak: 'break-all', letterSpacing: '0.5px', lineHeight: 1.2 }}>
+                    {pendingConfirmation.code}
                   </div>
                 </div>
-              )}
 
-              {/* Alerta de bloqueo para reubicación de paquetes inexistentes */}
-              {pendingConfirmation.workflow === 'relocate' && !pendingConfirmation.pkg && (
-                <div style={{ background: '#fef2f2', border: '1.5px solid #f87171', borderRadius: '10px', padding: '10px 12px', marginBottom: '14px', color: '#991b1b', fontSize: '11.5px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
-                  <span>Este paquete no está registrado en el inventario. Solo es posible reubicar paquetes existentes en bodega.</span>
-                </div>
-              )}
+                {/* Información del Paquete si existe en BD */}
+                {pendingConfirmation.pkg && (
+                  <div style={{ background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: '8px', padding: '7px 9px', fontSize: '11px', flexShrink: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#1e3a8a', fontWeight: 800, marginBottom: '2px' }}>
+                      <User className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {pendingConfirmation.pkg.nombreConsignatario || pendingConfirmation.cli?.nombre || 'Cliente'}
+                      </span>
+                    </div>
 
-              {/* Botones de Confirmación y Cancelación */}
-              <div style={{ display: 'flex', gap: '8px' }}>
+                    {pendingConfirmation.pkg.descripcion && (
+                      <div style={{ color: '#475569', fontSize: '10.5px', fontWeight: 600, marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        📦 {pendingConfirmation.pkg.descripcion}
+                      </div>
+                    )}
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', fontSize: '10px', background: '#ffffff', padding: '5px 7px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                      <div>
+                        <span style={{ color: '#64748b' }}>Peso:</span> <strong>{pendingConfirmation.pkg.pesoKg} Kg</strong>
+                      </div>
+                      <div>
+                        <span style={{ color: '#64748b' }}>Estado:</span> <strong style={{ color: '#16a34a' }}>{pendingConfirmation.pkg.estadoEntrega}</strong>
+                      </div>
+                      <div style={{ gridColumn: 'span 2' }}>
+                        <span style={{ color: '#64748b' }}>Ubicación Actual:</span> <strong style={{ color: '#2563eb' }}>{pendingConfirmation.pkg.posicionEstante || pendingConfirmation.pkg.ubicacionActual || 'Recepción'}</strong>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Selector de Destino en Modo Asignar Anaquel (Slotting) */}
+                {(pendingConfirmation.workflow === 'slotting' || pendingConfirmation.workflow === 'relocate') && (
+                  <div style={{ background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: '8px', padding: '7px 9px', flexShrink: 0 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+                      <label style={{ fontSize: '10.5px', fontWeight: 800, color: '#166534', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Layers className="w-3.5 h-3.5 text-green-600" /> Asignar a Anaquel y Piso:
+                      </label>
+                      <span style={{ fontFamily: 'JetBrains Mono', fontSize: '11px', fontWeight: 900, color: '#15803d', background: '#dcfce7', padding: '1px 6px', borderRadius: '4px' }}>
+                        {pendingConfirmation.anaquel === 'OFI' || pendingConfirmation.anaquel === 'DSP-Z1' || pendingConfirmation.anaquel === 'DSP-Z2'
+                          ? pendingConfirmation.anaquel
+                          : `${pendingConfirmation.anaquel}-${pendingConfirmation.piso}`}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '6px' }}>
+                      <select
+                        value={pendingConfirmation.anaquel}
+                        onChange={e => {
+                          const val = e.target.value as any;
+                          const isNoFloor = val === 'OFI' || val === 'DSP-Z1' || val === 'DSP-Z2';
+                          setPendingConfirmation(prev => prev ? { ...prev, anaquel: val, location: isNoFloor ? val : `${val}-${prev.piso}` } : null);
+                        }}
+                        style={{
+                          height: '32px',
+                          borderRadius: '6px',
+                          border: '1.5px solid #86efac',
+                          background: '#ffffff',
+                          fontWeight: 800,
+                          fontSize: '11px',
+                          color: '#14532d',
+                          padding: '0 4px',
+                          outline: 'none'
+                        }}
+                      >
+                        <option value="A1">🟦 Anaquel 1 (A1)</option>
+                        <option value="A2">🟩 Anaquel 2 (A2)</option>
+                        <option value="OFI">🏢 Oficina (OFI)</option>
+                        <option value="DSP-Z1">📦 Despacho Z1</option>
+                        <option value="DSP-Z2">🚚 Despacho Z2</option>
+                      </select>
+
+                      <select
+                        value={pendingConfirmation.piso}
+                        disabled={pendingConfirmation.anaquel === 'OFI' || pendingConfirmation.anaquel === 'DSP-Z1' || pendingConfirmation.anaquel === 'DSP-Z2'}
+                        onChange={e => {
+                          const val = e.target.value as 'P1' | 'P2' | 'P3' | 'P4';
+                          setPendingConfirmation(prev => prev ? { ...prev, piso: val, location: `${prev.anaquel}-${val}` } : null);
+                        }}
+                        style={{
+                          height: '32px',
+                          borderRadius: '6px',
+                          border: '1.5px solid #86efac',
+                          background: pendingConfirmation.anaquel === 'OFI' || pendingConfirmation.anaquel === 'DSP-Z1' || pendingConfirmation.anaquel === 'DSP-Z2' ? '#f1f5f9' : '#ffffff',
+                          fontWeight: 800,
+                          fontSize: '11.5px',
+                          color: '#14532d',
+                          padding: '0 6px',
+                          outline: 'none'
+                        }}
+                      >
+                        <option value="P1">Piso 1</option>
+                        <option value="P2">Piso 2</option>
+                        <option value="P3">Piso 3</option>
+                        <option value="P4">Piso 4</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                {/* Alerta de bloqueo para reubicación de paquetes inexistentes */}
+                {pendingConfirmation.workflow === 'relocate' && !pendingConfirmation.pkg && (
+                  <div style={{ background: '#fef2f2', border: '1.5px solid #f87171', borderRadius: '8px', padding: '8px 10px', color: '#991b1b', fontSize: '11px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                    <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
+                    <span>Este paquete no está registrado en el inventario. Solo es posible reubicar paquetes existentes en bodega.</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Botones de Confirmación y Cancelación - FIJOS EN LA BASE Y 100% VISIBLES */}
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '8px',
+                  flexShrink: 0,
+                  paddingTop: '8px',
+                  marginTop: 'auto',
+                  borderTop: '1px solid #e2e8f0'
+                }}
+              >
                 <button
+                  type="button"
                   onClick={() => handleConfirmScan(pendingConfirmation)}
                   disabled={pendingConfirmation.workflow === 'relocate' && !pendingConfirmation.pkg}
                   className="btn btn-primary"
                   style={{
-                    flex: 1.5,
-                    height: '42px',
+                    flex: 1.4,
+                    height: '38px',
+                    minHeight: '38px',
                     background: (pendingConfirmation.workflow === 'relocate' && !pendingConfirmation.pkg) ? '#94a3b8' : '#16a34a',
                     borderColor: (pendingConfirmation.workflow === 'relocate' && !pendingConfirmation.pkg) ? '#64748b' : '#15803d',
-                    fontSize: '13px',
+                    fontSize: '12.5px',
                     fontWeight: 800,
                     borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
                     justifyContent: 'center',
                     gap: '6px',
                     opacity: (pendingConfirmation.workflow === 'relocate' && !pendingConfirmation.pkg) ? 0.6 : 1,
                     cursor: (pendingConfirmation.workflow === 'relocate' && !pendingConfirmation.pkg) ? 'not-allowed' : 'pointer',
-                    boxShadow: (pendingConfirmation.workflow === 'relocate' && !pendingConfirmation.pkg) ? 'none' : '0 4px 12px rgba(22, 163, 74, 0.35)'
+                    boxShadow: (pendingConfirmation.workflow === 'relocate' && !pendingConfirmation.pkg) ? 'none' : '0 4px 12px rgba(22, 163, 74, 0.35)',
+                    padding: '0 8px',
+                    whiteSpace: 'nowrap'
                   }}
                 >
-                  <CheckCircle2 className="w-4 h-4" /> {(pendingConfirmation.workflow === 'relocate' && !pendingConfirmation.pkg) ? 'Paquete no Registrado' : 'Confirmar y Guardar'}
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>{(pendingConfirmation.workflow === 'relocate' && !pendingConfirmation.pkg) ? 'No Registrado' : 'Confirmar y Guardar'}</span>
                 </button>
 
                 <button
+                  type="button"
                   onClick={handleCancelScan}
                   className="btn btn-secondary"
                   style={{
                     flex: 1,
-                    height: '42px',
+                    height: '38px',
+                    minHeight: '38px',
                     fontSize: '12.5px',
                     fontWeight: 700,
                     borderRadius: '8px',
-                    justifyContent: 'center'
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: '1.5px solid #cbd5e1',
+                    background: '#f8fafc',
+                    color: '#475569',
+                    padding: '0 8px'
                   }}
                 >
                   Descartar
@@ -1626,88 +1702,155 @@ export default function MobileScannerModal({
               inset: 0,
               zIndex: 45,
               backgroundColor: 'rgba(2, 6, 23, 0.94)',
+              backdropFilter: 'blur(6px)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              padding: '12px'
+              padding: '8px',
+              animation: 'fadeIn 0.2s ease-out'
             }}
           >
             <div
               style={{
                 width: '100%',
-                maxWidth: '380px',
-                maxHeight: '92vh',
-                overflowY: 'auto',
-                WebkitOverflowScrolling: 'touch',
+                maxWidth: '420px',
+                height: '100%',
+                maxHeight: '100%',
+                display: 'flex',
+                flexDirection: 'column',
                 background: '#ffffff',
-                borderRadius: '16px',
-                padding: '16px',
+                borderRadius: '12px',
+                padding: '10px 12px',
                 boxShadow: '0 20px 40px rgba(0,0,0,0.6)',
                 border: '2px solid #2563eb',
-                textAlign: 'left'
+                textAlign: 'left',
+                boxSizing: 'border-box',
+                overflow: 'hidden'
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
+              {/* Encabezado fijo superior */}
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '6px',
+                  borderBottom: '1px solid #e2e8f0',
+                  paddingBottom: '6px',
+                  flexShrink: 0
+                }}
+              >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Search className="w-4 h-4 text-blue-600" />
                   <span style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a' }}>Ficha 360° de Localización</span>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setLookupResult(null)}
-                  style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '26px', height: '26px', cursor: 'pointer', fontWeight: 700 }}
+                  style={{
+                    background: '#f1f5f9',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: '26px',
+                    height: '26px',
+                    cursor: 'pointer',
+                    fontWeight: 700,
+                    fontSize: '12px',
+                    color: '#64748b',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
                 >
                   ✕
                 </button>
               </div>
 
-              {lookupResult.pkg ? (
-                <div>
-                  <div
-                    style={{
-                      background: 'linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%)',
-                      color: '#ffffff',
-                      borderRadius: '10px',
-                      padding: '12px',
-                      marginBottom: '12px',
-                      textAlign: 'center'
-                    }}
-                  >
-                    <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#93c5fd', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      📍 Ubicación Física en Almacén
-                    </div>
-                    <div style={{ fontSize: '20px', fontWeight: 900, marginTop: '2px', fontFamily: 'JetBrains Mono, monospace' }}>
-                      {lookupResult.pkg.posicionEstante || (lookupResult.pkg.anaquel ? `${lookupResult.pkg.anaquel}-${lookupResult.pkg.piso || 'P1'}` : 'MESA RECEPCIÓN')}
-                    </div>
-                    <div style={{ fontSize: '11px', color: '#bfdbfe', marginTop: '2px' }}>
-                      {lookupResult.pkg.posicionEstante?.startsWith('A1') ? 'Anaquel 1 (Izquierdo)' : lookupResult.pkg.posicionEstante?.startsWith('A2') ? 'Anaquel 2 (Derecho)' : 'Recepción Central'}
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '11.5px', marginBottom: '10px' }}>
-                    <div style={{ background: '#f8fafc', padding: '6px 8px', borderRadius: '6px' }}>
-                      <span style={{ color: '#64748b', display: 'block', fontSize: '10px' }}>Guía WR:</span>
-                      <strong style={{ fontFamily: 'JetBrains Mono', color: '#0f172a' }}>{lookupResult.pkg.numeroReciboBodega}</strong>
-                    </div>
-                    <div style={{ background: '#f8fafc', padding: '6px 8px', borderRadius: '6px' }}>
-                      <span style={{ color: '#64748b', display: 'block', fontSize: '10px' }}>Peso / Estado:</span>
-                      <strong>{lookupResult.pkg.pesoKg} Kg</strong> · <span style={{ color: '#16a34a' }}>{lookupResult.pkg.estadoEntrega}</span>
-                    </div>
-                  </div>
-
-                  {lookupResult.cli && (
-                    <div style={{ background: '#f1f5f9', padding: '10px', borderRadius: '8px', marginBottom: '12px', fontSize: '11.5px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                        <User className="w-3.5 h-3.5 text-blue-600" />
-                        <strong>{lookupResult.cli.nombre}</strong>
+              {/* Contenido scrolleable de consulta */}
+              <div
+                style={{
+                  flex: 1,
+                  overflowY: 'auto',
+                  WebkitOverflowScrolling: 'touch',
+                  minHeight: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                  paddingRight: '2px'
+                }}
+              >
+                {lookupResult.pkg ? (
+                  <div>
+                    <div
+                      style={{
+                        background: 'linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%)',
+                        color: '#ffffff',
+                        borderRadius: '8px',
+                        padding: '10px',
+                        marginBottom: '8px',
+                        textAlign: 'center'
+                      }}
+                    >
+                      <div style={{ fontSize: '10px', fontWeight: 700, color: '#93c5fd', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        📍 Ubicación Física en Almacén
                       </div>
-                      <div style={{ color: '#64748b', fontSize: '11px' }}>
-                        <MapPin className="w-3 h-3 inline mr-1 text-slate-400" />
-                        {lookupResult.cli.distrito || 'Lima'} · {lookupResult.cli.direccionEntrega || 'Sede Central'}
+                      <div style={{ fontSize: '18px', fontWeight: 900, marginTop: '2px', fontFamily: 'JetBrains Mono, monospace' }}>
+                        {lookupResult.pkg.posicionEstante || (lookupResult.pkg.anaquel ? `${lookupResult.pkg.anaquel}-${lookupResult.pkg.piso || 'P1'}` : 'MESA RECEPCIÓN')}
+                      </div>
+                      <div style={{ fontSize: '10.5px', color: '#bfdbfe', marginTop: '2px' }}>
+                        {lookupResult.pkg.posicionEstante?.startsWith('A1') ? 'Anaquel 1 (Izquierdo)' : lookupResult.pkg.posicionEstante?.startsWith('A2') ? 'Anaquel 2 (Derecho)' : 'Recepción Central'}
                       </div>
                     </div>
-                  )}
 
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '11px', marginBottom: '8px' }}>
+                      <div style={{ background: '#f8fafc', padding: '6px 8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                        <span style={{ color: '#64748b', display: 'block', fontSize: '9.5px' }}>Guía WR:</span>
+                        <strong style={{ fontFamily: 'JetBrains Mono', color: '#0f172a' }}>{lookupResult.pkg.numeroReciboBodega}</strong>
+                      </div>
+                      <div style={{ background: '#f8fafc', padding: '6px 8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                        <span style={{ color: '#64748b', display: 'block', fontSize: '9.5px' }}>Peso / Estado:</span>
+                        <strong>{lookupResult.pkg.pesoKg} Kg</strong> · <span style={{ color: '#16a34a' }}>{lookupResult.pkg.estadoEntrega}</span>
+                      </div>
+                    </div>
+
+                    {lookupResult.cli && (
+                      <div style={{ background: '#f1f5f9', padding: '8px', borderRadius: '6px', marginBottom: '8px', fontSize: '11px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                          <User className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                          <strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lookupResult.cli.nombre}</strong>
+                        </div>
+                        <div style={{ color: '#64748b', fontSize: '10.5px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <MapPin className="w-3 h-3 inline mr-1 text-slate-400" />
+                          {lookupResult.cli.distrito || 'Lima'} · {lookupResult.cli.direccionEntrega || 'Sede Central'}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '16px 8px' }}>
+                    <Package className="w-10 h-10 text-slate-300" style={{ margin: '0 auto 8px auto' }} />
+                    <p style={{ fontWeight: 800, color: '#0f172a', fontSize: '13px', margin: 0 }}>Paquete no registrado en almacén</p>
+                    <p style={{ fontSize: '11px', color: '#64748b', margin: '4px 0 12px 0' }}>
+                      El código <code style={{ color: '#2563eb', fontWeight: 700 }}>{lookupResult.rawCode}</code> no se encuentra en el inventario activo.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Botones inferiores fijos */}
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '6px',
+                  flexShrink: 0,
+                  paddingTop: '8px',
+                  marginTop: 'auto',
+                  borderTop: '1px solid #e2e8f0',
+                  flexWrap: 'wrap'
+                }}
+              >
+                {lookupResult.pkg ? (
+                  <>
                     {lookupResult.cli?.telefono && (
                       <a
                         href={`https://wa.me/51${lookupResult.cli.telefono.replace(/\D/g, '')}?text=Hola%20${encodeURIComponent(lookupResult.cli.nombre)},%20te%20saludamos%20de%20AMEX%20Courier.%20Tu%20paquete%20${encodeURIComponent(lookupResult.pkg.numeroReciboBodega)}%20ya%20se%20encuentra%20listo%20en%20nuestro%20almac%C3%A9n%20(${encodeURIComponent(lookupResult.pkg.posicionEstante || 'A1-P1')}).`}
@@ -1716,21 +1859,24 @@ export default function MobileScannerModal({
                         className="btn btn-primary"
                         style={{
                           flex: 1,
-                          minWidth: '110px',
-                          height: '38px',
+                          minWidth: '95px',
+                          height: '36px',
                           background: '#16a34a',
-                          fontSize: '12px',
+                          fontSize: '11.5px',
                           fontWeight: 800,
                           borderRadius: '8px',
+                          display: 'flex',
+                          alignItems: 'center',
                           justifyContent: 'center',
-                          gap: '6px',
+                          gap: '4px',
                           textDecoration: 'none'
                         }}
                       >
-                        <MessageCircle className="w-4 h-4" /> WhatsApp
+                        <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
                       </a>
                     )}
                     <button
+                      type="button"
                       onClick={() => {
                         const code = lookupResult.pkg?.numeroReciboBodega || lookupResult.rawCode;
                         setLookupResult(null);
@@ -1750,38 +1896,44 @@ export default function MobileScannerModal({
                       className="btn"
                       style={{
                         flex: 1,
-                        minWidth: '110px',
-                        height: '38px',
+                        minWidth: '95px',
+                        height: '36px',
                         background: '#eff6ff',
                         color: '#2563eb',
                         border: '1.5px solid #bfdbfe',
-                        fontSize: '12px',
+                        fontSize: '11.5px',
                         fontWeight: 800,
                         borderRadius: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
                         justifyContent: 'center',
                         gap: '4px'
                       }}
                     >
-                      <Layers className="w-4 h-4" /> Reubicar
+                      <Layers className="w-3.5 h-3.5" /> Reubicar
                     </button>
                     <button
+                      type="button"
                       onClick={() => setLookupResult(null)}
                       className="btn btn-secondary"
-                      style={{ height: '38px', minWidth: '70px', fontSize: '12px', fontWeight: 700, borderRadius: '8px', justifyContent: 'center' }}
+                      style={{
+                        height: '36px',
+                        minWidth: '65px',
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        borderRadius: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
                     >
                       Cerrar
                     </button>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ textAlign: 'center', padding: '16px 8px' }}>
-                  <Package className="w-10 h-10 text-slate-300" style={{ margin: '0 auto 8px auto' }} />
-                  <p style={{ fontWeight: 800, color: '#0f172a', fontSize: '13px', margin: 0 }}>Paquete no registrado en almacén</p>
-                  <p style={{ fontSize: '11.5px', color: '#64748b', margin: '4px 0 14px 0' }}>
-                    El código <code style={{ color: '#2563eb', fontWeight: 700 }}>{lookupResult.rawCode}</code> no se encuentra en el inventario activo.
-                  </p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  </>
+                ) : (
+                  <>
                     <button
+                      type="button"
                       onClick={() => {
                         const raw = lookupResult.rawCode;
                         setLookupResult(null);
@@ -1797,20 +1949,39 @@ export default function MobileScannerModal({
                         });
                       }}
                       className="btn btn-primary"
-                      style={{ height: '38px', fontSize: '12px', borderRadius: '8px', fontWeight: 800, justifyContent: 'center', gap: '6px' }}
+                      style={{
+                        flex: 1.5,
+                        height: '36px',
+                        fontSize: '11.5px',
+                        borderRadius: '8px',
+                        fontWeight: 800,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px'
+                      }}
                     >
-                      <Plus className="w-4 h-4" /> Registrar en Anaquel {selectedAnaquel}-{selectedPiso}
+                      <Plus className="w-3.5 h-3.5" /> Asignar en {selectedAnaquel}-{selectedPiso}
                     </button>
                     <button
+                      type="button"
                       onClick={() => setLookupResult(null)}
                       className="btn btn-secondary"
-                      style={{ height: '36px', fontSize: '12px', borderRadius: '8px', justifyContent: 'center' }}
+                      style={{
+                        flex: 1,
+                        height: '36px',
+                        fontSize: '11.5px',
+                        borderRadius: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
                     >
-                      Entendido / Cerrar
+                      Cerrar
                     </button>
-                  </div>
-                </div>
-              )}
+                  </>
+                )}
+              </div>
             </div>
           </div>
         )}
