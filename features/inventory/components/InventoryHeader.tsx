@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Warehouse, Plus, RefreshCw, Camera, Check, Loader2, PackagePlus } from 'lucide-react';
+import { Warehouse, Plus, RefreshCw, Check, PackagePlus } from 'lucide-react';
 import { Paquete } from '@/types';
 import ExcelExportDropdown from './ExcelExportDropdown';
 import TibOperationsDropdown from './TibOperationsDropdown';
+import ClipboardCopyDropdown from './ClipboardCopyDropdown';
 import InventoryStatsCards from './InventoryStatsCards';
-import { copyPackagesTableAsImage } from '../utils/clipboardTableImage';
 import { alertDialog } from '@/lib/dialog';
 import { soundEffects } from '@/lib/audio/soundEffects';
 
@@ -46,44 +46,6 @@ export default function InventoryHeader({
 }: InventoryHeaderProps) {
   const [refreshState, setRefreshState] = useState<'idle' | 'loading' | 'success'>('idle');
   const [lastRefreshedAt, setLastRefreshedAt] = useState<string | null>(null);
-  const [copyStatus, setCopyStatus] = useState<'idle' | 'copying' | 'copied'>('idle');
-  const [copiedCount, setCopiedCount] = useState<number>(0);
-
-  const handleCopyTableImage = async () => {
-    if (copyStatus === 'copying') return;
-    const targetPackages =
-      selectedIds.length > 0
-        ? paquetes.filter(p => selectedIds.includes(p.id))
-        : filteredPaquetes;
-
-    if (targetPackages.length === 0) {
-      await alertDialog({
-        title: 'Portapapeles',
-        message: 'No hay paquetes visibles o seleccionados para copiar.',
-        variant: 'warning'
-      });
-      return;
-    }
-
-    setCopyStatus('copying');
-    try {
-      const res = await copyPackagesTableAsImage(targetPackages);
-      if (res.success) {
-        setCopiedCount(res.count);
-        setCopyStatus('copied');
-        setTimeout(() => setCopyStatus('idle'), 3500);
-      } else {
-        await alertDialog({
-          title: 'Portapapeles',
-          message: res.error || 'No se pudo copiar la imagen.',
-          variant: 'danger'
-        });
-        setCopyStatus('idle');
-      }
-    } catch {
-      setCopyStatus('idle');
-    }
-  };
 
   const handleRefresh = async () => {
     if (!onRefreshData || refreshState === 'loading') return;
@@ -173,51 +135,12 @@ export default function InventoryHeader({
             selectedIds={selectedIds}
           />
 
-          {/* Botón Copiar Tabla como Imagen para WhatsApp */}
-          <button
-            type="button"
-            onClick={handleCopyTableImage}
-            disabled={copyStatus === 'copying'}
-            className="btn"
-            style={{
-              background: copyStatus === 'copied' ? '#ecfdf5' : '#ffffff',
-              border: copyStatus === 'copied' ? '1px solid #10b981' : '1px solid #cbd5e1',
-              color: copyStatus === 'copied' ? '#065f46' : '#1e293b',
-              height: '33px',
-              padding: '0 12px',
-              borderRadius: '8px',
-              fontSize: '12px',
-              fontWeight: 700,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              cursor: copyStatus === 'copying' ? 'wait' : 'pointer',
-              transition: 'all 0.15s ease',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
-            }}
-            title={
-              selectedIds.length > 0
-                ? `Copiar imagen de los ${selectedIds.length} paquetes seleccionados para WhatsApp`
-                : `Copiar imagen de los ${filteredPaquetes.length} paquetes visibles para WhatsApp`
-            }
-          >
-            {copyStatus === 'copying' ? (
-              <Loader2 className="w-3.5 h-3.5 text-emerald-600 animate-spin" />
-            ) : copyStatus === 'copied' ? (
-              <Check className="w-3.5 h-3.5 text-emerald-600" />
-            ) : (
-              <Camera className="w-3.5 h-3.5 text-emerald-600" />
-            )}
-            <span>
-              {copyStatus === 'copying'
-                ? 'Generando...'
-                : copyStatus === 'copied'
-                ? `¡Copiado (${copiedCount})!`
-                : selectedIds.length > 0
-                ? `Copiar Imagen (${selectedIds.length})`
-                : 'Copiar Imagen (WhatsApp)'}
-            </span>
-          </button>
+          {/* Dropdown de Opciones de Copiado al Portapapeles (Imagen, Texto, 2 Columnas, etc.) */}
+          <ClipboardCopyDropdown
+            paquetes={paquetes}
+            filteredPaquetes={filteredPaquetes}
+            selectedIds={selectedIds}
+          />
 
           {/* Botón Actualizar Profesional y Animado */}
           {onRefreshData && (
