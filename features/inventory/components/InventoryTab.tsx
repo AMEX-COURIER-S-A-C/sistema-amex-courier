@@ -196,19 +196,52 @@ export default function InventoryTab({
   const [isSyncTibImagesModalOpen, setIsSyncTibImagesModalOpen] = useState(false);
 
   const missingTibImagesCount = useMemo(() => {
-    return paquetes.filter(
-      (p) => Boolean(p.numeroReciboBodega && p.numeroReciboBodega.trim() !== '' && !p.tibImagenUrl)
-    ).length;
+    return paquetes.filter((p) => {
+      if (!p.numeroReciboBodega || p.numeroReciboBodega.trim() === '') return false;
+      const isMissingImage = !p.tibImagenUrl;
+      const isMissingTracking = !p.tracking || p.tracking === '-' || p.tracking.trim() === '';
+      const isMissingPeso = !p.pesoKg || Number(p.pesoKg) <= 0;
+      const isMissingCliente =
+        !p.nombreConsignatario ||
+        p.nombreConsignatario.trim() === '' ||
+        p.nombreConsignatario.toUpperCase().includes('CLIENTE AMEX');
+      const isMissingEmpaque = !p.tipoEmpaque || p.tipoEmpaque.trim() === '';
+      const isMissingEstadoTib = !p.estadoTib || p.estadoTib.trim() === '';
+      return (
+        isMissingImage ||
+        isMissingTracking ||
+        isMissingPeso ||
+        isMissingCliente ||
+        isMissingEmpaque ||
+        isMissingEstadoTib
+      );
+    }).length;
   }, [paquetes]);
 
-  const handleTibBulkPackageUpdated = (wr: string, imageUrl: string, ticketUrl?: string) => {
+  const handleTibBulkPackageUpdated = (
+    wr: string,
+    imageUrl: string,
+    ticketUrl?: string,
+    updatedData?: {
+      tracking?: string;
+      nombreConsignatario?: string;
+      pesoKg?: number;
+      tipoEmpaque?: string;
+      estadoTib?: string;
+    }
+  ) => {
     if (onUpdatePackage) {
       const target = paquetes.find((p) => p.numeroReciboBodega === wr);
       if (target) {
         onUpdatePackage({
           ...target,
-          tibImagenUrl: imageUrl,
-          tibTicketPdfUrl: ticketUrl
+          tibImagenUrl: imageUrl || target.tibImagenUrl,
+          tibTicketPdfUrl: ticketUrl || target.tibTicketPdfUrl,
+          tracking: updatedData?.tracking || target.tracking,
+          nombreConsignatario: updatedData?.nombreConsignatario || target.nombreConsignatario,
+          pesoKg: updatedData?.pesoKg !== undefined ? Number(updatedData.pesoKg) : target.pesoKg,
+          tipoEmpaque: updatedData?.tipoEmpaque || target.tipoEmpaque,
+          estadoTib: (updatedData?.estadoTib as any) || target.estadoTib,
         });
       }
     }

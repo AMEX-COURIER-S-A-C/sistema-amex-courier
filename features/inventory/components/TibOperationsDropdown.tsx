@@ -239,7 +239,7 @@ export default function TibOperationsDropdown({
                     justifyContent: 'space-between'
                   }}
                 >
-                  <span>Sincronizar Fotos TIB</span>
+                  <span>Sincronizar y Enriquecer TIB</span>
                   {missingTibImagesCount > 0 && (
                     <span
                       style={{
@@ -255,7 +255,7 @@ export default function TibOperationsDropdown({
                   )}
                 </div>
                 <div style={{ fontSize: '11px', color: '#64748b' }}>
-                  Descargar fotos y tickets de bodega
+                  Fotos, tracking, peso, cliente y bodega
                 </div>
               </div>
             </button>

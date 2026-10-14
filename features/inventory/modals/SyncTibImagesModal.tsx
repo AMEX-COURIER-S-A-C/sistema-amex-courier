@@ -16,7 +16,13 @@ import {
   FileText,
   Clock,
   Sparkles,
-  Info
+  Info,
+  Scale,
+  Tag,
+  User,
+  Box,
+  Activity,
+  Check
 } from 'lucide-react';
 import { Paquete } from '@/types';
 
@@ -25,7 +31,18 @@ export interface SyncTibImagesModalProps {
   onClose: () => void;
   paquetesActuales: Paquete[];
   onRefreshData?: () => Promise<void> | void;
-  onPackageUpdated?: (wr: string, imageUrl: string, ticketUrl?: string) => void;
+  onPackageUpdated?: (
+    wr: string,
+    imageUrl: string,
+    ticketUrl?: string,
+    updatedData?: {
+      tracking?: string;
+      nombreConsignatario?: string;
+      pesoKg?: number;
+      tipoEmpaque?: string;
+      estadoTib?: string;
+    }
+  ) => void;
 }
 
 interface ItemToProcess {
@@ -34,6 +51,10 @@ interface ItemToProcess {
   tracking?: string;
   nombreConsignatario?: string;
   pesoKg?: number;
+  tipoEmpaque?: string;
+  estadoTib?: string;
+  tibImagenUrl?: string;
+  missingFields: string[];
 }
 
 interface LogEntry {
@@ -59,26 +80,106 @@ export default function SyncTibImagesModal({
   const [forceRefresh, setForceRefresh] = useState(false);
   const [limitSelection, setLimitSelection] = useState<number | 'all'>('all');
 
+  // Opciones de sincronización (Campos a enriquecer)
+  const [syncOptions, setSyncOptions] = useState({
+    images: true,
+    tracking: true,
+    peso: true,
+    cliente: true,
+    empaque: true,
+    estadoTib: true,
+  });
+
   // Estadísticas globales de BD
   const [dbStats, setDbStats] = useState<{
     totalPackages: number;
     withImage: number;
     totalMissing: number;
+    stats: {
+      missingImage: number;
+      missingTracking: number;
+      missingPeso: number;
+      missingCliente: number;
+      missingEmpaque: number;
+      missingEstadoTib: number;
+    };
     missingList: ItemToProcess[];
   } | null>(null);
   const [loadingDbStats, setLoadingDbStats] = useState(false);
 
   // Estadísticas del inventario cargado en memoria
-  const currentMissingList = useMemo<ItemToProcess[]>(() => {
-    return paquetesActuales
-      .filter((p) => Boolean(p.numeroReciboBodega && p.numeroReciboBodega.trim() !== '' && !p.tibImagenUrl))
-      .map((p) => ({
-        id: p.id,
-        numeroReciboBodega: p.numeroReciboBodega,
-        tracking: p.tracking || '',
-        nombreConsignatario: p.nombreConsignatario || '',
-        pesoKg: p.pesoKg || 0,
-      }));
+  const currentIncomplete = useMemo(() => {
+    let missingImage = 0;
+    let missingTracking = 0;
+    let missingPeso = 0;
+    let missingCliente = 0;
+    let missingEmpaque = 0;
+    let missingEstadoTib = 0;
+
+    const list: ItemToProcess[] = [];
+
+    paquetesActuales.forEach((p) => {
+      if (!p.numeroReciboBodega || p.numeroReciboBodega.trim() === '') return;
+
+      const isMissingImage = !p.tibImagenUrl;
+      const isMissingTracking = !p.tracking || p.tracking === '-' || p.tracking.trim() === '';
+      const isMissingPeso = !p.pesoKg || Number(p.pesoKg) <= 0;
+      const isMissingCliente =
+        !p.nombreConsignatario ||
+        p.nombreConsignatario.trim() === '' ||
+        p.nombreConsignatario.toUpperCase().includes('CLIENTE AMEX');
+      const isMissingEmpaque = !p.tipoEmpaque || p.tipoEmpaque.trim() === '';
+      const isMissingEstadoTib = !p.estadoTib || p.estadoTib.trim() === '';
+
+      if (isMissingImage) missingImage++;
+      if (isMissingTracking) missingTracking++;
+      if (isMissingPeso) missingPeso++;
+      if (isMissingCliente) missingCliente++;
+      if (isMissingEmpaque) missingEmpaque++;
+      if (isMissingEstadoTib) missingEstadoTib++;
+
+      const hasAnyMissing =
+        isMissingImage ||
+        isMissingTracking ||
+        isMissingPeso ||
+        isMissingCliente ||
+        isMissingEmpaque ||
+        isMissingEstadoTib;
+
+      if (hasAnyMissing) {
+        const missingFields: string[] = [];
+        if (isMissingImage) missingFields.push('foto');
+        if (isMissingTracking) missingFields.push('tracking');
+        if (isMissingPeso) missingFields.push('peso');
+        if (isMissingCliente) missingFields.push('cliente');
+        if (isMissingEmpaque) missingFields.push('empaque');
+        if (isMissingEstadoTib) missingFields.push('estado_tib');
+
+        list.push({
+          id: p.id,
+          numeroReciboBodega: p.numeroReciboBodega,
+          tracking: p.tracking || '',
+          nombreConsignatario: p.nombreConsignatario || '',
+          pesoKg: Number(p.pesoKg || 0),
+          tipoEmpaque: p.tipoEmpaque || '',
+          estadoTib: p.estadoTib || '',
+          tibImagenUrl: p.tibImagenUrl,
+          missingFields,
+        });
+      }
+    });
+
+    return {
+      list,
+      stats: {
+        missingImage,
+        missingTracking,
+        missingPeso,
+        missingCliente,
+        missingEmpaque,
+        missingEstadoTib,
+      },
+    };
   }, [paquetesActuales]);
 
   // Ejecución y progreso
@@ -126,12 +227,24 @@ export default function SyncTibImagesModal({
           totalPackages: data.totalPackages,
           withImage: data.withImage,
           totalMissing: data.totalMissing,
+          stats: data.stats || {
+            missingImage: 0,
+            missingTracking: 0,
+            missingPeso: 0,
+            missingCliente: 0,
+            missingEmpaque: 0,
+            missingEstadoTib: 0,
+          },
           missingList: (data.missing || []).map((m: any) => ({
             id: m.id,
             numeroReciboBodega: m.numeroReciboBodega,
             tracking: m.tracking,
             nombreConsignatario: m.nombreConsignatario,
             pesoKg: m.pesoKg,
+            tipoEmpaque: m.tipoEmpaque,
+            estadoTib: m.estadoTib,
+            tibImagenUrl: m.tibImagenUrl,
+            missingFields: m.missingFields || [],
           })),
         });
       }
@@ -146,7 +259,7 @@ export default function SyncTibImagesModal({
   const itemsToProcess = useMemo<ItemToProcess[]>(() => {
     let source: ItemToProcess[] = [];
     if (scope === 'current') {
-      source = currentMissingList;
+      source = currentIncomplete.list;
     } else {
       source = dbStats?.missingList || [];
     }
@@ -155,9 +268,9 @@ export default function SyncTibImagesModal({
       return source.slice(0, Number(limitSelection));
     }
     return source;
-  }, [scope, currentMissingList, dbStats, limitSelection]);
+  }, [scope, currentIncomplete.list, dbStats, limitSelection]);
 
-  // Iniciar la sincronización masiva
+  // Iniciar la sincronización y enriquecimiento masivo
   const handleStartSync = async () => {
     if (itemsToProcess.length === 0) return;
 
@@ -170,7 +283,7 @@ export default function SyncTibImagesModal({
     setErrorCount(0);
     setLogs([]);
 
-    const CHUNK_SIZE = 3; // Lotes de 3 peticiones concurrentes para proteger la API de TIB
+    const CHUNK_SIZE = 3; // Lotes concurrentes
     let currentProcessed = 0;
     let currentSuccess = 0;
     let currentNotFound = 0;
@@ -196,22 +309,34 @@ export default function SyncTibImagesModal({
                 wr: item.numeroReciboBodega,
                 id: item.id,
                 forceRefresh,
+                syncOptions,
               }),
             });
 
             const data = await res.json();
-            if (res.ok && data.found && data.tibImagenUrl) {
+            if (res.ok && data.found) {
               currentSuccess++;
-              addLog(item.numeroReciboBodega, 'ok', 'Foto y ticket asignados correctamente.');
+              const fieldsLabel =
+                Array.isArray(data.updatedFields) && data.updatedFields.length > 0
+                  ? `Completado: ${data.updatedFields.join(', ')}`
+                  : 'Sincronizado sin cambios nuevos';
+
+              addLog(item.numeroReciboBodega, 'ok', fieldsLabel);
+
               if (onPackageUpdated) {
-                onPackageUpdated(item.numeroReciboBodega, data.tibImagenUrl, data.tibTicketPdfUrl);
+                onPackageUpdated(
+                  item.numeroReciboBodega,
+                  data.tibImagenUrl,
+                  data.tibTicketPdfUrl,
+                  data.updatedData
+                );
               }
             } else if (res.ok && !data.found) {
               currentNotFound++;
               addLog(
                 item.numeroReciboBodega,
                 'not_found',
-                data.message || 'Sin evidencia fotográfica en servidor TIB.'
+                data.message || 'Sin registro en servidor TIB.'
               );
             } else {
               currentErrors++;
@@ -238,7 +363,7 @@ export default function SyncTibImagesModal({
         })
       );
 
-      // Pausa de 150ms entre lotes para no sobrecargar el servidor de TIB
+      // Pausa de 150ms entre lotes para resguardar la API de TIB
       await new Promise((r) => setTimeout(r, 150));
     }
 
@@ -274,6 +399,7 @@ export default function SyncTibImagesModal({
   if (!isOpen) return null;
 
   const progressPercent = totalToProcess > 0 ? Math.round((processedCount / totalToProcess) * 100) : 0;
+  const activeStats = scope === 'current' ? currentIncomplete.stats : (dbStats?.stats || currentIncomplete.stats);
 
   return (
     <div
@@ -296,7 +422,7 @@ export default function SyncTibImagesModal({
       <div
         className="modal-dialog"
         style={{
-          maxWidth: '780px',
+          maxWidth: '840px',
           width: '100%',
           maxHeight: '92vh',
           display: 'flex',
@@ -334,12 +460,12 @@ export default function SyncTibImagesModal({
                 color: '#60a5fa'
               }}
             >
-              <Camera className="w-5 h-5" />
+              <Sparkles className="w-5 h-5" />
             </div>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#ffffff' }}>
-                  Sincronización Masiva de Fotos TIB
+                  Sincronización y Enriquecimiento TIB
                 </h3>
                 <span
                   style={{
@@ -352,11 +478,11 @@ export default function SyncTibImagesModal({
                     borderRadius: '999px'
                   }}
                 >
-                  AMEX Bodega Hub
+                  Fotos, Tracking, Peso y Datos de Bodega
                 </span>
               </div>
               <p style={{ margin: '4px 0 0 0', fontSize: '12.5px', color: '#94a3b8' }}>
-                Detecta y asigna automáticamente imágenes y tickets PDF desde el servidor oficial de TIBCARGO.
+                Detecta y extrae automáticamente fotografías, tickets PDF, tracking, peso, consignatario y estado TIB.
               </p>
             </div>
           </div>
@@ -394,11 +520,11 @@ export default function SyncTibImagesModal({
           {/* PASO 1: AUDITORÍA Y CONFIRMACIÓN */}
           {step === 'audit' && (
             <>
-              {/* Tarjetas de Diagnóstico */}
+              {/* Tarjetas de Alcance */}
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
                   gap: '12px'
                 }}
               >
@@ -421,22 +547,19 @@ export default function SyncTibImagesModal({
                     </div>
                     <span
                       style={{
-                        background: currentMissingList.length > 0 ? '#fef3c7' : '#dcfce7',
-                        color: currentMissingList.length > 0 ? '#b45309' : '#16a34a',
+                        background: currentIncomplete.list.length > 0 ? '#fef3c7' : '#dcfce7',
+                        color: currentIncomplete.list.length > 0 ? '#b45309' : '#16a34a',
                         fontWeight: 800,
                         fontSize: '11px',
                         padding: '2px 8px',
                         borderRadius: '999px'
                       }}
                     >
-                      {currentMissingList.length} pendientes
+                      {currentIncomplete.list.length} incompletos
                     </span>
                   </div>
                   <div style={{ fontSize: '12px', color: '#64748b' }}>
                     Total analizados en tabla: <strong>{paquetesActuales.length}</strong>
-                  </div>
-                  <div style={{ fontSize: '11.5px', color: '#0f766e', marginTop: '4px', fontWeight: 700 }}>
-                    ✓ {paquetesActuales.length - currentMissingList.length} ya cuentan con foto
                   </div>
                 </div>
 
@@ -470,20 +593,96 @@ export default function SyncTibImagesModal({
                           borderRadius: '999px'
                         }}
                       >
-                        {dbStats?.totalMissing ?? '...'} pendientes
+                        {dbStats?.totalMissing ?? '...'} incompletos
                       </span>
                     )}
                   </div>
                   <div style={{ fontSize: '12px', color: '#64748b' }}>
-                    Total en BD: <strong>{dbStats?.totalPackages ?? '...'}</strong> paquetes
-                  </div>
-                  <div style={{ fontSize: '11.5px', color: '#0f766e', marginTop: '4px', fontWeight: 700 }}>
-                    ✓ {dbStats?.withImage ?? '...'} ya cuentan con foto
+                    Total con WR en BD: <strong>{dbStats?.totalPackages ?? '...'}</strong> paquetes
                   </div>
                 </div>
               </div>
 
-              {/* Parámetros de Ejecución */}
+              {/* Panel de Diagnóstico Detallado de Campos Faltantes */}
+              <div
+                style={{
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '12px',
+                  padding: '14px 16px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px'
+                }}
+              >
+                <div style={{ fontSize: '12px', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Diagnóstico de datos faltantes en {scope === 'current' ? 'vista actual' : 'base de datos'}:
+                </div>
+
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(115px, 1fr))',
+                    gap: '8px'
+                  }}
+                >
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 10px' }}>
+                    <div style={{ fontSize: '11px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Camera className="w-3 h-3 text-indigo-500" /> Sin Foto
+                    </div>
+                    <div style={{ fontSize: '16px', fontWeight: 800, color: activeStats.missingImage > 0 ? '#dc2626' : '#16a34a', marginTop: '2px' }}>
+                      {activeStats.missingImage}
+                    </div>
+                  </div>
+
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 10px' }}>
+                    <div style={{ fontSize: '11px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Tag className="w-3 h-3 text-blue-500" /> Sin Tracking
+                    </div>
+                    <div style={{ fontSize: '16px', fontWeight: 800, color: activeStats.missingTracking > 0 ? '#d97706' : '#16a34a', marginTop: '2px' }}>
+                      {activeStats.missingTracking}
+                    </div>
+                  </div>
+
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 10px' }}>
+                    <div style={{ fontSize: '11px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Scale className="w-3 h-3 text-amber-500" /> Sin Peso (0 kg)
+                    </div>
+                    <div style={{ fontSize: '16px', fontWeight: 800, color: activeStats.missingPeso > 0 ? '#d97706' : '#16a34a', marginTop: '2px' }}>
+                      {activeStats.missingPeso}
+                    </div>
+                  </div>
+
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 10px' }}>
+                    <div style={{ fontSize: '11px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <User className="w-3 h-3 text-emerald-500" /> Sin Cliente
+                    </div>
+                    <div style={{ fontSize: '16px', fontWeight: 800, color: activeStats.missingCliente > 0 ? '#d97706' : '#16a34a', marginTop: '2px' }}>
+                      {activeStats.missingCliente}
+                    </div>
+                  </div>
+
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 10px' }}>
+                    <div style={{ fontSize: '11px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Box className="w-3 h-3 text-teal-500" /> Sin Empaque
+                    </div>
+                    <div style={{ fontSize: '16px', fontWeight: 800, color: activeStats.missingEmpaque > 0 ? '#d97706' : '#16a34a', marginTop: '2px' }}>
+                      {activeStats.missingEmpaque}
+                    </div>
+                  </div>
+
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 10px' }}>
+                    <div style={{ fontSize: '11px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Activity className="w-3 h-3 text-purple-500" /> Sin Estado TIB
+                    </div>
+                    <div style={{ fontSize: '16px', fontWeight: 800, color: activeStats.missingEstadoTib > 0 ? '#d97706' : '#16a34a', marginTop: '2px' }}>
+                      {activeStats.missingEstadoTib}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Casillas de Verificación: Qué campos enriquecer */}
               <div
                 style={{
                   background: '#ffffff',
@@ -496,13 +695,81 @@ export default function SyncTibImagesModal({
                 }}
               >
                 <div style={{ fontWeight: 800, fontSize: '13px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Sparkles className="w-4 h-4 text-amber-500" /> Configuración del Lote
+                  <Sparkles className="w-4 h-4 text-blue-600" /> ¿Qué campos deseas que TIB extraiga y complete automáticamente?
                 </div>
 
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center' }}>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                    gap: '10px'
+                  }}
+                >
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12.5px', color: '#334155', fontWeight: 600 }}>
+                    <input
+                      type="checkbox"
+                      checked={syncOptions.images}
+                      onChange={(e) => setSyncOptions(prev => ({ ...prev, images: e.target.checked }))}
+                      style={{ width: '16px', height: '16px', accentColor: '#2563eb' }}
+                    />
+                    <span>Fotos y Tickets PDF</span>
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12.5px', color: '#334155', fontWeight: 600 }}>
+                    <input
+                      type="checkbox"
+                      checked={syncOptions.tracking}
+                      onChange={(e) => setSyncOptions(prev => ({ ...prev, tracking: e.target.checked }))}
+                      style={{ width: '16px', height: '16px', accentColor: '#2563eb' }}
+                    />
+                    <span>Número de Tracking</span>
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12.5px', color: '#334155', fontWeight: 600 }}>
+                    <input
+                      type="checkbox"
+                      checked={syncOptions.peso}
+                      onChange={(e) => setSyncOptions(prev => ({ ...prev, peso: e.target.checked }))}
+                      style={{ width: '16px', height: '16px', accentColor: '#2563eb' }}
+                    />
+                    <span>Peso de Balanza Miami (kg)</span>
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12.5px', color: '#334155', fontWeight: 600 }}>
+                    <input
+                      type="checkbox"
+                      checked={syncOptions.cliente}
+                      onChange={(e) => setSyncOptions(prev => ({ ...prev, cliente: e.target.checked }))}
+                      style={{ width: '16px', height: '16px', accentColor: '#2563eb' }}
+                    />
+                    <span>Nombre de Cliente / Consignatario</span>
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12.5px', color: '#334155', fontWeight: 600 }}>
+                    <input
+                      type="checkbox"
+                      checked={syncOptions.empaque}
+                      onChange={(e) => setSyncOptions(prev => ({ ...prev, empaque: e.target.checked }))}
+                      style={{ width: '16px', height: '16px', accentColor: '#2563eb' }}
+                    />
+                    <span>Tipo de Empaque (Caja/Sobre/etc.)</span>
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12.5px', color: '#334155', fontWeight: 600 }}>
+                    <input
+                      type="checkbox"
+                      checked={syncOptions.estadoTib}
+                      onChange={(e) => setSyncOptions(prev => ({ ...prev, estadoTib: e.target.checked }))}
+                      style={{ width: '16px', height: '16px', accentColor: '#2563eb' }}
+                    />
+                    <span>Estado Logístico TIB</span>
+                  </label>
+                </div>
+
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <label style={{ fontSize: '12.5px', fontWeight: 700, color: '#334155' }}>
-                      Cantidad a procesar:
+                      Límite de guías:
                     </label>
                     <select
                       value={String(limitSelection)}
@@ -520,7 +787,7 @@ export default function SyncTibImagesModal({
                         color: '#0f172a'
                       }}
                     >
-                      <option value="all">Todos los pendientes ({itemsToProcess.length})</option>
+                      <option value="all">Todos los incompletos ({itemsToProcess.length})</option>
                       <option value="25">Primeros 25</option>
                       <option value="50">Primeros 50</option>
                       <option value="100">Primeros 100</option>
@@ -544,7 +811,7 @@ export default function SyncTibImagesModal({
                       onChange={(e) => setForceRefresh(e.target.checked)}
                       style={{ width: '15px', height: '15px' }}
                     />
-                    <span>Forzar re-consulta a TIB si ya existía URL previa</span>
+                    <span>Forzar re-consulta a TIB incluso si ya tenían datos previos</span>
                   </label>
                 </div>
               </div>
@@ -563,7 +830,7 @@ export default function SyncTibImagesModal({
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a' }}>
-                    Lista de guías pendientes a sincronizar ({itemsToProcess.length})
+                    Guías que serán procesadas ({itemsToProcess.length})
                   </span>
                   <span style={{ fontSize: '11.5px', color: '#64748b' }}>
                     Alcance: {scope === 'current' ? 'Vista actual' : 'Base de datos'}
@@ -587,7 +854,7 @@ export default function SyncTibImagesModal({
                     }}
                   >
                     <CheckCircle2 className="w-8 h-8 text-emerald-500" />
-                    ¡Excelente! Todos los paquetes de este alcance ya cuentan con su fotografía asignada.
+                    ¡Excelente! Todos los paquetes de este alcance ya cuentan con su información completa y fotos asignadas.
                   </div>
                 ) : (
                   <div
@@ -606,6 +873,7 @@ export default function SyncTibImagesModal({
                           <th style={{ padding: '6px 10px', fontWeight: 700 }}>Tracking</th>
                           <th style={{ padding: '6px 10px', fontWeight: 700 }}>Consignatario</th>
                           <th style={{ padding: '6px 10px', fontWeight: 700, textAlign: 'right' }}>Peso</th>
+                          <th style={{ padding: '6px 10px', fontWeight: 700 }}>Faltantes</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -628,6 +896,25 @@ export default function SyncTibImagesModal({
                             </td>
                             <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: '#0f172a' }}>
                               {item.pesoKg ? `${item.pesoKg} kg` : '—'}
+                            </td>
+                            <td style={{ padding: '6px 10px' }}>
+                              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                {item.missingFields.map((f) => (
+                                  <span
+                                    key={f}
+                                    style={{
+                                      background: '#fee2e2',
+                                      color: '#991b1b',
+                                      fontSize: '10px',
+                                      fontWeight: 700,
+                                      padding: '1px 5px',
+                                      borderRadius: '4px'
+                                    }}
+                                  >
+                                    {f}
+                                  </span>
+                                ))}
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -688,7 +975,7 @@ export default function SyncTibImagesModal({
 
                 {currentWr && (
                   <div style={{ fontSize: '12px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>Procesando lote:</span>
+                    <span>Consultando TIB para lote:</span>
                     <strong style={{ fontFamily: 'monospace', color: '#1e293b' }}>{currentWr}</strong>
                   </div>
                 )}
@@ -706,7 +993,7 @@ export default function SyncTibImagesModal({
                   }}
                 >
                   <div style={{ fontSize: '11px', fontWeight: 800, color: '#166534', textTransform: 'uppercase' }}>
-                    ✓ Asignadas con Éxito
+                    ✓ Sincronizados
                   </div>
                   <div style={{ fontSize: '22px', fontWeight: 900, color: '#15803d', marginTop: '4px' }}>
                     {successCount}
@@ -723,7 +1010,7 @@ export default function SyncTibImagesModal({
                   }}
                 >
                   <div style={{ fontSize: '11px', fontWeight: 800, color: '#854d0e', textTransform: 'uppercase' }}>
-                    ⚠ Sin Foto en TIB
+                    ⚠ Sin Datos en TIB
                   </div>
                   <div style={{ fontSize: '22px', fontWeight: 900, color: '#a16207', marginTop: '4px' }}>
                     {notFoundCount}
@@ -763,7 +1050,7 @@ export default function SyncTibImagesModal({
                 }}
               >
                 <div style={{ color: '#94a3b8', fontSize: '11px', borderBottom: '1px solid #334155', paddingBottom: '6px', marginBottom: '4px' }}>
-                  REGISTRO DE COMUNICACIÓN EN TIEMPO REAL:
+                  REGISTRO DE ENRIQUECIMIENTO EN TIEMPO REAL:
                 </div>
                 <div
                   ref={logsContainerRef}
@@ -832,10 +1119,10 @@ export default function SyncTibImagesModal({
 
               <div>
                 <h4 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#0f172a' }}>
-                  Sincronización Masiva Finalizada
+                  Sincronización y Enriquecimiento Finalizado
                 </h4>
                 <p style={{ margin: '6px 0 0 0', fontSize: '13px', color: '#64748b' }}>
-                  Se completó la verificación con el servidor de TIBCARGO y se guardaron las evidencias en la base de datos.
+                  Se completó la verificación con el servidor de TIBCARGO y se guardaron los datos y fotos en la base de datos.
                 </p>
               </div>
 
@@ -856,14 +1143,14 @@ export default function SyncTibImagesModal({
                 </div>
 
                 <div style={{ background: '#f0fdf4', padding: '12px', borderRadius: '10px', border: '1px solid #bbf7d0' }}>
-                  <div style={{ fontSize: '11px', color: '#166534', fontWeight: 700 }}>FOTOS GUARDADAS</div>
+                  <div style={{ fontSize: '11px', color: '#166534', fontWeight: 700 }}>ENRIQUECIDAS CON ÉXITO</div>
                   <div style={{ fontSize: '20px', fontWeight: 900, color: '#15803d', marginTop: '2px' }}>
                     {successCount}
                   </div>
                 </div>
 
                 <div style={{ background: '#fefce8', padding: '12px', borderRadius: '10px', border: '1px solid #fef08a' }}>
-                  <div style={{ fontSize: '11px', color: '#854d0e', fontWeight: 700 }}>SIN FOTO EN TIB</div>
+                  <div style={{ fontSize: '11px', color: '#854d0e', fontWeight: 700 }}>SIN DATOS EN TIB</div>
                   <div style={{ fontSize: '20px', fontWeight: 900, color: '#a16207', marginTop: '2px' }}>
                     {notFoundCount}
                   </div>
@@ -890,7 +1177,7 @@ export default function SyncTibImagesModal({
               <div style={{ fontSize: '12px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Info className="w-4 h-4 text-slate-400" />
                 <span>
-                  Se enviarán peticiones concurrentes a la API oficial de TIB y se actualizará Supabase.
+                  Se consultará a la API de TIB y se actualizarán automáticamente los campos seleccionados en Supabase.
                 </span>
               </div>
 
@@ -941,7 +1228,7 @@ export default function SyncTibImagesModal({
           {step === 'running' && (
             <>
               <div style={{ fontSize: '12px', color: '#64748b' }}>
-                Por favor mantén esta ventana abierta mientras se completan las consultas.
+                Por favor mantén esta ventana abierta mientras se completan las consultas con TIB.
               </div>
 
               <button
@@ -969,7 +1256,7 @@ export default function SyncTibImagesModal({
           {step === 'done' && (
             <>
               <div style={{ fontSize: '12px', color: '#16a34a', fontWeight: 700 }}>
-                ✓ Los cambios ya fueron guardados permanentemente en la base de datos.
+                ✓ Los datos y evidencias ya fueron guardados permanentemente en la base de datos.
               </div>
 
               <button
