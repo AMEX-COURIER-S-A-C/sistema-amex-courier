@@ -17,6 +17,7 @@ import {
   cleanWr,
   WR_LENGTH
 } from '@/lib/validations/wr';
+import { parseWarehouseLocation } from '@/lib/validations/locations';
 
 export interface NewPkgFormData {
   numeroReciboBodega: string;
@@ -85,12 +86,12 @@ export default function NewPackageModal({
   };
 
   const handleSelectUbicacion = (code: string) => {
-    const [ana, pis] = code.includes('-') ? code.split('-') : [code, 'P1'];
+    const parsed = parseWarehouseLocation(code);
     onChange({
       ...form,
-      posicionEstante: code,
-      anaquel: ana,
-      piso: pis,
+      posicionEstante: parsed.posicionEstante,
+      anaquel: parsed.anaquel,
+      piso: parsed.piso || '',
       ubicacionActual: 'AmexLince'
     });
     if (validationError) setValidationError(null);
@@ -100,23 +101,24 @@ export default function NewPackageModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    const wrError = getWrValidationError(form.numeroReciboBodega);
+    const formattedWr = smartFormatWr(form.numeroReciboBodega);
+    const wrError = getWrValidationError(formattedWr);
     if (wrError) {
       setValidationError(wrError);
       wrInputRef.current?.focus();
       return;
     }
 
-    const clean = cleanWr(form.numeroReciboBodega);
+    const clean = cleanWr(formattedWr);
 
-    // Asegurar valores por defecto para el flujo TIB posterior
-    const [ana, pis] = currentUbicacion.includes('-') ? currentUbicacion.split('-') : [currentUbicacion, 'P1'];
+    // Asegurar valores por defecto canónicos para el flujo posterior
+    const parsed = parseWarehouseLocation(currentUbicacion);
     onChange({
       ...form,
       numeroReciboBodega: clean,
-      posicionEstante: currentUbicacion,
-      anaquel: ana,
-      piso: pis,
+      posicionEstante: parsed.posicionEstante,
+      anaquel: parsed.anaquel,
+      piso: parsed.piso || '',
       ubicacionActual: form.ubicacionActual || 'AmexLince',
       nombreConsignatario: form.nombreConsignatario || '',
       tipoEmpaque: form.tipoEmpaque || '',

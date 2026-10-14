@@ -18,6 +18,7 @@ import { confirmDialog, alertDialog } from '@/lib/dialog';
 import { inventoryService } from '../services/inventory.service';
 import { BatchShelfData, SinglePositionData, TransferFormData, DateFilterState } from '../types';
 import { initialDateFilter, isPackageInDateFilter, resolveDateFilterRange } from '../utils/dateFilter';
+import { parseWarehouseLocation } from '@/lib/validations/locations';
 
 export interface UseInventoryDataProps {
   paquetes: Paquete[];
@@ -441,9 +442,12 @@ export function useInventoryData({
     e.preventDefault();
     if (!selectedPackageForAction) return;
 
-    const pos =
+    const rawPos =
       editFormData.posicionEstante || `${editFormData.anaquel || 'A1'}-${editFormData.piso || 'P1'}`;
-    const [ana, pis] = pos.includes('-') ? pos.split('-') : [pos, 'P1'];
+    const parsed = parseWarehouseLocation(rawPos);
+    const ana = parsed.anaquel;
+    const pis = parsed.piso || '';
+    const pos = parsed.posicionEstante;
 
     const nowIso = new Date().toISOString();
     const updated: Paquete = {

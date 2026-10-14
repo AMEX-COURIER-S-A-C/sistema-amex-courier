@@ -71,37 +71,40 @@ export default function TransferModal({
             const isLevelLess =
               transferData.targetAnaquel === 'DSP-Z1' ||
               transferData.targetAnaquel === 'DSP-Z2' ||
-              transferData.targetAnaquel === 'DSP' ||
-              transferData.targetAnaquel?.startsWith('DSP') ||
               transferData.targetAnaquel === 'OFI' ||
-              transferData.targetAnaquel === 'REC' ||
               transferData.targetAnaquel === 'TRANSITO';
 
             const availableShelves = (() => {
-              const list = Object.keys(shelfGroups);
-              if (!list.includes('REC')) list.push('REC');
-              if (!list.includes('DSP') && !list.some(k => k.startsWith('DSP'))) list.push('DSP');
-              return list;
+              const rawList = Object.keys(shelfGroups);
+              const set = new Set<string>();
+              rawList.forEach(k => {
+                if (k === 'DSP' || k === 'DESPACHO') set.add('DSP-Z1');
+                else if (k === 'REC') set.add('OFI');
+                else set.add(k);
+              });
+              set.add('OFI');
+              set.add('DSP-Z1');
+              set.add('DSP-Z2');
+              return Array.from(set);
             })();
 
             const getShelfDisplayName = (key: string) => {
               if (key === 'DSP-Z1') return '📦 Despacho Zona 1 (DSP-Z1)';
               if (key === 'DSP-Z2') return '📦 Despacho Zona 2 (DSP-Z2)';
-              if (key === 'DSP') return '📦 Zona de Despacho (DSP)';
               if (key === 'OFI') return '🏢 Oficina (OFI)';
-              if (key === 'REC') return '📥 Recepción (REC)';
               if (key.startsWith('DSP')) return `📦 Despacho (${key})`;
               return `🗄️ Anaquel ${key}`;
             };
 
-            const handleAnaquelChange = (newAnaquel: string) => {
+            const handleAnaquelChange = (rawAnaquel: string) => {
+              let newAnaquel = rawAnaquel;
+              if (newAnaquel === 'DSP' || newAnaquel === 'DESPACHO') newAnaquel = 'DSP-Z1';
+              if (newAnaquel === 'REC') newAnaquel = 'OFI';
+
               const noLevel =
                 newAnaquel === 'DSP-Z1' ||
                 newAnaquel === 'DSP-Z2' ||
-                newAnaquel === 'DSP' ||
-                newAnaquel.startsWith('DSP') ||
                 newAnaquel === 'OFI' ||
-                newAnaquel === 'REC' ||
                 newAnaquel === 'TRANSITO';
 
               setTransferData({

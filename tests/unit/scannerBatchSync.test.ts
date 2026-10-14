@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { BatchSyncScannerSchema } from '@/lib/validations/scanner.schema';
 import { smartFormatWr, isValidWr } from '@/lib/validations/wr';
+import { parseWarehouseLocation } from '@/lib/validations/locations';
 
 describe('Módulo 6.1: Optimización de Sincronización Masiva (.in batching)', () => {
   it('valida exitosamente un lote masivo de 250 items con BatchSyncScannerSchema', () => {
@@ -132,15 +133,33 @@ describe('Módulo 6.1: Optimización de Sincronización Masiva (.in batching)', 
     });
   });
 
-  it('maneja ubicaciones sin piso ("OFI", "DSP-Z1", "TRANSITO") asignando piso null', () => {
-    const anaquel = 'DSP-Z1';
-    const isLevelLess = ['OFI', 'DSP-Z1', 'DSP-Z2', 'TRANSITO', 'REC', 'DSP'].includes(anaquel);
-    const finalPiso = isLevelLess ? null : 'P1';
-    const finalPosicion = isLevelLess ? anaquel : `${anaquel}-P1`;
+  it('maneja ubicaciones sin piso ("OFI", "DSP-Z1", "DSP-Z2", "TRANSITO") asignando piso null y normaliza DSP aislado a DSP-Z1', () => {
+    const loc1 = parseWarehouseLocation('DSP-Z1');
+    expect(loc1.isLevelLess).toBe(true);
+    expect(loc1.piso).toBeNull();
+    expect(loc1.anaquel).toBe('DSP-Z1');
+    expect(loc1.posicionEstante).toBe('DSP-Z1');
 
-    expect(isLevelLess).toBe(true);
-    expect(finalPiso).toBeNull();
-    expect(finalPosicion).toBe('DSP-Z1');
+    // 'DSP' o 'DESPACHO' debe normalizarse automáticamente a DSP-Z1 (nunca DSP solo)
+    const locDspSolo = parseWarehouseLocation('DSP');
+    expect(locDspSolo.anaquel).toBe('DSP-Z1');
+    expect(locDspSolo.piso).toBeNull();
+    expect(locDspSolo.posicionEstante).toBe('DSP-Z1');
+
+    const locDespacho = parseWarehouseLocation('DESPACHO');
+    expect(locDespacho.anaquel).toBe('DSP-Z1');
+    expect(locDespacho.posicionEstante).toBe('DSP-Z1');
+
+    // 'REC' debe normalizarse a OFI
+    const locRec = parseWarehouseLocation('REC');
+    expect(locRec.anaquel).toBe('OFI');
+    expect(locRec.posicionEstante).toBe('OFI');
+
+    // Estante normal con piso
+    const locA1 = parseWarehouseLocation('A1-P3');
+    expect(locA1.anaquel).toBe('A1');
+    expect(locA1.piso).toBe('P3');
+    expect(locA1.posicionEstante).toBe('A1-P3');
   });
 
   it('asegura formato WR válido para paquetes nuevos ingresados por escáner', () => {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { authorizeUser, getUserDisplayName } from '@/lib/auth/guards';
+import { parseWarehouseLocation } from '@/lib/validations/locations';
 
 export const dynamic = 'force-dynamic';
 
@@ -178,17 +179,21 @@ export async function POST(req: NextRequest) {
       }, { status: 404 });
     }
 
-    const isLevelLess =
-      targetAnaquel === 'OFI' ||
+    const rawTarget =
+      targetPosicion ||
+      (targetAnaquel === 'OFI' ||
       targetAnaquel === 'DSP-Z1' ||
       targetAnaquel === 'DSP-Z2' ||
       targetAnaquel === 'TRANSITO' ||
-      targetAnaquel === 'REC' ||
-      targetAnaquel === 'DSP';
+      targetAnaquel === 'DSP' ||
+      targetAnaquel?.includes('DESPACHO')
+        ? targetAnaquel
+        : `${targetAnaquel}-${targetPiso || 'P1'}`);
 
-    const finalPosicion =
-      targetPosicion ||
-      (isLevelLess ? targetAnaquel : `${targetAnaquel}-${targetPiso}`);
+    const parsedTarget = parseWarehouseLocation(rawTarget);
+    const resolvedAnaquel = parsedTarget.anaquel;
+    const resolvedPiso = parsedTarget.piso;
+    const finalPosicion = parsedTarget.posicionEstante;
 
     const nowIso = new Date().toISOString();
     let totalActualizados = 0;
@@ -199,8 +204,8 @@ export async function POST(req: NextRequest) {
       const ids = paquetesToUpdate.map((p) => p.id);
       const updateData: Record<string, any> = {
         ubicacion_actual: targetUbicacion,
-        anaquel: targetAnaquel,
-        piso: isLevelLess ? null : targetPiso,
+        anaquel: resolvedAnaquel,
+        piso: resolvedPiso,
         posicion_estante: finalPosicion,
         actualizado_en: nowIso
       };
@@ -256,8 +261,8 @@ export async function POST(req: NextRequest) {
         descripcion: 'Mercadería General',
         peso_kg: null,
         ubicacion_actual: targetUbicacion || 'AmexLince',
-        anaquel: targetAnaquel,
-        piso: isLevelLess ? null : targetPiso,
+        anaquel: resolvedAnaquel,
+        piso: resolvedPiso,
         posicion_estante: finalPosicion,
         estado_amex: targetEstadoAmex && targetEstadoAmex !== 'mantener' ? targetEstadoAmex : 'recibido',
         usuario_email: userEmail,

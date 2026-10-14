@@ -2,6 +2,7 @@ import readXlsxFile from 'read-excel-file/node';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { getFileFromR2 } from '@/lib/r2/client';
 import { cleanWr, isValidWr } from '@/lib/validations/wr';
+import { parseWarehouseLocation } from '@/lib/validations/locations';
 
 export interface SyncDbResult {
   ok: boolean;
@@ -222,9 +223,10 @@ export async function syncCompletedExcelToDatabase(
           },
         });
       } else {
-        const [ana, pis] = item.posicionWms.includes('-')
-          ? item.posicionWms.split('-')
-          : ['REC', 'P1'];
+        const parsed = parseWarehouseLocation(item.posicionWms);
+        const ana = parsed.anaquel;
+        const pis = parsed.piso;
+        const posEstante = parsed.posicionEstante;
 
         insertsList.push({
           item,
@@ -240,7 +242,7 @@ export async function syncCompletedExcelToDatabase(
             ubicacion_actual: 'AmexLince',
             anaquel: ana,
             piso: pis,
-            posicion_estante: item.posicionWms || 'REC-P1',
+            posicion_estante: posEstante,
             usuario_email: activeUserEmail || null,
             creado_por: activeUserId,
             eliminado_en: null,

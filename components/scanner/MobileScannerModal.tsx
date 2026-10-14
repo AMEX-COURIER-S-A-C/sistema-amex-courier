@@ -118,7 +118,7 @@ export default function MobileScannerModal({
     format: string;
     workflow: 'slotting' | 'lookup' | 'delivery' | 'relocate' | 'general';
     location: string;
-    anaquel: 'A1' | 'A2' | 'OFI' | 'DSP-Z1' | 'DSP-Z2' | 'REC' | 'DSP';
+    anaquel: 'A1' | 'A2' | 'OFI' | 'DSP-Z1' | 'DSP-Z2';
     piso: 'P1' | 'P2' | 'P3' | 'P4';
     pkg?: Paquete;
     cli?: Cliente;
@@ -331,9 +331,18 @@ export default function MobileScannerModal({
 
   // ✅ Acción: Usuario Confirma el Código Escaneado (Persistencia en Memoria y Supabase)
   const handleConfirmScan = async (confirmedData: PendingConfirmationData) => {
-    const { code, format, workflow, anaquel, piso, pkg, cli } = confirmedData;
+    let { code, format, workflow, anaquel, piso, pkg, cli } = confirmedData;
     const now = Date.now();
-    const targetLocation = `${anaquel}-${piso}`;
+
+    // Normalización de seguridad: DSP se convierte estrictamente en DSP-Z1 y REC en OFI
+    if ((anaquel as string) === 'DSP' || (anaquel as string) === 'DESPACHO') {
+      anaquel = 'DSP-Z1';
+    } else if ((anaquel as string) === 'REC') {
+      anaquel = 'OFI';
+    }
+
+    const isLevelLess = anaquel === 'OFI' || anaquel === 'DSP-Z1' || anaquel === 'DSP-Z2';
+    const targetLocation = isLevelLess ? anaquel : `${anaquel}-${piso}`;
 
     if (workflow === 'slotting') {
       setLastScannedCode({ code, location: targetLocation, time: now });

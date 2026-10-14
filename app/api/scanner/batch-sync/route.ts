@@ -7,6 +7,7 @@ import { checkRateLimit, rateLimitExceededResponse } from '@/lib/security/rateLi
 import { withErrorHandler } from '@/lib/api/handler';
 import { logger } from '@/lib/logger';
 import { isValidWr, smartFormatWr } from '@/lib/validations/wr';
+import { parseWarehouseLocation } from '@/lib/validations/locations';
 
 const scannerLogger = logger.child('scanner-batch-sync');
 
@@ -174,20 +175,12 @@ async function handleBatchSync(req: NextRequest): Promise<NextResponse> {
 
   for (const log of items) {
     const upper = log.code.trim().toUpperCase();
-    const loc = log.location || (log.anaquel && log.piso ? `${log.anaquel}-${log.piso}` : 'REC');
-    const [ana, pis] = loc.includes('-') ? loc.split('-') : [loc, 'P1'];
+    const rawLoc = log.location || (log.anaquel && log.piso ? `${log.anaquel}-${log.piso}` : 'OFI');
+    const parsed = parseWarehouseLocation(rawLoc);
+    const ana = parsed.anaquel;
+    const finalPiso = parsed.piso;
+    const finalPosicion = parsed.posicionEstante;
     const consignatario = log.nombreConsignatario || '';
-
-    const isLevelLess =
-      ana === 'OFI' ||
-      ana === 'DSP-Z1' ||
-      ana === 'DSP-Z2' ||
-      ana === 'TRANSITO' ||
-      ana === 'REC' ||
-      ana === 'DSP';
-
-    const finalPiso = isLevelLess ? null : pis;
-    const finalPosicion = isLevelLess ? ana : loc;
     const estadoAmex = (log as any).estadoAmex || 'en_almacen';
 
     const matchedPkg = packageMap.get(upper);

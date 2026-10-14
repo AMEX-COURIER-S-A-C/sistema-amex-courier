@@ -7,13 +7,17 @@ import {
 } from '@/lib/validations/paquetes.schema';
 import { validateQuery, validateBody } from '@/lib/api/validate';
 import type { Paquete, TipoEstadoTib, TipoEstadoAmex, TipoUbicacion } from '@/types';
+import { parseWarehouseLocation } from '@/lib/validations/locations';
 
 function mapPaqueteRow(row: Record<string, unknown>): Paquete {
-  const posicion = String(
+  const rawPos = String(
     row.posicion_estante ||
-      (row.anaquel && row.piso ? `${row.anaquel}-${row.piso}` : 'REC')
+      (row.anaquel && row.piso ? `${row.anaquel}-${row.piso}` : (row.anaquel || 'OFI'))
   );
-  const [anaquel, piso] = posicion.includes('-') ? posicion.split('-') : [posicion, 'P1'];
+  const parsed = parseWarehouseLocation(rawPos);
+  const anaquel = String(row.anaquel || parsed.anaquel);
+  const piso = String(row.piso ?? (parsed.piso || ''));
+  const posicion = parsed.posicionEstante;
 
   return {
     id: String(row.id),

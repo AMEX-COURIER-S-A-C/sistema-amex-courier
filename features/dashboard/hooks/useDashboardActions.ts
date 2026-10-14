@@ -6,7 +6,8 @@ import type { NewClientFormData } from '@/components/modals/NewClientModal';
 import type { NewPkgFormData } from '@/components/modals/NewPackageModal';
 import { supabase } from '@/lib/supabase/client';
 import { soundEffects } from '@/lib/audio/soundEffects';
-import { isValidWr, cleanWr } from '@/lib/validations/wr';
+import { isValidWr, cleanWr, smartFormatWr } from '@/lib/validations/wr';
+import { parseWarehouseLocation } from '@/lib/validations/locations';
 
 import { DashboardUser } from './useDashboardSession';
 import { ScannerQueueCloudService } from '@/features/scanner/services/scannerQueueCloud.service';
@@ -68,14 +69,17 @@ export function useDashboardActions({
       return false;
     }
 
-    const [anaquel, piso] = location.includes('-') ? location.split('-') : [location, 'P1'];
+    const parsed = parseWarehouseLocation(location);
+    const anaquel = parsed.anaquel;
+    const piso = parsed.piso || '';
+    const canonicalLocation = parsed.posicionEstante;
 
     let snapshot: Paquete[] = [];
     setPaquetes((previous) => {
       snapshot = previous;
       return previous.map((item) =>
         item.numeroReciboBodega.toUpperCase() === upper || item.tracking.toUpperCase() === upper
-          ? { ...item, anaquel, piso, posicionEstante: location, estadoAmex: 'en_almacen', actualizadoEn: new Date().toISOString() }
+          ? { ...item, anaquel, piso, posicionEstante: canonicalLocation, estadoAmex: 'en_almacen', actualizadoEn: new Date().toISOString() }
           : item
       );
     });
@@ -83,9 +87,9 @@ export function useDashboardActions({
     try {
       const { data, error } = await supabase.rpc('asignar_ubicacion_paquete', {
         p_codigo: upper,
-        p_nueva_ubicacion: location,
+        p_nueva_ubicacion: canonicalLocation,
         p_anaquel: anaquel,
-        p_piso: piso,
+        p_piso: parsed.piso,
         p_operador_nombre: currentUser?.nombre || 'Operador Logístico AMEX',
         p_operador_email: currentUser?.email || null,
         p_operador_id: currentUser?.id || null,
@@ -145,13 +149,16 @@ export function useDashboardActions({
 
   const handleSavePackage = useCallback(async (event: FormEvent) => {
     event.preventDefault();
-    const posicion = newPkgForm.posicionEstante || `${newPkgForm.anaquel || 'A1'}-${newPkgForm.piso || 'P1'}`;
-    const [anaquel, piso] = posicion.includes('-') ? posicion.split('-') : [posicion, 'P1'];
+    const rawPos = newPkgForm.posicionEstante || `${newPkgForm.anaquel || 'A1'}-${newPkgForm.piso || 'P1'}`;
+    const parsed = parseWarehouseLocation(rawPos);
+    const anaquel = parsed.anaquel;
+    const piso = parsed.piso || '';
+    const posicion = parsed.posicionEstante;
 
     const rawPeso = parseFloat(newPkgForm.pesoKg);
     const numPeso = (!isNaN(rawPeso) && rawPeso > 0) ? rawPeso : 0;
     const pesoDb = (!isNaN(rawPeso) && rawPeso > 0) ? rawPeso : null;
-    const wr = cleanWr(newPkgForm.numeroReciboBodega);
+    const wr = cleanWr(smartFormatWr(newPkgForm.numeroReciboBodega));
     if (!isValidWr(wr)) {
       console.error('El código WR debe comenzar con WR y tener exactamente 11 caracteres:', wr);
       return;
@@ -159,8 +166,9 @@ export function useDashboardActions({
     const tracking = newPkgForm.tracking?.trim() || '';
     const nombre = newPkgForm.nombreConsignatario?.trim() || '';
 
+    const tempId = `p-${Date.now()}`;
     const newPackage: Paquete = {
-      id: `p-${Date.now()}`,
+      id: tempId,
       numeroReciboBodega: wr,
       tracking: tracking,
       tipoEmpaque: newPkgForm.tipoEmpaque || '',
@@ -194,7 +202,7 @@ export function useDashboardActions({
         peso_kg: pesoDb,
         ubicacion_actual: newPkgForm.ubicacionActual || 'AmexLince',
         anaquel,
-        piso,
+        piso: parsed.piso || null,
         posicion_estante: posicion,
         estado_amex: 'en_almacen',
         usuario_email: currentUser?.email || '',
@@ -203,7 +211,14 @@ export function useDashboardActions({
 
       if (insertError) {
         console.error('Error insert paquete:', insertError);
+        setPaquetes((prev) => prev.filter((p) => p.id !== tempId));
+        alert(`Error al guardar en base de datos: ${insertError.message}`);
       } else {
+        if (insertedPkg?.id) {
+          setPaquetes((prev) =>
+            prev.map((p) => (p.id === tempId ? { ...p, id: insertedPkg.id } : p))
+          );
+        }
         // Kardex audit movement
         await supabase.from('movimientos_kardex').insert({
           paquete_id: insertedPkg?.id || null,
@@ -213,11 +228,15 @@ export function useDashboardActions({
           destino_descripcion: `${newPkgForm.ubicacionActual || 'AmexLince'} (${posicion})`,
           tipo_movimiento: 'INGRESO_ALMACEN',
           motivo: 'Registro manual de paquete en almacén',
-          usuario_operador: currentUser?.nombre || currentUser?.email || 'Operador AMEX'
+          usuario_operador: currentUser?.nombre || currentUser?.email || 'Operador AMEX',
+          usuario_email: currentUser?.email || null,
+          usuario_id: currentUser?.id || null
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error insert paquete:', error);
+      setPaquetes((prev) => prev.filter((p) => p.id !== tempId));
+      alert(`Error inesperado al registrar paquete: ${error?.message || error}`);
     }
   }, [newPkgForm, currentUser, setIsNewPkgModalOpen, setPaquetes]);
 

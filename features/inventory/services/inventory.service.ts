@@ -10,6 +10,7 @@ import {
   AlmacenSede
 } from '@/types';
 import { BatchShelfData, SinglePositionData, TransferFormData } from '../types';
+import { parseWarehouseLocation } from '@/lib/validations/locations';
 
 export const inventoryService = {
   // Sedes
@@ -84,26 +85,28 @@ export const inventoryService = {
     transferData: TransferFormData,
     paquetesList: Paquete[]
   ): Promise<{ updatedPackages: Paquete[] }> {
-    const isLevelLess =
-      transferData.targetAnaquel === 'OFI' ||
+    const rawPos =
       transferData.targetAnaquel === 'DSP-Z1' ||
       transferData.targetAnaquel === 'DSP-Z2' ||
-      transferData.targetAnaquel === 'REC' ||
+      transferData.targetAnaquel === 'OFI' ||
+      transferData.targetAnaquel === 'TRANSITO' ||
       transferData.targetAnaquel === 'DSP' ||
-      transferData.targetAnaquel?.startsWith('DSP') ||
-      transferData.targetAnaquel?.includes('DESPACHO');
+      transferData.targetAnaquel?.includes('DESPACHO')
+        ? transferData.targetAnaquel
+        : `${transferData.targetAnaquel}-${transferData.targetPiso || 'P1'}`;
 
-    const targetPos = isLevelLess
-      ? transferData.targetAnaquel
-      : `${transferData.targetAnaquel}-${transferData.targetPiso || 'P1'}`;
+    const parsed = parseWarehouseLocation(rawPos);
+    const targetAnaquel = parsed.anaquel;
+    const targetPiso = parsed.piso;
+    const targetPos = parsed.posicionEstante;
 
     const nowTransfer = new Date().toISOString();
     await supabase
       .from('paquetes')
       .update({
         ubicacion_actual: transferData.targetUbicacion,
-        anaquel: transferData.targetAnaquel,
-        piso: isLevelLess ? null : (transferData.targetPiso || 'P1'),
+        anaquel: targetAnaquel,
+        piso: targetPiso,
         posicion_estante: targetPos,
         actualizado_en: nowTransfer
       })
@@ -132,8 +135,8 @@ export const inventoryService = {
         updatedPackages.push({
           ...pkg,
           ubicacionActual: transferData.targetUbicacion,
-          anaquel: transferData.targetAnaquel,
-          piso: isLevelLess ? undefined : transferData.targetPiso,
+          anaquel: targetAnaquel,
+          piso: targetPiso || undefined,
           posicionEstante: targetPos,
           actualizadoEn: nowTransfer
         });
@@ -546,11 +549,14 @@ export interface SearchPaquetesServerSideResult {
 }
 
 function mapPaqueteDbRow(row: Record<string, unknown>): Paquete {
-  const posicion = String(
+  const rawPos = String(
     row.posicion_estante ||
-      (row.anaquel && row.piso ? `${row.anaquel}-${row.piso}` : 'REC')
+      (row.anaquel && row.piso ? `${row.anaquel}-${row.piso}` : (row.anaquel || 'OFI'))
   );
-  const [anaquel, piso] = posicion.includes('-') ? posicion.split('-') : [posicion, 'P1'];
+  const parsed = parseWarehouseLocation(rawPos);
+  const anaquel = String(row.anaquel || parsed.anaquel);
+  const piso = String(row.piso ?? (parsed.piso || ''));
+  const posicion = parsed.posicionEstante;
 
   return {
     id: String(row.id),
