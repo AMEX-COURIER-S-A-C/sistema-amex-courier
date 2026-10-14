@@ -1,19 +1,19 @@
 import { Paquete } from '@/types';
 
 /**
- * Genera un canvas de alta resolución con la tabla corporativa de paquetes
- * con las columnas: Guía WR, Cliente / Consignatario, Ubicación (WMS) y Estado.
+ * Genera un canvas Ultra-HD (3x Retina / 3K) con la tabla corporativa de paquetes
+ * optimizada para máxima nitidez, contraste y legibilidad al hacer zoom en WhatsApp.
  */
 export function renderPackagesTableCanvas(packages: Paquete[]): HTMLCanvasElement | null {
   if (typeof document === 'undefined') return null;
   const canvas = document.createElement('canvas');
-  const dpr = 2; // Factor de resolución 2x Retina para nitidez en pantallas de celular y WhatsApp
+  const dpr = 3; // Factor de resolución 3x Ultra-HD para nitidez cristalina en WhatsApp al hacer zoom
 
-  const width = 930;
-  const headerHeight = 85;
-  const columnHeaderHeight = 36;
-  const rowHeight = 38;
-  const footerHeight = 44;
+  const width = 1040;
+  const headerHeight = 90;
+  const columnHeaderHeight = 40;
+  const rowHeight = 44;
+  const footerHeight = 46;
   const totalRows = Math.min(packages.length, 100); // Límite razonable por imagen
   const height = headerHeight + columnHeaderHeight + (totalRows * rowHeight) + footerHeight;
 
@@ -27,25 +27,31 @@ export function renderPackagesTableCanvas(packages: Paquete[]): HTMLCanvasElemen
 
   ctx.scale(dpr, dpr);
 
-  // 1. Fondo general con esquinas redondeadas
+  // Activación de calidad máxima de suavizado en Canvas
+  if ('imageSmoothingEnabled' in ctx) {
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+  }
+
+  // 1. Fondo general blanco nítido
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, width, height);
 
-  // 2. Cabecera Corporativa (Gradiente Azul AMEX)
+  // 2. Cabecera Corporativa (Gradiente Azul AMEX Profundo)
   const headerGrad = ctx.createLinearGradient(0, 0, width, headerHeight);
   headerGrad.addColorStop(0, '#0f172a');
   headerGrad.addColorStop(1, '#1e3a8a');
   ctx.fillStyle = headerGrad;
   ctx.fillRect(0, 0, width, headerHeight);
 
-  // Logo / Título
+  // Logo / Título con tipografía más grande y nítida
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.fillText('📦 AMEX COURIER', 20, 36);
+  ctx.font = 'bold 20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif';
+  ctx.fillText('📦 AMEX COURIER', 24, 40);
 
   ctx.fillStyle = '#93c5fd';
-  ctx.font = '600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  ctx.fillText('Almacén Central Lince • Reporte de Bultos & Ubicación', 20, 56);
+  ctx.font = '600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.fillText('Almacén Central Lince • Reporte de Bultos & Ubicación', 24, 62);
 
   // Fecha actual
   const now = new Date();
@@ -60,26 +66,26 @@ export function renderPackagesTableCanvas(packages: Paquete[]): HTMLCanvasElemen
   });
 
   ctx.fillStyle = '#cbd5e1';
-  ctx.font = '500 11.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.font = '600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
   ctx.textAlign = 'right';
-  ctx.fillText(`Generado: ${fechaStr} ${horaStr}`, width - 20, 34);
+  ctx.fillText(`Generado: ${fechaStr} ${horaStr}`, width - 24, 38);
 
   // Badge Contador de Bultos
   const totalKg = packages.reduce((acc, p) => acc + Number(p.pesoKg || 0), 0).toFixed(2);
   const badgeText = `${packages.length} ${packages.length === 1 ? 'BULTO' : 'BULTOS'} (${totalKg} kg)`;
-  const badgeWidth = ctx.measureText(badgeText).width + 20;
-  const badgeX = width - 20 - badgeWidth;
-  const badgeY = 44;
+  ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  const badgeWidth = ctx.measureText(badgeText).width + 22;
+  const badgeX = width - 24 - badgeWidth;
+  const badgeY = 48;
 
   ctx.fillStyle = '#2563eb';
   ctx.beginPath();
-  ctx.roundRect(badgeX, badgeY, badgeWidth, 24, 6);
+  ctx.roundRect(badgeX, badgeY, badgeWidth, 26, 6);
   ctx.fill();
 
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(badgeText, badgeX + badgeWidth / 2, badgeY + 16);
+  ctx.fillText(badgeText, badgeX + badgeWidth / 2, badgeY + 18);
 
   // 3. Encabezados de Columna
   ctx.textAlign = 'left';
@@ -87,74 +93,73 @@ export function renderPackagesTableCanvas(packages: Paquete[]): HTMLCanvasElemen
   ctx.fillStyle = '#f1f5f9';
   ctx.fillRect(0, colY, width, columnHeaderHeight);
 
-  ctx.fillStyle = '#e2e8f0';
-  ctx.fillRect(0, colY + columnHeaderHeight - 1, width, 1);
+  ctx.fillStyle = '#cbd5e1';
+  ctx.fillRect(0, colY + columnHeaderHeight - 1, width, 1.5);
 
-  ctx.fillStyle = '#475569';
-  ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.fillStyle = '#334155';
+  ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
 
-  // Coordenadas de columnas en orden:
-  // 1. Cliente/Consignatario | 2. Guía WR | 3. Tracking | 4. Peso | 5. Ubicación | 6. Estado AMEX
+  // Coordenadas de columnas optimizadas para ancho 1040px:
   const colX = {
-    cliente: 20,
-    wr: 275,
-    tracking: 395,
-    peso: 560,
-    ubicacion: 650,
-    estado: 770
+    cliente: 24,
+    wr: 310,
+    tracking: 460,
+    peso: 650,
+    ubicacion: 745,
+    estado: 880
   };
 
-  ctx.fillText('CLIENTE / CONSIGNATARIO', colX.cliente, colY + 23);
-  ctx.fillText('GUÍA WR', colX.wr, colY + 23);
-  ctx.fillText('TRACKING', colX.tracking, colY + 23);
-  ctx.fillText('PESO', colX.peso, colY + 23);
-  ctx.fillText('UBICACIÓN', colX.ubicacion, colY + 23);
-  ctx.fillText('ESTADO AMEX', colX.estado, colY + 23);
+  ctx.fillText('CLIENTE / CONSIGNATARIO', colX.cliente, colY + 25);
+  ctx.fillText('GUÍA WR', colX.wr, colY + 25);
+  ctx.fillText('TRACKING', colX.tracking, colY + 25);
+  ctx.fillText('PESO', colX.peso, colY + 25);
+  ctx.fillText('UBICACIÓN', colX.ubicacion, colY + 25);
+  ctx.fillText('ESTADO AMEX', colX.estado, colY + 25);
 
   // 4. Filas de Paquetes
   let currentY = headerHeight + columnHeaderHeight;
 
   packages.slice(0, totalRows).forEach((pkg, index) => {
-    // Fondo alternado
+    // Fondo alternado de alto contraste
     ctx.fillStyle = index % 2 === 0 ? '#ffffff' : '#f8fafc';
     ctx.fillRect(0, currentY, width, rowHeight);
 
     // Borde inferior sutil
-    ctx.fillStyle = '#f1f5f9';
+    ctx.fillStyle = '#e2e8f0';
     ctx.fillRect(0, currentY + rowHeight - 1, width, 1);
 
-    // Columna 1: Nombre de Cliente / Consignatario
+    // Columna 1: Nombre de Cliente / Consignatario (tipografía más grande y nítida)
     ctx.fillStyle = '#0f172a';
-    ctx.font = '600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.font = 'bold 13.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     const rawNombre = (pkg.nombreConsignatario || 'CLIENTE AMEX').trim();
-    const cleanNombre = rawNombre.length > 28 ? `${rawNombre.slice(0, 26)}...` : rawNombre;
-    ctx.fillText(cleanNombre, colX.cliente, currentY + 24);
+    const cleanNombre = rawNombre.length > 32 ? `${rawNombre.slice(0, 30)}...` : rawNombre;
+    ctx.fillText(cleanNombre, colX.cliente, currentY + 27);
 
-    // Columna 2: Guía WR
-    ctx.fillStyle = '#1e293b';
-    ctx.font = 'bold 12px "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace';
+    // Columna 2: Guía WR (Extra nítida, negrita y color azul institucional)
+    ctx.fillStyle = '#1e3a8a';
+    ctx.font = 'bold 13.5px "JetBrains Mono", Consolas, "Liberation Mono", Menlo, monospace';
     const wrText = pkg.numeroReciboBodega || pkg.tracking || 'S/N';
-    ctx.fillText(wrText, colX.wr, currentY + 24);
+    ctx.fillText(wrText, colX.wr, currentY + 27);
 
     // Columna 3: Tracking
     ctx.fillStyle = '#334155';
-    ctx.font = '500 11.5px "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace';
+    ctx.font = '600 12px "JetBrains Mono", Consolas, "Liberation Mono", Menlo, monospace';
     const rawTracking = (pkg.tracking || '-').trim();
-    const cleanTracking = rawTracking.length > 17 ? `${rawTracking.slice(0, 15)}...` : rawTracking;
-    ctx.fillText(cleanTracking, colX.tracking, currentY + 24);
+    const cleanTracking = rawTracking.length > 20 ? `${rawTracking.slice(0, 18)}...` : rawTracking;
+    ctx.fillText(cleanTracking, colX.tracking, currentY + 27);
 
     // Columna 4: Peso
     ctx.fillStyle = '#0f172a';
-    ctx.font = 'bold 11.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.font = 'bold 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     const pNum = Number(pkg.pesoKg);
     const pesoText = !isNaN(pNum) && pNum > 0 ? `${pNum.toFixed(2)} kg` : (pkg.pesoKg ? `${pkg.pesoKg} kg` : '-');
-    ctx.fillText(pesoText, colX.peso, currentY + 24);
+    ctx.fillText(pesoText, colX.peso, currentY + 27);
 
-    // Columna 5: Ubicación WMS (Insignia visual)
+    // Columna 5: Ubicación WMS (Insignia visual nítida)
     const pos =
       pkg.posicionEstante ||
       (pkg.anaquel && pkg.piso ? `${pkg.anaquel}-${pkg.piso}` : pkg.anaquel || 'REC');
-    
+
     // Colores según zona
     let locBg = '#f1f5f9';
     let locColor = '#334155';
@@ -179,58 +184,67 @@ export function renderPackagesTableCanvas(packages: Paquete[]): HTMLCanvasElemen
     }
 
     const locText = pos;
-    ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    const locWidth = ctx.measureText(locText).width + 16;
-    const locPillY = currentY + 8;
+    ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    const locWidth = ctx.measureText(locText).width + 18;
+    const locPillY = currentY + 10;
 
     ctx.fillStyle = locBg;
     ctx.beginPath();
-    ctx.roundRect(colX.ubicacion, locPillY, locWidth, 22, 6);
+    ctx.roundRect(colX.ubicacion, locPillY, locWidth, 24, 6);
     ctx.fill();
 
     ctx.strokeStyle = locBorder;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1.2;
     ctx.stroke();
 
     ctx.fillStyle = locColor;
-    ctx.fillText(locText, colX.ubicacion + 8, locPillY + 15);
+    ctx.fillText(locText, colX.ubicacion + 9, locPillY + 17);
 
-    // Columna 6: Estado AMEX (Píldora de estado)
+    // Columna 6: Estado AMEX (Píldora de estado con bordes limpios)
     const rawEst = (pkg.estadoAmex || 'en_almacen').toLowerCase();
     const est = rawEst === 'recibido' ? 'en_almacen' : rawEst;
     let estBg = '#faf5ff';
     let estColor = '#7e22ce';
     let estLabel = 'EN ALMACÉN';
+    let estBorder = '#e9d5ff';
 
     if (est === 'entregado') {
       estBg = '#f0fdf4';
       estColor = '#15803d';
       estLabel = 'ENTREGADO';
+      estBorder = '#bbf7d0';
     } else if (est === 'en_almacen') {
       estBg = '#faf5ff';
       estColor = '#7e22ce';
       estLabel = 'EN ALMACÉN';
+      estBorder = '#e9d5ff';
     } else if (est === 'en_ruta') {
       estBg = '#fff7ed';
       estColor = '#c2410c';
       estLabel = 'EN RUTA';
+      estBorder = '#fed7aa';
     } else if (est === 'listo_recojo') {
       estBg = '#f0fdfa';
       estColor = '#0f766e';
       estLabel = 'LISTO RECOJO';
+      estBorder = '#99f6e4';
     }
 
-    ctx.font = 'bold 10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     const estWidth = ctx.measureText(estLabel).width + 16;
-    const estPillY = currentY + 8;
+    const estPillY = currentY + 10;
 
     ctx.fillStyle = estBg;
     ctx.beginPath();
-    ctx.roundRect(colX.estado, estPillY, estWidth, 22, 6);
+    ctx.roundRect(colX.estado, estPillY, estWidth, 24, 6);
     ctx.fill();
 
+    ctx.strokeStyle = estBorder;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
     ctx.fillStyle = estColor;
-    ctx.fillText(estLabel, colX.estado + 8, estPillY + 15);
+    ctx.fillText(estLabel, colX.estado + 8, estPillY + 17);
 
     currentY += rowHeight;
   });
@@ -240,19 +254,19 @@ export function renderPackagesTableCanvas(packages: Paquete[]): HTMLCanvasElemen
   ctx.fillRect(0, currentY, width, footerHeight);
 
   ctx.fillStyle = '#e2e8f0';
-  ctx.fillRect(0, currentY, width, 1);
+  ctx.fillRect(0, currentY, width, 1.5);
 
   ctx.fillStyle = '#64748b';
-  ctx.font = '500 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.font = '600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
   ctx.textAlign = 'left';
-  ctx.fillText('⚡ Sistema AMEX Courier • Consulta en tiempo real de almacén', 20, currentY + 26);
+  ctx.fillText('⚡ Sistema AMEX Courier • Consulta en tiempo real de almacén', 24, currentY + 28);
 
   ctx.textAlign = 'right';
-  ctx.fillText(`Mostrando ${packages.length} paquete(s)`, width - 20, currentY + 26);
+  ctx.fillText(`Mostrando ${packages.length} paquete(s)`, width - 24, currentY + 28);
 
   // Borde externo completo alrededor de la tarjeta
   ctx.strokeStyle = '#cbd5e1';
-  ctx.lineWidth = 1;
+  ctx.lineWidth = 1.5;
   ctx.strokeRect(0, 0, width, height);
 
   return canvas;
