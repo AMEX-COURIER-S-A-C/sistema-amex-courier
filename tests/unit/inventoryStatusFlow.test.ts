@@ -109,4 +109,24 @@ describe('Inventory Status Transition Flow & Optimistic Retention', () => {
     fetchServerPaquetes(true);
     expect(isLoading).toBe(false);
   });
+
+  it('retains multiple bulk delivered packages in recentlyDeliveredIds during retention window', () => {
+    const currentSelected = ['pkg-1', 'pkg-2'];
+    let recentlyDelivered: string[] = [];
+
+    // Simulate bulk delivery
+    recentlyDelivered = Array.from(new Set([...recentlyDelivered, ...currentSelected]));
+    expect(recentlyDelivered).toEqual(['pkg-1', 'pkg-2']);
+
+    // Filter check: both are retained even if their status is now 'entregado'
+    const packages: Paquete[] = [
+      { ...samplePaquetes[0], estadoAmex: 'entregado' },
+      { ...samplePaquetes[1], estadoAmex: 'entregado' }
+    ];
+
+    const retainedInView = packages.filter(
+      p => recentlyDelivered.includes(p.id) || p.estadoAmex === 'en_almacen'
+    );
+    expect(retainedInView).toHaveLength(2);
+  });
 });

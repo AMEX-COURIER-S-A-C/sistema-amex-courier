@@ -1241,6 +1241,36 @@ tr:hover { background: #f8fafc !important; }
   }
 }
 
+.modal-backdrop-closing,
+.modal-overlay-closing {
+  animation: backdropFadeOut 0.18s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+}
+
+@keyframes backdropFadeOut {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.modal-dialog-closing,
+.modal-content-closing {
+  animation: modalPopOut 0.18s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+}
+
+@keyframes modalPopOut {
+  0% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+}
+
 .modal-header,
 .pkg-header {
   padding: 16px 20px !important;

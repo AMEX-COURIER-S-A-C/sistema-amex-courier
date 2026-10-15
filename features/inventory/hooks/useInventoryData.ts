@@ -613,6 +613,9 @@ export function useInventoryData({
   ) => {
     if (matchedIds.length === 0) return;
     try {
+      if (targetStatusAmex === 'entregado') {
+        setRecentlyDeliveredIds(prev => Array.from(new Set([...prev, ...matchedIds])));
+      }
       const updatedList = await inventoryService.batchStatusChange(
         matchedIds,
         paquetes,
@@ -639,16 +642,30 @@ export function useInventoryData({
           ? 'En Ruta'
           : targetStatusAmex;
       toast.success('Actualización masiva completada', `Se cambiaron a "${statusLabel}" ${updatedList.length} paquetes con éxito.`);
+
+      if (targetStatusAmex === 'entregado') {
+        setTimeout(() => {
+          setRecentlyDeliveredIds(prev => prev.filter(id => !matchedIds.includes(id)));
+        }, 2500);
+      }
     } catch (err) {
       console.error('Error en cambio masivo de estado:', err);
+      if (targetStatusAmex === 'entregado') {
+        setRecentlyDeliveredIds(prev => prev.filter(id => !matchedIds.includes(id)));
+      }
       toast.error('Error masivo', 'No se pudieron actualizar los paquetes.');
+      throw err;
     }
   };
 
   // Cambio de estado masivo en lote (por selección en tabla)
   const handleBatchStatusChange = async () => {
     if (selectedIds.length === 0) return;
+    const currentSelected = [...selectedIds];
     try {
+      if (batchTargetStatusAmex === 'entregado') {
+        setRecentlyDeliveredIds(prev => Array.from(new Set([...prev, ...currentSelected])));
+      }
       const updatedList = await inventoryService.batchStatusChange(
         selectedIds,
         paquetes,
@@ -663,7 +680,6 @@ export function useInventoryData({
           return found || p;
         })
       );
-      setIsBatchStatusModalOpen(false);
       setSelectedIds([]);
       soundEffects.playSuccess();
       const statusLabel =
@@ -677,9 +693,19 @@ export function useInventoryData({
           ? 'En Ruta'
           : batchTargetStatusAmex;
       toast.success('Actualización masiva completada', `Se cambiaron a "${statusLabel}" ${updatedList.length} paquetes con éxito.`);
+
+      if (batchTargetStatusAmex === 'entregado') {
+        setTimeout(() => {
+          setRecentlyDeliveredIds(prev => prev.filter(id => !currentSelected.includes(id)));
+        }, 2500);
+      }
     } catch (err) {
       console.error('Error actualizando estado en lote:', err);
+      if (batchTargetStatusAmex === 'entregado') {
+        setRecentlyDeliveredIds(prev => prev.filter(id => !currentSelected.includes(id)));
+      }
       toast.error('Error masivo', 'Error al actualizar paquetes en lote.');
+      throw err;
     }
   };
 

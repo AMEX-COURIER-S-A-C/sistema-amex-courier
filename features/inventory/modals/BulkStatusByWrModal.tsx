@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   FileText,
   CheckCircle2,
@@ -35,8 +35,16 @@ export default function BulkStatusByWrModal({
 }: BulkStatusByWrModalProps) {
   const [rawText, setRawText] = useState('');
   const [targetStatusAmex, setTargetStatusAmex] = useState<TipoEstadoAmex>('entregado');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState<'idle' | 'loading' | 'success'>('idle');
+  const [isClosing, setIsClosing] = useState(false);
   const [showMissingDetails, setShowMissingDetails] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setSubmitStatus('idle');
+      setIsClosing(false);
+    }
+  }, [isOpen]);
 
   // Parsing y cruce en tiempo real con el inventario
   const { parsedCodes, matchedPackages, missingCodes } = useMemo(() => {
@@ -106,33 +114,52 @@ export default function BulkStatusByWrModal({
     };
   }, [rawText, paquetes]);
 
-  if (!isOpen) return null;
+  const handleClose = () => {
+    if (submitStatus === 'loading') return;
+    setIsClosing(true);
+    setTimeout(() => {
+      onClose();
+      setIsClosing(false);
+    }, 180);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (matchedPackages.length === 0 || isSubmitting) return;
+    if (matchedPackages.length === 0 || submitStatus !== 'idle') return;
 
     try {
-      setIsSubmitting(true);
+      setSubmitStatus('loading');
       const matchedIds = matchedPackages.map(p => p.id);
       await onApply(matchedIds, targetStatusAmex);
-      setRawText('');
-      onClose();
+      setSubmitStatus('success');
+      setTimeout(() => {
+        setIsClosing(true);
+        setTimeout(() => {
+          setRawText('');
+          onClose();
+          setIsClosing(false);
+          setSubmitStatus('idle');
+        }, 180);
+      }, 400);
     } catch (err) {
       console.error('Error aplicando cambio de estado por lista de WRs:', err);
+      setSubmitStatus('idle');
       await alertDialog({
         title: 'Error de actualización',
         message: 'Ocurrió un error al actualizar los paquetes.',
         variant: 'danger'
       });
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
+  if (!isOpen && !isClosing) return null;
+
   return (
-    <div className="modal-backdrop">
-      <div className="modal-dialog" style={{ maxWidth: '640px', width: '95%' }}>
+    <div className={`modal-backdrop ${isClosing ? 'modal-backdrop-closing' : ''}`}>
+      <div
+        className={`modal-dialog ${isClosing ? 'modal-dialog-closing' : ''}`}
+        style={{ maxWidth: '640px', width: '95%' }}
+      >
         <div className="modal-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div
@@ -160,8 +187,16 @@ export default function BulkStatusByWrModal({
           </div>
           <button
             type="button"
-            onClick={onClose}
-            style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#64748b' }}
+            onClick={handleClose}
+            disabled={submitStatus !== 'idle'}
+            style={{
+              background: 'none',
+              border: 'none',
+              fontSize: '18px',
+              cursor: submitStatus !== 'idle' ? 'not-allowed' : 'pointer',
+              color: '#64748b',
+              opacity: submitStatus !== 'idle' ? 0.4 : 1
+            }}
           >
             ✕
           </button>
@@ -370,28 +405,78 @@ export default function BulkStatusByWrModal({
           <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
             <button
               type="button"
-              onClick={onClose}
-              disabled={isSubmitting}
+              onClick={handleClose}
+              disabled={submitStatus !== 'idle'}
               className="btn btn-secondary"
+              style={{
+                opacity: submitStatus !== 'idle' ? 0.5 : 1,
+                cursor: submitStatus !== 'idle' ? 'not-allowed' : 'pointer'
+              }}
             >
               Cancelar
             </button>
-            <button
-              type="submit"
-              disabled={matchedPackages.length === 0 || isSubmitting}
-              className="btn btn-primary"
-              style={{
-                fontWeight: 800,
-                opacity: matchedPackages.length === 0 || isSubmitting ? 0.6 : 1,
-                cursor: matchedPackages.length === 0 || isSubmitting ? 'not-allowed' : 'pointer'
-              }}
-            >
-              {isSubmitting ? (
-                <>⏳ Actualizando...</>
-              ) : (
-                <>✓ Aplicar cambio a {matchedPackages.length} paquete(s)</>
-              )}
-            </button>
+
+            {submitStatus === 'loading' && (
+              <button
+                type="button"
+                disabled
+                className="btn btn-primary"
+                style={{
+                  fontWeight: 800,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  opacity: 0.9,
+                  cursor: 'wait',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                <span>Actualizando...</span>
+              </button>
+            )}
+
+            {submitStatus === 'success' && (
+              <button
+                type="button"
+                disabled
+                className="btn"
+                style={{
+                  fontWeight: 800,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  background: '#16a34a',
+                  color: '#ffffff',
+                  border: '1px solid #15803d',
+                  transform: 'scale(1.02)',
+                  boxShadow: '0 0 12px rgba(22, 163, 74, 0.45)',
+                  transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
+                }}
+              >
+                <CheckCircle2 className="w-4 h-4 text-white flex-shrink-0" />
+                <span>¡Actualizado!</span>
+              </button>
+            )}
+
+            {submitStatus === 'idle' && (
+              <button
+                type="submit"
+                disabled={matchedPackages.length === 0}
+                className="btn btn-primary"
+                style={{
+                  fontWeight: 800,
+                  opacity: matchedPackages.length === 0 ? 0.6 : 1,
+                  cursor: matchedPackages.length === 0 ? 'not-allowed' : 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                ✓ Aplicar cambio a {matchedPackages.length} paquete(s)
+              </button>
+            )}
           </div>
         </form>
       </div>
