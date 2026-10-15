@@ -126,13 +126,13 @@ export default function TibImageModal({
         }
       } else {
         // Si ya tenemos una imagen cargada y visible, preservarla y no mostrar pantalla de error
-        if (!imageUrl && !paquete.tibImagenUrl) {
+        if (!imageUrl && !paquete?.tibImagenUrl) {
           setErrorMsg(data.message || `No se encontró evidencia fotográfica en TIB para la guía ${wr}.`);
         }
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al obtener la imagen de TIB';
-      if (!imageUrl && !paquete.tibImagenUrl) {
+      if (!imageUrl && !paquete?.tibImagenUrl) {
         setErrorMsg(msg);
       }
     } finally {
