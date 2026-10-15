@@ -11,10 +11,14 @@ import {
   Store,
   Truck,
   CheckCircle2,
-  CheckSquare
+  CheckSquare,
+  BarChart3,
+  Loader2
 } from 'lucide-react';
 import { Paquete } from '@/types';
 import { exportPaquetesToExcel } from '@/lib/excelExport';
+import { exportEnAlmacenPivotReport } from '@/lib/excelPivotReport';
+import { alertDialog } from '@/lib/dialog';
 
 export interface ExcelExportDropdownProps {
   paquetes: Paquete[];
@@ -28,6 +32,7 @@ export default function ExcelExportDropdown({
   selectedIds
 }: ExcelExportDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isGeneratingPivot, setIsGeneratingPivot] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Contadores dinámicos
@@ -55,10 +60,33 @@ export default function ExcelExportDropdown({
     };
   }, [isOpen]);
 
-  const handleExport = (type: string) => {
+  const handleExport = async (type: string) => {
     setIsOpen(false);
 
     switch (type) {
+      case 'pivot_en_almacen':
+        if (enAlmacenCount === 0) {
+          alertDialog({
+            title: 'Exportación vacía',
+            message: 'No hay paquetes en estado "En Almacén" o "Recibido" para generar el reporte.',
+            variant: 'warning'
+          });
+          break;
+        }
+        setIsGeneratingPivot(true);
+        try {
+          await exportEnAlmacenPivotReport(paquetes);
+        } catch (err: any) {
+          console.error('Error generando reporte analítico:', err);
+          alertDialog({
+            title: 'Error al exportar',
+            message: err?.message || 'Ocurrió un error inesperado al generar el archivo Excel.',
+            variant: 'danger'
+          });
+        } finally {
+          setIsGeneratingPivot(false);
+        }
+        break;
       case 'filtered':
         exportPaquetesToExcel(filteredPaquetes, 'Inventario_Vista_Actual');
         break;
@@ -301,6 +329,50 @@ export default function ExcelExportDropdown({
               <span style={{ fontWeight: 600, color: '#334155', fontSize: '12px' }}>Solo Entregados</span>
             </div>
             <span style={badgeStyle('#dcfce7', '#15803d')}>{entregadoCount}</span>
+          </button>
+
+          <div style={{ height: '1px', background: '#f1f5f9', margin: '4px 0' }} />
+
+          <div
+            style={{
+              padding: '4px 10px',
+              fontSize: '10.5px',
+              fontWeight: 800,
+              color: '#94a3b8',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px'
+            }}
+          >
+            Reportes Analíticos
+          </div>
+
+          {/* 9. Reporte Dinámico En Almacén */}
+          <button
+            type="button"
+            onClick={() => void handleExport('pivot_en_almacen')}
+            disabled={isGeneratingPivot}
+            style={{
+              ...dropdownItemStyle,
+              opacity: isGeneratingPivot ? 0.7 : 1,
+              cursor: isGeneratingPivot ? 'wait' : 'pointer'
+            }}
+            onMouseEnter={e => {
+              if (!isGeneratingPivot) e.currentTarget.style.background = '#f0fdf4';
+            }}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            title="Descargar reporte analítico con gráfico nativo y tabla dinámica de paquetes en almacén"
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {isGeneratingPivot ? (
+                <Loader2 className="w-4 h-4 text-emerald-600 animate-spin" />
+              ) : (
+                <BarChart3 className="w-4 h-4 text-emerald-600" />
+              )}
+              <span style={{ fontWeight: 700, color: '#15803d', fontSize: '12px' }}>
+                {isGeneratingPivot ? 'Generando...' : 'Reporte Dinámico En Almacén'}
+              </span>
+            </div>
+            <span style={badgeStyle('#dcfce7', '#15803d')}>{enAlmacenCount}</span>
           </button>
         </div>
       )}
