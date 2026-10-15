@@ -134,8 +134,10 @@ export function buildClientSummary(rows: EnAlmacenRow[]): ClientSummaryItem[] {
 }
 
 /**
- * Construye el archivo Excel (.xlsx) con filas individuales para cada paquete
- * y encabezados en Azul Marino Corporativo (NO negro).
+ * Construye el archivo Excel (.xlsx) profesional con:
+ * - Encabezado limpio SIN relleno de color (no pintado) con borde marcado.
+ * - Celdas combinadas y centradas para el nombre y cantidad del cliente cuando tiene varios paquetes.
+ * - Bordes completos finos y profesionales en todas las celdas.
  */
 export async function buildEnAlmacenReport(paquetes: Paquete[]): Promise<Blob> {
   const rows = selectEnAlmacen(paquetes);
@@ -147,21 +149,30 @@ export async function buildEnAlmacenReport(paquetes: Paquete[]): Promise<Blob> {
   const totalPaquetes = rows.length;
   const totalPeso = Math.round(rows.reduce((acc, r) => acc + r.pesoKg, 0) * 100) / 100;
 
-  // Encabezado en Azul Marino Corporativo elegante (#1e40af) con texto blanco
+  // Bordes profesionales para todas las celdas
+  const cellBorder = {
+    borderStyle: 'thin' as const,
+    borderColor: '#cbd5e1'
+  };
+
+  // Encabezado sin relleno (no pintado), con texto oscuro en negrita y borde inferior más marcado
   const headerStyle = {
     fontWeight: 'bold' as const,
-    color: '#ffffff',
-    backgroundColor: '#1e40af',
-    align: 'center' as const
+    color: '#0f172a',
+    borderStyle: 'thin' as const,
+    borderColor: '#94a3b8',
+    bottomBorderStyle: 'medium' as const,
+    bottomBorderColor: '#0f172a',
+    align: 'center' as const,
+    alignVertical: 'center' as const
   };
 
   // -------------------------------------------------------------
-  // HOJA 1: "Carga por Cliente (Detallada)"
-  // Cada paquete en una fila individual, agrupado por cliente.
+  // HOJA 1: "Carga por Cliente" (Detallada con Combinar y Centrar)
   // -------------------------------------------------------------
   const headerRow1 = [
     { value: 'N° Cliente', ...headerStyle },
-    { value: 'Cliente / Consignatario', ...headerStyle, align: 'left' as const },
+    { value: 'Cliente / Consignatario', ...headerStyle },
     { value: 'Cant. Total Pqtes', ...headerStyle },
     { value: 'Pqte N°', ...headerStyle },
     { value: 'Guía WR', ...headerStyle },
@@ -175,79 +186,171 @@ export async function buildEnAlmacenReport(paquetes: Paquete[]): Promise<Blob> {
   const dataRows1: any[] = [];
 
   summary.forEach((clientGroup, clientIdx) => {
-    // Alternancia suave de color por cliente para distinguir fácilmente cada bloque
-    const rowBg = clientIdx % 2 === 1 ? '#f8fafc' : '#ffffff';
+    const rowCount = clientGroup.items.length;
 
     clientGroup.items.forEach((item, itemIdx) => {
-      dataRows1.push([
-        {
-          value: clientIdx + 1,
-          align: 'center' as const,
-          backgroundColor: rowBg
-        },
-        {
-          value: clientGroup.cliente,
-          fontWeight: itemIdx === 0 ? ('bold' as const) : undefined,
-          backgroundColor: rowBg
-        },
-        {
-          value: clientGroup.paquetes,
-          type: Number,
-          format: '#,##0',
-          align: 'center' as const,
-          backgroundColor: rowBg
-        },
-        {
-          value: `${itemIdx + 1} de ${clientGroup.paquetes}`,
-          align: 'center' as const,
-          backgroundColor: rowBg
-        },
-        {
-          value: item.wr,
-          align: 'center' as const,
-          fontWeight: 'bold' as const,
-          backgroundColor: rowBg
-        },
-        {
-          value: item.tracking,
-          backgroundColor: rowBg
-        },
-        {
-          value: item.pesoKg > 0 ? item.pesoKg : '',
-          type: Number,
-          format: '0.00',
-          align: 'right' as const,
-          backgroundColor: rowBg
-        },
-        {
-          value: item.tipo,
-          align: 'center' as const,
-          backgroundColor: rowBg
-        },
-        {
-          value: item.posicion || 'REC',
-          align: 'center' as const,
-          backgroundColor: rowBg
-        },
-        {
-          value: item.fecha || '—',
-          align: 'center' as const,
-          backgroundColor: rowBg
-        }
-      ]);
+      if (itemIdx === 0) {
+        // Primera fila del cliente: define el valor, rowSpan y combinar y centrar
+        const span = rowCount > 1 ? rowCount : undefined;
+
+        dataRows1.push([
+          // Col A: N° Cliente (Combinar y centrar)
+          {
+            value: clientIdx + 1,
+            rowSpan: span,
+            align: 'center' as const,
+            alignVertical: 'center' as const,
+            ...cellBorder
+          },
+          // Col B: Cliente / Consignatario (Combinar y centrar)
+          {
+            value: clientGroup.cliente,
+            rowSpan: span,
+            align: 'center' as const,
+            alignVertical: 'center' as const,
+            fontWeight: 'bold' as const,
+            ...cellBorder
+          },
+          // Col C: Cant. Total Pqtes (Combinar y centrar)
+          {
+            value: clientGroup.paquetes,
+            rowSpan: span,
+            type: Number,
+            format: '#,##0',
+            align: 'center' as const,
+            alignVertical: 'center' as const,
+            fontWeight: 'bold' as const,
+            ...cellBorder
+          },
+          // Col D: Pqte N°
+          {
+            value: `${itemIdx + 1} de ${rowCount}`,
+            align: 'center' as const,
+            alignVertical: 'center' as const,
+            ...cellBorder
+          },
+          // Col E: Guía WR
+          {
+            value: item.wr,
+            align: 'center' as const,
+            alignVertical: 'center' as const,
+            fontWeight: 'bold' as const,
+            ...cellBorder
+          },
+          // Col F: Tracking USA
+          {
+            value: item.tracking,
+            alignVertical: 'center' as const,
+            ...cellBorder
+          },
+          // Col G: Peso (Kg)
+          {
+            value: item.pesoKg > 0 ? item.pesoKg : '',
+            type: Number,
+            format: '0.00',
+            align: 'right' as const,
+            alignVertical: 'center' as const,
+            ...cellBorder
+          },
+          // Col H: Tipo de Empaque
+          {
+            value: item.tipo,
+            align: 'center' as const,
+            alignVertical: 'center' as const,
+            ...cellBorder
+          },
+          // Col I: Posición WMS
+          {
+            value: item.posicion || 'REC',
+            align: 'center' as const,
+            alignVertical: 'center' as const,
+            ...cellBorder
+          },
+          // Col J: Fecha Registro
+          {
+            value: item.fecha || '—',
+            align: 'center' as const,
+            alignVertical: 'center' as const,
+            ...cellBorder
+          }
+        ]);
+      } else {
+        // Filas subsiguientes del mismo cliente: Col A, B y C son null porque están combinadas
+        dataRows1.push([
+          null, // Col A (cubierta por rowSpan)
+          null, // Col B (cubierta por rowSpan)
+          null, // Col C (cubierta por rowSpan)
+          // Col D: Pqte N°
+          {
+            value: `${itemIdx + 1} de ${rowCount}`,
+            align: 'center' as const,
+            alignVertical: 'center' as const,
+            ...cellBorder
+          },
+          // Col E: Guía WR
+          {
+            value: item.wr,
+            align: 'center' as const,
+            alignVertical: 'center' as const,
+            fontWeight: 'bold' as const,
+            ...cellBorder
+          },
+          // Col F: Tracking USA
+          {
+            value: item.tracking,
+            alignVertical: 'center' as const,
+            ...cellBorder
+          },
+          // Col G: Peso (Kg)
+          {
+            value: item.pesoKg > 0 ? item.pesoKg : '',
+            type: Number,
+            format: '0.00',
+            align: 'right' as const,
+            alignVertical: 'center' as const,
+            ...cellBorder
+          },
+          // Col H: Tipo de Empaque
+          {
+            value: item.tipo,
+            align: 'center' as const,
+            alignVertical: 'center' as const,
+            ...cellBorder
+          },
+          // Col I: Posición WMS
+          {
+            value: item.posicion || 'REC',
+            align: 'center' as const,
+            alignVertical: 'center' as const,
+            ...cellBorder
+          },
+          // Col J: Fecha Registro
+          {
+            value: item.fecha || '—',
+            align: 'center' as const,
+            alignVertical: 'center' as const,
+            ...cellBorder
+          }
+        ]);
+      }
     });
   });
 
-  // Fila Totalizadora General al final de Hoja 1
+  // Fila Totalizadora General al final de Hoja 1 con borde doble inferior
   const totalStyle = {
     fontWeight: 'bold' as const,
-    backgroundColor: '#dbeafe', // Azul suave
-    color: '#1e3a8a'
+    borderStyle: 'thin' as const,
+    borderColor: '#94a3b8',
+    topBorderStyle: 'medium' as const,
+    topBorderColor: '#0f172a',
+    bottomBorderStyle: 'double' as const,
+    bottomBorderColor: '#0f172a',
+    alignVertical: 'center' as const
   };
 
   const totalRow1 = [
     { value: '', ...totalStyle },
-    { value: `TOTAL GENERAL (${summary.length} CLIENTES)`, ...totalStyle },
+    { value: `TOTAL GENERAL (${summary.length} CLIENTES)`, ...totalStyle, align: 'left' as const },
     { value: totalPaquetes, type: Number, format: '#,##0', ...totalStyle, align: 'center' as const },
     { value: `${totalPaquetes} paquetes`, ...totalStyle, align: 'center' as const },
     { value: '', ...totalStyle },
@@ -274,7 +377,7 @@ export async function buildEnAlmacenReport(paquetes: Paquete[]): Promise<Blob> {
   ];
 
   // -------------------------------------------------------------
-  // HOJA 2: "Resumen de Clientes" (Totales limpios por persona)
+  // HOJA 2: "Totales por Cliente" (Resumen numérico limpio con bordes)
   // -------------------------------------------------------------
   const headerRow2 = [
     { value: 'N°', ...headerStyle },
@@ -287,17 +390,17 @@ export async function buildEnAlmacenReport(paquetes: Paquete[]): Promise<Blob> {
   const dataRows2 = summary.map((client, idx) => {
     const avg = client.paquetes > 0 ? client.pesoKg / client.paquetes : 0;
     return [
-      { value: idx + 1, align: 'center' as const },
-      { value: client.cliente, fontWeight: 'bold' as const },
-      { value: client.paquetes, type: Number, format: '#,##0', align: 'right' as const },
-      { value: client.pesoKg, type: Number, format: '0.00', align: 'right' as const },
-      { value: Math.round(avg * 100) / 100, type: Number, format: '0.00', align: 'right' as const }
+      { value: idx + 1, align: 'center' as const, alignVertical: 'center' as const, ...cellBorder },
+      { value: client.cliente, fontWeight: 'bold' as const, alignVertical: 'center' as const, ...cellBorder },
+      { value: client.paquetes, type: Number, format: '#,##0', align: 'right' as const, alignVertical: 'center' as const, ...cellBorder },
+      { value: client.pesoKg, type: Number, format: '0.00', align: 'right' as const, alignVertical: 'center' as const, ...cellBorder },
+      { value: Math.round(avg * 100) / 100, type: Number, format: '0.00', align: 'right' as const, alignVertical: 'center' as const, ...cellBorder }
     ];
   });
 
   const totalRow2 = [
     { value: '', ...totalStyle },
-    { value: `TOTAL GENERAL (${summary.length} CLIENTES)`, ...totalStyle },
+    { value: `TOTAL GENERAL (${summary.length} CLIENTES)`, ...totalStyle, align: 'left' as const },
     { value: totalPaquetes, type: Number, format: '#,##0', ...totalStyle, align: 'right' as const },
     { value: totalPeso, type: Number, format: '0.00', ...totalStyle, align: 'right' as const },
     { value: Math.round((totalPeso / (totalPaquetes || 1)) * 100) / 100, type: Number, format: '0.00', ...totalStyle, align: 'right' as const }
@@ -313,7 +416,7 @@ export async function buildEnAlmacenReport(paquetes: Paquete[]): Promise<Blob> {
     { width: 20 }   // Promedio
   ];
 
-  // Generar archivo estándar OpenXML
+  // Generar archivo estándar OpenXML con celdas combinadas y bordes
   const blob = await writeXlsxFile([
     {
       data: sheet1Data,
