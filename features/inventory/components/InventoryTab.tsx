@@ -198,7 +198,7 @@ export default function InventoryTab({
   const missingTibImagesCount = useMemo(() => {
     return paquetes.filter((p) => {
       if (!p.numeroReciboBodega || p.numeroReciboBodega.trim() === '') return false;
-      const isMissingImage = (!p.tibImagenUrl || p.tibImagenUrl.trim() === '') && p.tibImagenUrl !== 'NO_IMAGE';
+      const isMissingImage = !p.tibImagenUrl;
       const isMissingTracking = !p.tracking || p.tracking === '-' || p.tracking.trim() === '';
       const isMissingPeso = !p.pesoKg || Number(p.pesoKg) <= 0;
       const isMissingCliente =
