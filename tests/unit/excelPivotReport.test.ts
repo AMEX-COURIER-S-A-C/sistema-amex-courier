@@ -1,11 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import JSZip from 'jszip';
 import * as XLSX from 'xlsx';
 import {
   selectEnAlmacen,
   buildClientSummary,
-  buildEnAlmacenReport,
-  escapeXml
+  buildEnAlmacenReport
 } from '@/lib/excelPivotReport';
 import { Paquete } from '@/types';
 
@@ -30,28 +28,6 @@ function createMockPaquete(overrides: Partial<Paquete>): Paquete {
 }
 
 describe('excelPivotReport - Unit Tests', () => {
-  describe('escapeXml', () => {
-    it('escapes standard XML special characters and strips invalid control chars', () => {
-      const input = 'Empresa & Hijos <Lima> "VIP" \'2026\' \x00\x08test\x1F';
-      const output = escapeXml(input);
-      expect(output).toContain('&amp;');
-      expect(output).toContain('&lt;');
-      expect(output).toContain('&gt;');
-      expect(output).toContain('&quot;');
-      expect(output).toContain('&apos;');
-      expect(output).not.toContain('\x00');
-      expect(output).not.toContain('\x08');
-      expect(output).not.toContain('\x1F');
-      expect(output).toContain('test');
-    });
-
-    it('handles null, undefined and numbers safely', () => {
-      expect(escapeXml(null)).toBe('');
-      expect(escapeXml(undefined)).toBe('');
-      expect(escapeXml(123.45)).toBe('123.45');
-    });
-  });
-
   describe('selectEnAlmacen', () => {
     it('includes en_almacen and recibido, while excluding other states', () => {
       const paquetes: Paquete[] = [
@@ -114,6 +90,7 @@ describe('excelPivotReport - Unit Tests', () => {
       expect(summary[0].cliente).toBe('CLIENTE A');
       expect(summary[0].paquetes).toBe(3);
       expect(summary[0].pesoKg).toBe(22.5);
+      expect(summary[0].wrs).toEqual(['WR2', 'WR3', 'WR5']);
 
       // CLIENTE B and C both have 1 package, but C has 20kg > B with 10kg
       expect(summary[1].cliente).toBe('CLIENTE C');
@@ -126,17 +103,17 @@ describe('excelPivotReport - Unit Tests', () => {
     });
   });
 
-  describe('buildEnAlmacenReport - OpenXML Package Verification', () => {
+  describe('buildEnAlmacenReport - Multi-sheet Excel Generation', () => {
     it('throws error when no packages match "En Almacén"', async () => {
       const paquetes = [createMockPaquete({ estadoAmex: 'entregado' })];
       await expect(buildEnAlmacenReport(paquetes)).rejects.toThrow('No hay paquetes con Estado AMEX');
     });
 
-    it('generates a valid OpenXML ZIP containing all required parts and sheets', async () => {
+    it('generates a clean, valid Excel workbook readable by SheetJS without errors', async () => {
       const paquetes: Paquete[] = [
-        createMockPaquete({ id: '1', estadoAmex: 'en_almacen', nombreConsignatario: 'CLIENTE ALPHA & CO', pesoKg: 12.5, tipoEmpaque: 'CAJA' }),
-        createMockPaquete({ id: '2', estadoAmex: 'recibido', nombreConsignatario: 'CLIENTE BETA <PERU>', pesoKg: 7.2, tipoEmpaque: 'SOBRE' }),
-        createMockPaquete({ id: '3', estadoAmex: 'en_almacen', nombreConsignatario: 'CLIENTE ALPHA & CO', pesoKg: 3.1, tipoEmpaque: 'CAJA' }),
+        createMockPaquete({ id: '1', estadoAmex: 'en_almacen', numeroReciboBodega: 'WR1001', tracking: 'TRK1001', nombreConsignatario: 'CLIENTE ALPHA & CO', pesoKg: 12.5, tipoEmpaque: 'CAJA' }),
+        createMockPaquete({ id: '2', estadoAmex: 'recibido', numeroReciboBodega: 'WR1002', tracking: 'TRK1002', nombreConsignatario: 'CLIENTE BETA', pesoKg: 7.2, tipoEmpaque: 'SOBRE' }),
+        createMockPaquete({ id: '3', estadoAmex: 'en_almacen', numeroReciboBodega: 'WR1003', tracking: 'TRK1003', nombreConsignatario: 'CLIENTE ALPHA & CO', pesoKg: 3.1, tipoEmpaque: 'CAJA' }),
       ];
 
       const blob = await buildEnAlmacenReport(paquetes);
@@ -144,78 +121,46 @@ describe('excelPivotReport - Unit Tests', () => {
       expect(blob.type).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 
       const arrayBuffer = await blob.arrayBuffer();
-      const zip = await JSZip.loadAsync(arrayBuffer);
-
-      // Verify all required parts
-      const expectedFiles = [
-        '[Content_Types].xml',
-        '_rels/.rels',
-        'xl/workbook.xml',
-        'xl/_rels/workbook.xml.rels',
-        'xl/styles.xml',
-        'xl/worksheets/sheet1.xml',
-        'xl/worksheets/_rels/sheet1.xml.rels',
-        'xl/worksheets/sheet2.xml',
-        'xl/worksheets/sheet3.xml',
-        'xl/worksheets/_rels/sheet3.xml.rels',
-        'xl/worksheets/sheet4.xml',
-        'xl/drawings/drawing1.xml',
-        'xl/drawings/_rels/drawing1.xml.rels',
-        'xl/charts/chart1.xml',
-        'xl/pivotCache/pivotCacheDefinition1.xml',
-        'xl/pivotCache/_rels/pivotCacheDefinition1.xml.rels',
-        'xl/pivotCache/pivotCacheRecords1.xml',
-        'xl/pivotTables/pivotTable1.xml',
-        'xl/pivotTables/_rels/pivotTable1.xml.rels'
-      ];
-
-      for (const filePath of expectedFiles) {
-        expect(zip.file(filePath), `Falta el archivo requerido en el ZIP: ${filePath}`).not.toBeNull();
-      }
-
-      // Check XML formatting and special characters in sheet4 (Datos)
-      const sheet4Xml = await zip.file('xl/worksheets/sheet4.xml')!.async('string');
-      expect(sheet4Xml).toContain('CLIENTE ALPHA &amp; CO');
-      expect(sheet4Xml).toContain('CLIENTE BETA &lt;PERU&gt;');
-
-      // Check Pivot Cache definition contains refreshOnLoad
-      const pivotCacheXml = await zip.file('xl/pivotCache/pivotCacheDefinition1.xml')!.async('string');
-      expect(pivotCacheXml).toContain('refreshOnLoad="1"');
-      expect(pivotCacheXml).toContain('sheet="Datos"');
-
-      // Check Chart XML contains references to Resumen Clientes
-      const chartXml = await zip.file('xl/charts/chart1.xml')!.async('string');
-      expect(chartXml).toContain('&apos;Resumen Clientes&apos;!$A$2:$A$3');
-      expect(chartXml).toContain('c:barChart');
-
-      // Verify that SheetJS (XLSX) can read the file and inspect sheets
       const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+
+      // Verifies the two essential sheets exist
       expect(workbook.SheetNames).toEqual([
-        'Dashboard',
-        'Resumen Clientes',
-        'Tabla Dinámica',
-        'Datos'
+        'Resumen por Cliente',
+        'Detalle de Paquetes'
       ]);
 
-      const datosSheet = workbook.Sheets['Datos'];
-      expect(datosSheet['A1'].v).toBe('Cliente');
-      expect(datosSheet['B1'].v).toBe('WR');
-      expect(datosSheet['C1'].v).toBe('Tracking');
-      expect(datosSheet['D1'].v).toBe('Peso (kg)');
-      expect(datosSheet['E1'].v).toBe('Tipo de paquete');
+      // Sheet 1: Resumen por Cliente
+      const sheet1 = workbook.Sheets['Resumen por Cliente'];
+      expect(sheet1['A1'].v).toBe('N°');
+      expect(sheet1['B1'].v).toBe('Cliente / Consignatario');
+      expect(sheet1['C1'].v).toBe('Cant. Paquetes');
+      expect(sheet1['D1'].v).toBe('Peso Total (Kg)');
+      expect(sheet1['E1'].v).toBe('Guías WR en Almacén');
 
-      // Row 2
-      expect(datosSheet['A2'].v).toBe('CLIENTE ALPHA & CO');
-      expect(datosSheet['D2'].v).toBe(12.5);
+      // Row 2: CLIENTE ALPHA & CO has 2 packages
+      expect(sheet1['B2'].v).toBe('CLIENTE ALPHA & CO');
+      expect(sheet1['C2'].v).toBe(2);
+      expect(sheet1['D2'].v).toBe(15.6);
+      expect(sheet1['E2'].v).toContain('WR1001');
+      expect(sheet1['E2'].v).toContain('WR1003');
 
-      // Resumen Clientes Sheet
-      const resumenSheet = workbook.Sheets['Resumen Clientes'];
-      expect(resumenSheet['A1'].v).toBe('Cliente');
-      expect(resumenSheet['B1'].v).toBe('Paquetes en Almacén');
-      expect(resumenSheet['C1'].v).toBe('Peso Total (kg)');
-      expect(resumenSheet['A2'].v).toBe('CLIENTE ALPHA & CO');
-      expect(resumenSheet['B2'].v).toBe(2);
-      expect(resumenSheet['C2'].v).toBe(15.6);
+      // Sheet 2: Detalle de Paquetes
+      const sheet2 = workbook.Sheets['Detalle de Paquetes'];
+      expect(sheet2['A1'].v).toBe('N°');
+      expect(sheet2['B1'].v).toBe('Cliente / Consignatario');
+      expect(sheet2['C1'].v).toBe('Guía WR');
+      expect(sheet2['D1'].v).toBe('Tracking USA');
+      expect(sheet2['E1'].v).toBe('Peso (Kg)');
+      expect(sheet2['F1'].v).toBe('Tipo de Empaque');
+      expect(sheet2['G1'].v).toBe('Estado AMEX');
+
+      // Package 1
+      expect(sheet2['B2'].v).toBe('CLIENTE ALPHA & CO');
+      expect(sheet2['C2'].v).toBe('WR1001');
+      expect(sheet2['D2'].v).toBe('TRK1001');
+      expect(sheet2['E2'].v).toBe(12.5);
+      expect(sheet2['F2'].v).toBe('CAJA');
+      expect(sheet2['G2'].v).toBe('En Almacén');
     });
   });
 });

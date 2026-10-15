@@ -343,10 +343,10 @@ export default function ExcelExportDropdown({
               letterSpacing: '0.5px'
             }}
           >
-            Reportes Analíticos
+            Reportes de Almacén
           </div>
 
-          {/* 9. Reporte Dinámico En Almacén */}
+          {/* 9. Reporte Clientes en Almacén */}
           <button
             type="button"
             onClick={() => void handleExport('pivot_en_almacen')}
@@ -360,16 +360,16 @@ export default function ExcelExportDropdown({
               if (!isGeneratingPivot) e.currentTarget.style.background = '#f0fdf4';
             }}
             onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-            title="Descargar reporte analítico con gráfico nativo y tabla dinámica de paquetes en almacén"
+            title="Descargar reporte con clientes, cantidades de paquetes y lista de guías en almacén"
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               {isGeneratingPivot ? (
                 <Loader2 className="w-4 h-4 text-emerald-600 animate-spin" />
               ) : (
-                <BarChart3 className="w-4 h-4 text-emerald-600" />
+                <Package className="w-4 h-4 text-emerald-600" />
               )}
               <span style={{ fontWeight: 700, color: '#15803d', fontSize: '12px' }}>
-                {isGeneratingPivot ? 'Generando...' : 'Reporte Dinámico En Almacén'}
+                {isGeneratingPivot ? 'Generando...' : 'Reporte Clientes en Almacén'}
               </span>
             </div>
             <span style={badgeStyle('#dcfce7', '#15803d')}>{enAlmacenCount}</span>
