@@ -15,6 +15,8 @@ import { matchesFuzzySearch } from '@/lib/fuzzySearch';
 import { useDebounce } from '@/lib/useDebounce';
 import { exportPaquetesToExcel, exportKardexToExcel } from '@/lib/excelExport';
 import { confirmDialog, alertDialog } from '@/lib/dialog';
+import { toast } from '@/lib/toast';
+import { soundEffects } from '@/lib/audio/soundEffects';
 import { inventoryService } from '../services/inventory.service';
 import { BatchShelfData, SinglePositionData, TransferFormData, DateFilterState } from '../types';
 import { initialDateFilter, isPackageInDateFilter, resolveDateFilterRange } from '../utils/dateFilter';
@@ -58,6 +60,8 @@ export function useInventoryData({
   const [serverExistenciasActivas, setServerExistenciasActivas] = useState<number>(0);
   const [serverPesoTotalKg, setServerPesoTotalKg] = useState<number>(0);
   const [isLoadingServer, setIsLoadingServer] = useState<boolean>(false);
+  const [deliveringIds, setDeliveringIds] = useState<string[]>([]);
+  const [recentlyDeliveredIds, setRecentlyDeliveredIds] = useState<string[]>([]);
 
   // Filtros de Kardex
   const [kardexSearch, setKardexSearch] = useState('');
@@ -182,8 +186,8 @@ export function useInventoryData({
   }, [fetchData]);
 
   // Búsqueda Server-Side con PostgreSQL RPC + GIN Trigram
-  const fetchServerPaquetes = useCallback(async () => {
-    setIsLoadingServer(true);
+  const fetchServerPaquetes = useCallback(async (isSilent = false) => {
+    if (!isSilent) setIsLoadingServer(true);
     try {
       const { fechaDesde, fechaHasta } = resolveDateFilterRange(dateFilter);
       const res = await inventoryService.searchPaquetesServerSide({
@@ -199,14 +203,24 @@ export function useInventoryData({
         pageSize
       });
 
-      setServerPaquetes(res.paquetes);
+      setServerPaquetes(prev => {
+        // Preservar temporalmente en la vista aquellos paquetes recién entregados para que no desaparezcan bruscamente
+        const activeRecent = prev.filter(p => recentlyDeliveredIds.includes(p.id));
+        const merged = [...res.paquetes];
+        for (const recent of activeRecent) {
+          if (!merged.some(m => m.id === recent.id)) {
+            merged.push(recent);
+          }
+        }
+        return merged;
+      });
       setServerTotal(res.total);
       setServerExistenciasActivas(res.existenciasActivas);
       setServerPesoTotalKg(res.pesoTotalKg);
     } catch (err) {
       console.error('Error fetching server-side packages:', err);
     } finally {
-      setIsLoadingServer(false);
+      if (!isSilent) setIsLoadingServer(false);
     }
   }, [
     debouncedSearchTerm,
@@ -217,7 +231,8 @@ export function useInventoryData({
     packageTypeFilter,
     dateFilter,
     currentPage,
-    pageSize
+    pageSize,
+    recentlyDeliveredIds
   ]);
 
   useEffect(() => {
@@ -232,7 +247,7 @@ export function useInventoryData({
         'postgres_changes',
         { event: '*', schema: 'public', table: 'paquetes' },
         () => {
-          fetchServerPaquetes();
+          fetchServerPaquetes(true);
         }
       )
       .subscribe();
@@ -522,13 +537,50 @@ export function useInventoryData({
       const updated: Paquete = { ...pkg, estadoAmex: newStatusAmex, actualizadoEn: new Date().toISOString() };
       if (onUpdatePackage) onUpdatePackage(updated);
       setServerPaquetes(prev => prev.map(p => (p.id === updated.id ? updated : p)));
+      soundEffects.playSuccess();
+      const statusLabel =
+        newStatusAmex === 'entregado'
+          ? 'Entregado'
+          : newStatusAmex === 'en_almacen' || newStatusAmex === 'recibido'
+          ? 'En Almacén'
+          : newStatusAmex === 'listo_recojo'
+          ? 'Listo Recojo'
+          : newStatusAmex === 'en_ruta'
+          ? 'En Ruta'
+          : newStatusAmex;
+      toast.success('Estado actualizado', `Guía ${pkg.numeroReciboBodega} cambió a "${statusLabel}"`);
     } catch (err) {
       console.error('Error actualizando estado AMEX:', err);
+      toast.error('Error', 'No se pudo actualizar el estado.');
     }
   };
 
   // Entrega rápida en 1 clic
   const handleQuickDeliver = async (pkg: Paquete) => {
+    // 1. Marcar como procesando y guardar temporalmente en entrega reciente
+    setDeliveringIds(prev => [...prev, pkg.id]);
+    setRecentlyDeliveredIds(prev => [...prev, pkg.id]);
+
+    // 2. Feedback optimista inmediato en memoria (0ms)
+    const nowIso = new Date().toISOString();
+    const optimisticUpdated: Paquete = {
+      ...pkg,
+      estadoAmex: 'entregado',
+      estadoTib: 'Entregado',
+      estadoEntrega: 'Entregado',
+      ubicacionActual: 'Entregado',
+      actualizadoEn: nowIso
+    };
+
+    if (onUpdatePackage) {
+      onUpdatePackage(optimisticUpdated);
+    }
+    setServerPaquetes(prev => prev.map(p => (p.id === pkg.id ? optimisticUpdated : p)));
+
+    // 3. Audio de éxito corporativo y Toast instantáneo
+    soundEffects.playSuccess();
+    toast.success('Entrega Registrada', `Guía ${pkg.numeroReciboBodega} • ${pkg.nombreConsignatario || 'Cliente AMEX'}`);
+
     try {
       const updated = await inventoryService.quickDeliver(pkg);
       if (onUpdatePackage) {
@@ -537,11 +589,20 @@ export function useInventoryData({
       setServerPaquetes(prev => prev.map(p => (p.id === updated.id ? updated : p)));
     } catch (err) {
       console.error('Error al entregar paquete rápido:', err);
-      await alertDialog({
-        title: 'Error de entrega',
-        message: 'Error al marcar como entregado.',
-        variant: 'danger'
-      });
+      // Revertir optimismo
+      if (onUpdatePackage) {
+        onUpdatePackage(pkg);
+      }
+      setServerPaquetes(prev => prev.map(p => (p.id === pkg.id ? pkg : p)));
+      setRecentlyDeliveredIds(prev => prev.filter(id => id !== pkg.id));
+      soundEffects.playNotFound();
+      toast.error('Error de entrega', 'No se pudo guardar la entrega en el servidor.');
+    } finally {
+      setDeliveringIds(prev => prev.filter(id => id !== pkg.id));
+      // Mantener en recentlyDeliveredIds durante 2.5s antes de retirar suavemente de la vista
+      setTimeout(() => {
+        setRecentlyDeliveredIds(prev => prev.filter(id => id !== pkg.id));
+      }, 2500);
     }
   };
 
@@ -551,20 +612,37 @@ export function useInventoryData({
     targetStatusAmex: TipoEstadoAmex
   ) => {
     if (matchedIds.length === 0) return;
-    const updatedList = await inventoryService.batchStatusChange(
-      matchedIds,
-      paquetes,
-      targetStatusAmex
-    );
-    if (onUpdatePackage) {
-      updatedList.forEach(p => onUpdatePackage(p));
+    try {
+      const updatedList = await inventoryService.batchStatusChange(
+        matchedIds,
+        paquetes,
+        targetStatusAmex
+      );
+      if (onUpdatePackage) {
+        updatedList.forEach(p => onUpdatePackage(p));
+      }
+      setServerPaquetes(prev =>
+        prev.map(p => {
+          const found = updatedList.find(u => u.id === p.id);
+          return found || p;
+        })
+      );
+      soundEffects.playSuccess();
+      const statusLabel =
+        targetStatusAmex === 'entregado'
+          ? 'Entregado'
+          : targetStatusAmex === 'en_almacen'
+          ? 'En Almacén'
+          : targetStatusAmex === 'listo_recojo'
+          ? 'Listo Recojo'
+          : targetStatusAmex === 'en_ruta'
+          ? 'En Ruta'
+          : targetStatusAmex;
+      toast.success('Actualización masiva completada', `Se cambiaron a "${statusLabel}" ${updatedList.length} paquetes con éxito.`);
+    } catch (err) {
+      console.error('Error en cambio masivo de estado:', err);
+      toast.error('Error masivo', 'No se pudieron actualizar los paquetes.');
     }
-    setServerPaquetes(prev =>
-      prev.map(p => {
-        const found = updatedList.find(u => u.id === p.id);
-        return found || p;
-      })
-    );
   };
 
   // Cambio de estado masivo en lote (por selección en tabla)
@@ -587,8 +665,21 @@ export function useInventoryData({
       );
       setIsBatchStatusModalOpen(false);
       setSelectedIds([]);
+      soundEffects.playSuccess();
+      const statusLabel =
+        batchTargetStatusAmex === 'entregado'
+          ? 'Entregado'
+          : batchTargetStatusAmex === 'en_almacen'
+          ? 'En Almacén'
+          : batchTargetStatusAmex === 'listo_recojo'
+          ? 'Listo Recojo'
+          : batchTargetStatusAmex === 'en_ruta'
+          ? 'En Ruta'
+          : batchTargetStatusAmex;
+      toast.success('Actualización masiva completada', `Se cambiaron a "${statusLabel}" ${updatedList.length} paquetes con éxito.`);
     } catch (err) {
       console.error('Error actualizando estado en lote:', err);
+      toast.error('Error masivo', 'Error al actualizar paquetes en lote.');
     }
   };
 
@@ -832,6 +923,10 @@ export function useInventoryData({
     selectedThermalPkg,
     setSelectedThermalPkg,
     selectedPackageForAction,
+
+    // Estados de transición fluida
+    deliveringIds,
+    recentlyDeliveredIds,
 
     // Acciones de paquetes
     handleDeletePackage,

@@ -15,6 +15,8 @@ export interface InventoryTableProps {
   paginatedPaquetes: Paquete[];
   selectedIds: string[];
   totalCount?: number;
+  deliveringIds?: string[];
+  recentlyDeliveredIds?: string[];
   onToggleSelect: (id: string) => void;
   onSelectAll: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onQuickDeliver?: (pkg: Paquete) => void;
@@ -36,6 +38,8 @@ export default function InventoryTable({
   paginatedPaquetes,
   selectedIds,
   totalCount,
+  deliveringIds = [],
+  recentlyDeliveredIds = [],
   onToggleSelect,
   onSelectAll,
   onQuickDeliver,
@@ -91,14 +95,26 @@ export default function InventoryTable({
                   pkg.posicionEstante ||
                   (pkg.anaquel && pkg.piso ? `${pkg.anaquel}-${pkg.piso}` : 'REC');
                 const isSelected = selectedIds.includes(pkg.id);
+                const isDelivering = deliveringIds?.includes(pkg.id);
+                const isRecentlyDelivered = recentlyDeliveredIds?.includes(pkg.id);
+
+                let rowBg = '#ffffff';
+                if (isRecentlyDelivered) {
+                  rowBg = '#ecfdf5';
+                } else if (isSelected) {
+                  rowBg = '#eff6ff';
+                } else if (isDelivering) {
+                  rowBg = '#f8fafc';
+                }
 
                 return (
                   <tr
                     key={pkg.id}
                     style={{
-                      borderBottom: '1px solid #f1f5f9',
-                      background: isSelected ? '#eff6ff' : '#ffffff',
-                      transition: 'background 0.15s ease'
+                      borderBottom: isRecentlyDelivered ? '1px solid #a7f3d0' : '1px solid #f1f5f9',
+                      background: rowBg,
+                      transition: 'background-color 0.35s ease, border-color 0.35s ease, opacity 0.25s ease',
+                      opacity: isDelivering ? 0.7 : 1
                     }}
                   >
                     <td style={{ padding: '10px 14px' }}>
@@ -200,58 +216,81 @@ export default function InventoryTable({
                     </td>
                     {/* ESTADO AMEX (Operativo Interno) */}
                     <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
-                      <span
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '5px',
-                          padding: '3px 9px',
-                          borderRadius: '6px',
-                          fontSize: '11px',
-                          fontWeight: 800,
-                          textTransform: 'uppercase',
-                          background:
-                            pkg.estadoAmex === 'en_almacen' || pkg.estadoAmex === 'recibido'
-                              ? '#e0e7ff'
-                              : pkg.estadoAmex === 'listo_recojo'
-                              ? '#fef3c7'
-                              : pkg.estadoAmex === 'en_ruta'
-                              ? '#f3e8ff'
-                              : pkg.estadoAmex === 'entregado'
-                              ? '#dcfce7'
-                              : '#f1f5f9',
-                          color:
-                            pkg.estadoAmex === 'en_almacen' || pkg.estadoAmex === 'recibido'
-                              ? '#3730a3'
-                              : pkg.estadoAmex === 'listo_recojo'
-                              ? '#92400e'
-                              : pkg.estadoAmex === 'en_ruta'
-                              ? '#6b21a8'
-                              : pkg.estadoAmex === 'entregado'
-                              ? '#15803d'
-                              : '#475569',
-                          border:
-                            pkg.estadoAmex === 'en_almacen' || pkg.estadoAmex === 'recibido'
-                              ? '1px solid #c7d2fe'
-                              : pkg.estadoAmex === 'listo_recojo'
-                              ? '1px solid #fde68a'
-                              : pkg.estadoAmex === 'en_ruta'
-                              ? '1px solid #e9d5ff'
-                              : pkg.estadoAmex === 'entregado'
-                              ? '1px solid #bbf7d0'
-                              : '1px solid #e2e8f0'
-                        }}
-                      >
-                        {pkg.estadoAmex === 'en_almacen' || pkg.estadoAmex === 'recibido'
-                          ? '📦 EN ALMACÉN'
-                          : pkg.estadoAmex === 'listo_recojo'
-                          ? '🏪 LISTO RECOJO'
-                          : pkg.estadoAmex === 'en_ruta'
-                          ? '🚚 EN RUTA'
-                          : pkg.estadoAmex === 'entregado'
-                          ? '✅ ENTREGADO'
-                          : (pkg.estadoAmex || 'EN ALMACÉN').toUpperCase()}
-                      </span>
+                      {isDelivering ? (
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '3px 9px',
+                            borderRadius: '6px',
+                            fontSize: '11px',
+                            fontWeight: 800,
+                            textTransform: 'uppercase',
+                            background: '#ecfdf5',
+                            color: '#047857',
+                            border: '1px solid #a7f3d0'
+                          }}
+                        >
+                          <span className="w-3 h-3 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                          ENTREGANDO...
+                        </span>
+                      ) : (
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            padding: '3px 9px',
+                            borderRadius: '6px',
+                            fontSize: '11px',
+                            fontWeight: 800,
+                            textTransform: 'uppercase',
+                            background:
+                              isRecentlyDelivered || pkg.estadoAmex === 'entregado'
+                                ? '#dcfce7'
+                                : pkg.estadoAmex === 'en_almacen' || pkg.estadoAmex === 'recibido'
+                                ? '#e0e7ff'
+                                : pkg.estadoAmex === 'listo_recojo'
+                                ? '#fef3c7'
+                                : pkg.estadoAmex === 'en_ruta'
+                                ? '#f3e8ff'
+                                : '#f1f5f9',
+                            color:
+                              isRecentlyDelivered || pkg.estadoAmex === 'entregado'
+                                ? '#15803d'
+                                : pkg.estadoAmex === 'en_almacen' || pkg.estadoAmex === 'recibido'
+                                ? '#3730a3'
+                                : pkg.estadoAmex === 'listo_recojo'
+                                ? '#92400e'
+                                : pkg.estadoAmex === 'en_ruta'
+                                ? '#6b21a8'
+                                : '#475569',
+                            border:
+                              isRecentlyDelivered || pkg.estadoAmex === 'entregado'
+                                ? '1px solid #86efac'
+                                : pkg.estadoAmex === 'en_almacen' || pkg.estadoAmex === 'recibido'
+                                ? '1px solid #c7d2fe'
+                                : pkg.estadoAmex === 'listo_recojo'
+                                ? '1px solid #fde68a'
+                                : pkg.estadoAmex === 'en_ruta'
+                                ? '1px solid #e9d5ff'
+                                : '1px solid #e2e8f0',
+                            boxShadow: isRecentlyDelivered ? '0 0 10px rgba(34, 197, 94, 0.45)' : 'none',
+                            transition: 'all 0.3s ease'
+                          }}
+                        >
+                          {isRecentlyDelivered || pkg.estadoAmex === 'entregado'
+                            ? '✅ ENTREGADO'
+                            : pkg.estadoAmex === 'en_almacen' || pkg.estadoAmex === 'recibido'
+                            ? '📦 EN ALMACÉN'
+                            : pkg.estadoAmex === 'listo_recojo'
+                            ? '🏪 LISTO RECOJO'
+                            : pkg.estadoAmex === 'en_ruta'
+                            ? '🚚 EN RUTA'
+                            : (pkg.estadoAmex || 'EN ALMACÉN').toUpperCase()}
+                        </span>
+                      )}
                     </td>
 
                     {/* MODIFICADO (Fecha y Hora idéntico a TIB: DD/MM/AAAA HH:mm:ss) */}
@@ -292,12 +331,14 @@ export default function InventoryTable({
                         pkg={pkg}
                         index={index}
                         totalRows={paginatedPaquetes.length}
+                        isDelivering={isDelivering}
                         onQuickDeliver={onQuickDeliver ? async (p) => {
                           const confirmed = await confirmDialog({
-                            title: 'Confirmar entrega',
-                            message: `¿Confirmar entrega del paquete ${p.numeroReciboBodega} a ${p.nombreConsignatario || 'cliente'}?`,
-                            confirmText: 'Entregar paquete',
-                            variant: 'info'
+                            title: 'Confirmar Entrega Inmediata',
+                            message: `¿Deseas marcar como ENTREGADO el paquete WR #${p.numeroReciboBodega} del cliente "${p.nombreConsignatario || 'Sin Nombre'}"? Esta acción actualizará el inventario y notificará el cambio en tiempo real.`,
+                            confirmText: 'Sí, Entregar Ahora',
+                            cancelText: 'Cancelar',
+                            variant: 'success'
                           });
                           if (confirmed) {
                             onQuickDeliver(p);

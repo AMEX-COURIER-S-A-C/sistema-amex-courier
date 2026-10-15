@@ -20,6 +20,7 @@ export interface RowActionsDropdownProps {
   pkg: Paquete;
   index: number;
   totalRows: number;
+  isDelivering?: boolean;
   onQuickDeliver?: (pkg: Paquete) => void;
   onOpenTransferModal: (pkg: Paquete) => void;
   onOpenEditModal: (pkg: Paquete) => void;
@@ -33,6 +34,7 @@ export default function RowActionsDropdown({
   pkg,
   index,
   totalRows,
+  isDelivering = false,
   onQuickDeliver,
   onOpenTransferModal,
   onOpenEditModal,
@@ -119,6 +121,7 @@ export default function RowActionsDropdown({
           {pkg.estadoAmex !== 'entregado' && onQuickDeliver && (
             <button
               type="button"
+              disabled={isDelivering}
               onClick={() => {
                 setIsOpen(false);
                 onQuickDeliver(pkg);
@@ -131,18 +134,26 @@ export default function RowActionsDropdown({
                 borderRadius: '6px',
                 border: 'none',
                 background: 'transparent',
-                color: '#15803d',
+                color: isDelivering ? '#94a3b8' : '#15803d',
                 fontSize: '12px',
                 fontWeight: 700,
-                cursor: 'pointer',
+                cursor: isDelivering ? 'not-allowed' : 'pointer',
                 width: '100%',
                 transition: 'background 0.15s ease'
               }}
-              onMouseEnter={e => (e.currentTarget.style.background = '#f0fdf4')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              onMouseEnter={e => {
+                if (!isDelivering) e.currentTarget.style.background = '#f0fdf4';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = 'transparent';
+              }}
             >
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-              <span>Entregar Paquete</span>
+              {isDelivering ? (
+                <span className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+              )}
+              <span>{isDelivering ? 'Entregando...' : 'Entregar Paquete'}</span>
             </button>
           )}
 

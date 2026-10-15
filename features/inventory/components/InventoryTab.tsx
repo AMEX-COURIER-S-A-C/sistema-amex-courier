@@ -151,6 +151,10 @@ export default function InventoryTab({
     setSelectedThermalPkg,
     selectedPackageForAction,
 
+    // Estados de transición fluida
+    deliveringIds,
+    recentlyDeliveredIds,
+
     // Acciones
     handleDeletePackage,
     handleQuickDeliver,
@@ -310,6 +314,8 @@ export default function InventoryTab({
         paginatedPaquetes={paginatedPaquetes}
         selectedIds={selectedIds}
         totalCount={serverTotal}
+        deliveringIds={deliveringIds}
+        recentlyDeliveredIds={recentlyDeliveredIds}
         onToggleSelect={handleToggleSelect}
         onSelectAll={handleSelectAll}
         onQuickDeliver={handleQuickDeliver}

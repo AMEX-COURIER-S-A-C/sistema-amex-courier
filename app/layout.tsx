@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import SmoothScrollProvider from "@/components/providers/SmoothScrollProvider";
 import DialogProvider from "@/components/providers/DialogProvider";
+import ToastProvider from "@/components/providers/ToastProvider";
 
 export const metadata: Metadata = {
   title: "SISTEMA AMEX COURIER",
@@ -25,7 +26,11 @@ export default function RootLayout({
     <html lang="es" className="h-full antialiased">
       <body className="min-h-full flex flex-col font-sans">
         <SmoothScrollProvider>
-          <DialogProvider>{children}</DialogProvider>
+          <DialogProvider>
+            <ToastProvider>
+              {children}
+            </ToastProvider>
+          </DialogProvider>
         </SmoothScrollProvider>
       </body>
     </html>
