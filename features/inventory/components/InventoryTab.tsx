@@ -362,6 +362,8 @@ export default function InventoryTab({
         batchTargetStatusAmex={batchTargetStatusAmex}
         setBatchTargetStatusAmex={setBatchTargetStatusAmex}
         onConfirm={handleBatchStatusChange}
+        paquetes={paquetes}
+        selectedIds={selectedIds}
       />
 
       <BulkStatusByWrModal

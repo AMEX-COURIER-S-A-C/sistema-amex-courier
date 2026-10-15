@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Truck, CheckCircle2 } from 'lucide-react';
-import { TipoEstadoEntrega, TipoEstadoAmex } from '@/types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Truck, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { TipoEstadoEntrega, TipoEstadoAmex, Paquete } from '@/types';
 
 export interface BatchStatusModalProps {
   isOpen: boolean;
@@ -12,7 +12,9 @@ export interface BatchStatusModalProps {
   setBatchTargetStatus: React.Dispatch<React.SetStateAction<TipoEstadoEntrega>>;
   batchTargetStatusAmex?: TipoEstadoAmex;
   setBatchTargetStatusAmex?: React.Dispatch<React.SetStateAction<TipoEstadoAmex>>;
-  onConfirm: () => Promise<void> | void;
+  onConfirm: (skipDelivered?: boolean) => Promise<void> | void;
+  paquetes?: Paquete[];
+  selectedIds?: string[];
 }
 
 export default function BatchStatusModal({
@@ -23,17 +25,31 @@ export default function BatchStatusModal({
   setBatchTargetStatus,
   batchTargetStatusAmex = 'en_almacen',
   setBatchTargetStatusAmex,
-  onConfirm
+  onConfirm,
+  paquetes = [],
+  selectedIds = []
 }: BatchStatusModalProps) {
   const [status, setStatus] = useState<'idle' | 'loading' | 'success'>('idle');
   const [isClosing, setIsClosing] = useState(false);
+  const [skipDelivered, setSkipDelivered] = useState(true);
 
   useEffect(() => {
     if (isOpen) {
       setStatus('idle');
       setIsClosing(false);
+      setSkipDelivered(true);
     }
   }, [isOpen]);
+
+  const deliveredCount = useMemo(() => {
+    if (!paquetes || !selectedIds || selectedIds.length === 0) return 0;
+    return paquetes.filter(p => selectedIds.includes(p.id) && p.estadoAmex === 'entregado').length;
+  }, [paquetes, selectedIds]);
+
+  const hasDeliveredConflict = batchTargetStatusAmex !== 'entregado' && deliveredCount > 0;
+  const effectiveCount = hasDeliveredConflict && skipDelivered
+    ? Math.max(0, selectedCount - deliveredCount)
+    : selectedCount;
 
   const handleClose = () => {
     if (status === 'loading') return;
@@ -48,7 +64,7 @@ export default function BatchStatusModal({
     if (status !== 'idle') return;
     try {
       setStatus('loading');
-      await onConfirm();
+      await onConfirm(skipDelivered);
       setStatus('success');
       // Mantener estado de éxito por 400ms para feedback visual
       setTimeout(() => {
@@ -71,7 +87,7 @@ export default function BatchStatusModal({
     <div className={`modal-backdrop ${isClosing ? 'modal-backdrop-closing' : ''}`}>
       <div
         className={`modal-dialog ${isClosing ? 'modal-dialog-closing' : ''}`}
-        style={{ maxWidth: '460px' }}
+        style={{ maxWidth: '480px' }}
       >
         <div className="modal-header">
           <span
@@ -138,6 +154,61 @@ export default function BatchStatusModal({
             </select>
           </div>
 
+          {/* Banner de protección si hay paquetes ya entregados */}
+          {hasDeliveredConflict && (
+            <div
+              style={{
+                background: '#fffbeb',
+                border: '1px solid #fde68a',
+                borderRadius: '8px',
+                padding: '10px 12px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px'
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  color: '#b45309',
+                  fontSize: '12px',
+                  fontWeight: 700
+                }}
+              >
+                <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                <span>Atención: {deliveredCount} de los {selectedCount} paquetes ya están ENTREGADOS</span>
+              </div>
+              <p style={{ margin: 0, fontSize: '11px', color: '#78350f' }}>
+                Para evitar que se sobreescriba su entrega accidentalmente, se recomienda omitirlos.
+              </p>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  fontSize: '11.5px',
+                  color: '#92400e',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  marginTop: '2px'
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={skipDelivered}
+                  disabled={status !== 'idle'}
+                  onChange={e => setSkipDelivered(e.target.checked)}
+                  style={{ accentColor: '#d97706', width: '15px', height: '15px', cursor: 'pointer' }}
+                />
+                <span>
+                  Omitir paquetes ya entregados (Actualiza solo {selectedCount - deliveredCount} pendientes)
+                </span>
+              </label>
+            </div>
+          )}
+
           <div
             className="modal-footer"
             style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}
@@ -202,16 +273,19 @@ export default function BatchStatusModal({
               <button
                 type="button"
                 onClick={handleApply}
+                disabled={effectiveCount === 0}
                 className="btn btn-primary"
                 style={{
                   fontWeight: 800,
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '6px',
+                  opacity: effectiveCount === 0 ? 0.6 : 1,
+                  cursor: effectiveCount === 0 ? 'not-allowed' : 'pointer',
                   transition: 'all 0.15s ease'
                 }}
               >
-                ✓ Aplicar a {selectedCount} paquetes
+                ✓ Aplicar a {effectiveCount} paquetes {hasDeliveredConflict && skipDelivered ? 'pendientes' : ''}
               </button>
             )}
           </div>

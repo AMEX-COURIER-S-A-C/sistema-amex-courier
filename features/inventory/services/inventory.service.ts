@@ -12,6 +12,11 @@ import {
 import { BatchShelfData, SinglePositionData, TransferFormData } from '../types';
 import { parseWarehouseLocation } from '@/lib/validations/locations';
 
+export interface BatchStatusChangeResult {
+  updatedList: Paquete[];
+  skippedList: Paquete[];
+}
+
 export const inventoryService = {
   // Sedes
   async getSedes(): Promise<AlmacenSede[]> {
@@ -269,29 +274,102 @@ export const inventoryService = {
     };
   },
 
-  // Cambio de estado masivo en lote (solo afecta a la columna de Estado AMEX)
+  // Verificación fresca contra la base de datos para detectar si otros usuarios ya entregaron paquetes
+  async checkDeliveredConflict(ids: string[]): Promise<{
+    deliveredIds: string[];
+    deliveredPackages: { id: string; numeroReciboBodega: string; nombreConsignatario: string; actualizadoEn?: string }[];
+  }> {
+    if (!ids || ids.length === 0) {
+      return { deliveredIds: [], deliveredPackages: [] };
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('paquetes')
+        .select('id, numero_recibo_bodega, nombre_consignatario, estado_amex, actualizado_en')
+        .in('id', ids)
+        .eq('estado_amex', 'entregado');
+
+      if (error || !data) {
+        return { deliveredIds: [], deliveredPackages: [] };
+      }
+
+      const deliveredPackages = data.map((d: any) => ({
+        id: d.id,
+        numeroReciboBodega: d.numero_recibo_bodega || '',
+        nombreConsignatario: d.nombre_consignatario || '',
+        actualizadoEn: d.actualizado_en || undefined
+      }));
+
+      return {
+        deliveredIds: deliveredPackages.map(d => d.id),
+        deliveredPackages
+      };
+    } catch (err) {
+      console.warn('Error checking delivered conflict in Supabase:', err);
+      return { deliveredIds: [], deliveredPackages: [] };
+    }
+  },
+
+  // Cambio de estado masivo en lote con protección anti-chancado de entregados
   async batchStatusChange(
     selectedIds: string[],
     arg2: Paquete[] | TipoEstadoEntrega,
     arg3: TipoEstadoAmex | Paquete[],
-    arg4?: TipoEstadoAmex | TipoEstadoEntrega
-  ): Promise<Paquete[]> {
+    arg4?: TipoEstadoAmex | TipoEstadoEntrega,
+    skipDelivered: boolean = true
+  ): Promise<BatchStatusChangeResult> {
     let paquetesList: Paquete[] = [];
     let targetStatusAmex: TipoEstadoAmex = 'en_almacen';
     let targetStatusTib: TipoEstadoEntrega | undefined = undefined;
 
     if (Array.isArray(arg2)) {
-      // Firma: batchStatusChange(selectedIds, paquetesList, targetStatusAmex, targetStatusTib?)
+      // Firma: batchStatusChange(selectedIds, paquetesList, targetStatusAmex, targetStatusTib?, skipDelivered?)
       paquetesList = arg2;
       const rawAmex = (arg3 as TipoEstadoAmex) || 'en_almacen';
       targetStatusAmex = rawAmex === 'recibido' ? 'en_almacen' : rawAmex;
       targetStatusTib = arg4 as TipoEstadoEntrega | undefined;
     } else {
-      // Firma previa: batchStatusChange(selectedIds, targetStatusTib, paquetesList, targetStatusAmex?)
+      // Firma previa: batchStatusChange(selectedIds, targetStatusTib, paquetesList, targetStatusAmex?, skipDelivered?)
       targetStatusTib = arg2 as TipoEstadoEntrega | undefined;
       paquetesList = (arg3 as Paquete[]) || [];
       const rawAmex = (arg4 as TipoEstadoAmex) || 'en_almacen';
       targetStatusAmex = rawAmex === 'recibido' ? 'en_almacen' : rawAmex;
+    }
+
+    // Si el estado destino NO es 'entregado' y se solicitó proteger entregados:
+    let idsToUpdate = [...selectedIds];
+    const skippedList: Paquete[] = [];
+
+    if (targetStatusAmex !== 'entregado' && skipDelivered) {
+      // 1. Filtrar los que en memoria ya son 'entregado'
+      const memoryDeliveredIds = new Set(
+        paquetesList.filter(p => p.estadoAmex === 'entregado').map(p => p.id)
+      );
+
+      // 2. Consultar en BD fresca si algún paquete fue marcado como entregado concurrentemente
+      const conflictCheck = await this.checkDeliveredConflict(selectedIds);
+      const dbDeliveredIds = new Set(conflictCheck.deliveredIds);
+
+      const allDeliveredIds = new Set([...memoryDeliveredIds, ...dbDeliveredIds]);
+
+      idsToUpdate = selectedIds.filter(id => !allDeliveredIds.has(id));
+
+      for (const id of allDeliveredIds) {
+        if (selectedIds.includes(id)) {
+          const pkg = paquetesList.find(p => p.id === id) || {
+            id,
+            numeroReciboBodega: conflictCheck.deliveredPackages.find(d => d.id === id)?.numeroReciboBodega || '',
+            nombreConsignatario: conflictCheck.deliveredPackages.find(d => d.id === id)?.nombreConsignatario || '',
+            estadoAmex: 'entregado'
+          } as Paquete;
+          skippedList.push(pkg);
+        }
+      }
+    }
+
+    if (idsToUpdate.length === 0) {
+      return { updatedList: [], skippedList };
     }
 
     const nowIso = new Date().toISOString();
@@ -304,12 +382,12 @@ export const inventoryService = {
       updatePayload.estado_tib = targetStatusTib;
     }
 
-    await supabase.from('paquetes').update(updatePayload).in('id', selectedIds);
+    await supabase.from('paquetes').update(updatePayload).in('id', idsToUpdate);
 
     const updatedList: Paquete[] = [];
     const kardexInserts = [];
 
-    for (const id of selectedIds) {
+    for (const id of idsToUpdate) {
       const pkg = paquetesList.find(p => p.id === id);
       if (pkg) {
         const updated: Paquete = {
@@ -337,7 +415,7 @@ export const inventoryService = {
       await supabase.from('movimientos_kardex').insert(kardexInserts);
     }
 
-    return updatedList;
+    return { updatedList, skippedList };
   },
 
   // Eliminación masiva en lote con Soft Delete y Auditoría

@@ -464,6 +464,34 @@ export function useInventoryData({
     const pis = parsed.piso || '';
     const pos = parsed.posicionEstante;
 
+    const targetStatusAmex = (editFormData.estadoAmex === 'recibido'
+      ? 'en_almacen'
+      : (editFormData.estadoAmex || selectedPackageForAction.estadoAmex || 'en_almacen')) as TipoEstadoAmex;
+
+    // Protección anti-chancado: si el paquete ya estaba ENTREGADO y se intenta cambiar a otro estado
+    if (selectedPackageForAction.estadoAmex === 'entregado' && targetStatusAmex !== 'entregado') {
+      const statusLabel =
+        targetStatusAmex === 'en_almacen'
+          ? 'En Almacén'
+          : targetStatusAmex === 'listo_recojo'
+          ? 'Listo Recojo'
+          : targetStatusAmex === 'en_ruta'
+          ? 'En Ruta'
+          : targetStatusAmex;
+
+      const confirmed = await confirmDialog({
+        title: '⚠️ Confirmar Reversión de Entrega',
+        message: `El paquete WR #${selectedPackageForAction.numeroReciboBodega} del cliente "${selectedPackageForAction.nombreConsignatario || 'Sin Nombre'}" ya fue marcado como ENTREGADO.\n\n¿Estás seguro de regresarlo al estado "${statusLabel}"? Esto reingresará el paquete al inventario activo.`,
+        confirmText: 'Sí, Revertir Entrega',
+        cancelText: 'Mantener como Entregado',
+        variant: 'warning'
+      });
+
+      if (!confirmed) {
+        return;
+      }
+    }
+
     const nowIso = new Date().toISOString();
     const updated: Paquete = {
       ...selectedPackageForAction,
@@ -472,7 +500,7 @@ export function useInventoryData({
       piso: pis,
       posicionEstante: pos,
       pesoKg: Number(editFormData.pesoKg || 0),
-      estadoAmex: (editFormData.estadoAmex === 'recibido' ? 'en_almacen' : (editFormData.estadoAmex || selectedPackageForAction.estadoAmex || 'en_almacen')) as TipoEstadoAmex,
+      estadoAmex: targetStatusAmex,
       actualizadoEn: nowIso
     };
 
@@ -609,17 +637,21 @@ export function useInventoryData({
   // Aplicar cambio de estado masivo directo (usado por modal de WRs)
   const handleBulkStatusChangeDirect = async (
     matchedIds: string[],
-    targetStatusAmex: TipoEstadoAmex
+    targetStatusAmex: TipoEstadoAmex,
+    targetStatusTib?: TipoEstadoEntrega,
+    skipDelivered: boolean = true
   ) => {
     if (matchedIds.length === 0) return;
     try {
       if (targetStatusAmex === 'entregado') {
         setRecentlyDeliveredIds(prev => Array.from(new Set([...prev, ...matchedIds])));
       }
-      const updatedList = await inventoryService.batchStatusChange(
+      const { updatedList, skippedList } = await inventoryService.batchStatusChange(
         matchedIds,
         paquetes,
-        targetStatusAmex
+        targetStatusAmex,
+        targetStatusTib,
+        skipDelivered
       );
       if (onUpdatePackage) {
         updatedList.forEach(p => onUpdatePackage(p));
@@ -641,7 +673,25 @@ export function useInventoryData({
           : targetStatusAmex === 'en_ruta'
           ? 'En Ruta'
           : targetStatusAmex;
-      toast.success('Actualización masiva completada', `Se cambiaron a "${statusLabel}" ${updatedList.length} paquetes con éxito.`);
+
+      if (skippedList.length > 0) {
+        if (updatedList.length === 0) {
+          toast.warning(
+            'Operación protegida',
+            `Los ${skippedList.length} paquetes ya figuran como ENTREGADOS y fueron protegidos.`
+          );
+        } else {
+          toast.success(
+            'Actualización parcial',
+            `Se cambiaron a "${statusLabel}" ${updatedList.length} paquetes. Se protegieron ${skippedList.length} ya entregados.`
+          );
+        }
+      } else {
+        toast.success(
+          'Actualización masiva completada',
+          `Se cambiaron a "${statusLabel}" ${updatedList.length} paquetes con éxito.`
+        );
+      }
 
       if (targetStatusAmex === 'entregado') {
         setTimeout(() => {
@@ -659,17 +709,19 @@ export function useInventoryData({
   };
 
   // Cambio de estado masivo en lote (por selección en tabla)
-  const handleBatchStatusChange = async () => {
+  const handleBatchStatusChange = async (skipDelivered = true) => {
     if (selectedIds.length === 0) return;
     const currentSelected = [...selectedIds];
     try {
       if (batchTargetStatusAmex === 'entregado') {
         setRecentlyDeliveredIds(prev => Array.from(new Set([...prev, ...currentSelected])));
       }
-      const updatedList = await inventoryService.batchStatusChange(
+      const { updatedList, skippedList } = await inventoryService.batchStatusChange(
         selectedIds,
         paquetes,
-        batchTargetStatusAmex
+        batchTargetStatusAmex,
+        undefined,
+        skipDelivered
       );
       if (onUpdatePackage) {
         updatedList.forEach(p => onUpdatePackage(p));
@@ -692,7 +744,25 @@ export function useInventoryData({
           : batchTargetStatusAmex === 'en_ruta'
           ? 'En Ruta'
           : batchTargetStatusAmex;
-      toast.success('Actualización masiva completada', `Se cambiaron a "${statusLabel}" ${updatedList.length} paquetes con éxito.`);
+
+      if (skippedList.length > 0) {
+        if (updatedList.length === 0) {
+          toast.warning(
+            'Operación protegida',
+            `Los ${skippedList.length} paquetes ya figuran como ENTREGADOS y fueron protegidos.`
+          );
+        } else {
+          toast.success(
+            'Actualización parcial',
+            `Se cambiaron a "${statusLabel}" ${updatedList.length} paquetes. Se protegieron ${skippedList.length} ya entregados.`
+          );
+        }
+      } else {
+        toast.success(
+          'Actualización masiva completada',
+          `Se cambiaron a "${statusLabel}" ${updatedList.length} paquetes con éxito.`
+        );
+      }
 
       if (batchTargetStatusAmex === 'entregado') {
         setTimeout(() => {

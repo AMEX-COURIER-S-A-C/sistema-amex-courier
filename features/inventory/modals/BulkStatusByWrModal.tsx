@@ -23,7 +23,8 @@ export interface BulkStatusByWrModalProps {
   onApply: (
     matchedIds: string[],
     targetStatusAmex: TipoEstadoAmex,
-    targetStatusTib?: TipoEstadoEntrega
+    targetStatusTib?: TipoEstadoEntrega,
+    skipDelivered?: boolean
   ) => Promise<void> | void;
 }
 
@@ -37,12 +38,14 @@ export default function BulkStatusByWrModal({
   const [targetStatusAmex, setTargetStatusAmex] = useState<TipoEstadoAmex>('entregado');
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'loading' | 'success'>('idle');
   const [isClosing, setIsClosing] = useState(false);
+  const [skipDelivered, setSkipDelivered] = useState(true);
   const [showMissingDetails, setShowMissingDetails] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setSubmitStatus('idle');
       setIsClosing(false);
+      setSkipDelivered(true);
     }
   }, [isOpen]);
 
@@ -114,6 +117,15 @@ export default function BulkStatusByWrModal({
     };
   }, [rawText, paquetes]);
 
+  const deliveredCount = useMemo(
+    () => matchedPackages.filter(p => p.estadoAmex === 'entregado').length,
+    [matchedPackages]
+  );
+  const hasDeliveredConflict = targetStatusAmex !== 'entregado' && deliveredCount > 0;
+  const effectiveCount = hasDeliveredConflict && skipDelivered
+    ? Math.max(0, matchedPackages.length - deliveredCount)
+    : matchedPackages.length;
+
   const handleClose = () => {
     if (submitStatus === 'loading') return;
     setIsClosing(true);
@@ -127,10 +139,22 @@ export default function BulkStatusByWrModal({
     e.preventDefault();
     if (matchedPackages.length === 0 || submitStatus !== 'idle') return;
 
+    const idsToApply = hasDeliveredConflict && skipDelivered
+      ? matchedPackages.filter(p => p.estadoAmex !== 'entregado').map(p => p.id)
+      : matchedPackages.map(p => p.id);
+
+    if (idsToApply.length === 0) {
+      await alertDialog({
+        title: 'Operación Protegida',
+        message: `Todos los ${deliveredCount} paquetes encontrados ya figuran como ENTREGADOS. No se realizó ningún cambio para proteger su historial.`,
+        variant: 'info'
+      });
+      return;
+    }
+
     try {
       setSubmitStatus('loading');
-      const matchedIds = matchedPackages.map(p => p.id);
-      await onApply(matchedIds, targetStatusAmex);
+      await onApply(idsToApply, targetStatusAmex, undefined, skipDelivered);
       setSubmitStatus('success');
       setTimeout(() => {
         setIsClosing(true);
@@ -360,13 +384,16 @@ export default function BulkStatusByWrModal({
                           style={{
                             fontSize: '10px',
                             fontWeight: 800,
-                            padding: '1px 5px',
+                            padding: '1px 6px',
                             borderRadius: '4px',
-                            background: '#e0f2fe',
-                            color: '#0369a1'
+                            background: pkg.estadoAmex === 'entregado' ? '#dcfce7' : '#e0f2fe',
+                            color: pkg.estadoAmex === 'entregado' ? '#15803d' : '#0369a1',
+                            border: pkg.estadoAmex === 'entregado' ? '1px solid #86efac' : 'none'
                           }}
                         >
-                          Actual: {(pkg.estadoAmex === 'recibido' ? 'EN ALMACÉN' : (pkg.estadoAmex || 'EN ALMACÉN')).toUpperCase()}
+                          {pkg.estadoAmex === 'entregado'
+                            ? '✅ YA ENTREGADO'
+                            : `Actual: ${(pkg.estadoAmex === 'recibido' ? 'EN ALMACÉN' : (pkg.estadoAmex || 'EN ALMACÉN')).toUpperCase()}`}
                         </span>
                       </div>
                     ))}
@@ -383,6 +410,7 @@ export default function BulkStatusByWrModal({
             </label>
             <select
               value={targetStatusAmex}
+              disabled={submitStatus !== 'idle'}
               onChange={e => setTargetStatusAmex(e.target.value as TipoEstadoAmex)}
               className="form-control"
               style={{
@@ -391,7 +419,9 @@ export default function BulkStatusByWrModal({
                 background: '#f0f9ff',
                 color: '#0369a1',
                 padding: '8px 12px',
-                borderRadius: '8px'
+                borderRadius: '8px',
+                cursor: submitStatus !== 'idle' ? 'not-allowed' : 'default',
+                opacity: submitStatus !== 'idle' ? 0.7 : 1
               }}
             >
               <option value="entregado">✅ Entregado al Cliente Final</option>
@@ -400,6 +430,61 @@ export default function BulkStatusByWrModal({
               <option value="en_almacen">📦 En Almacén (Ubicado en Estante)</option>
             </select>
           </div>
+
+          {/* Banner de protección si hay paquetes ya entregados */}
+          {hasDeliveredConflict && (
+            <div
+              style={{
+                background: '#fffbeb',
+                border: '1px solid #fde68a',
+                borderRadius: '8px',
+                padding: '10px 12px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px'
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  color: '#b45309',
+                  fontSize: '12px',
+                  fontWeight: 700
+                }}
+              >
+                <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                <span>Atención: {deliveredCount} de las {matchedPackages.length} guías ya figuran como ENTREGADAS</span>
+              </div>
+              <p style={{ margin: 0, fontSize: '11px', color: '#78350f' }}>
+                Para evitar que se sobreescriba su historial de entrega, se recomienda omitirlos de la actualización.
+              </p>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  fontSize: '11.5px',
+                  color: '#92400e',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  marginTop: '2px'
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={skipDelivered}
+                  disabled={submitStatus !== 'idle'}
+                  onChange={e => setSkipDelivered(e.target.checked)}
+                  style={{ accentColor: '#d97706', width: '15px', height: '15px', cursor: 'pointer' }}
+                />
+                <span>
+                  Proteger historial: Omitir {deliveredCount} paquetes ya entregados (Actualiza solo {effectiveCount} pendientes)
+                </span>
+              </label>
+            </div>
+          )}
 
           {/* Footer de Acciones */}
           <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
@@ -462,19 +547,19 @@ export default function BulkStatusByWrModal({
             {submitStatus === 'idle' && (
               <button
                 type="submit"
-                disabled={matchedPackages.length === 0}
+                disabled={matchedPackages.length === 0 || effectiveCount === 0}
                 className="btn btn-primary"
                 style={{
                   fontWeight: 800,
-                  opacity: matchedPackages.length === 0 ? 0.6 : 1,
-                  cursor: matchedPackages.length === 0 ? 'not-allowed' : 'pointer',
+                  opacity: matchedPackages.length === 0 || effectiveCount === 0 ? 0.6 : 1,
+                  cursor: matchedPackages.length === 0 || effectiveCount === 0 ? 'not-allowed' : 'pointer',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '6px',
                   transition: 'all 0.15s ease'
                 }}
               >
-                ✓ Aplicar cambio a {matchedPackages.length} paquete(s)
+                ✓ Aplicar cambio a {effectiveCount} paquete(s) {hasDeliveredConflict && skipDelivered ? 'pendientes' : ''}
               </button>
             )}
           </div>
