@@ -19,11 +19,12 @@ export interface ClientSummaryItem {
   wrs: string[];
   trackings: string[];
   tipos: string[];
+  items: EnAlmacenRow[];
 }
 
 /**
  * Filtra paquetes cuyo estado AMEX sea 'en_almacen' o 'recibido'
- * (los que constituyen la carga actualmente física en almacén).
+ * (los que constituyen la carga física en almacén).
  */
 export function selectEnAlmacen(paquetes: Paquete[]): EnAlmacenRow[] {
   if (!Array.isArray(paquetes)) return [];
@@ -60,7 +61,7 @@ export function selectEnAlmacen(paquetes: Paquete[]): EnAlmacenRow[] {
         wr: rawWr || 'SIN WR',
         tracking: rawTracking || '—',
         pesoKg,
-        tipo: rawTipo || 'SIN TIPO',
+        tipo: rawTipo || 'CAJA',
         posicion: rawPosicion || 'REC',
         fecha
       };
@@ -69,8 +70,8 @@ export function selectEnAlmacen(paquetes: Paquete[]): EnAlmacenRow[] {
 
 /**
  * Agrupa los paquetes en almacén por cliente, calculando el total de paquetes,
- * la suma de peso en kg y la lista completa de WRs y trackings asociados.
- * Ordenado descendentemente por cantidad de paquetes y peso.
+ * la suma de peso en kg y la lista detallada de cada paquete.
+ * Ordenado descendentemente por cantidad de paquetes (los que tienen más carga primero).
  */
 export function buildClientSummary(rows: EnAlmacenRow[]): ClientSummaryItem[] {
   if (!Array.isArray(rows) || rows.length === 0) return [];
@@ -81,6 +82,7 @@ export function buildClientSummary(rows: EnAlmacenRow[]): ClientSummaryItem[] {
     wrs: string[];
     trackings: Set<string>;
     tipos: Set<string>;
+    items: EnAlmacenRow[];
   }>();
 
   for (const r of rows) {
@@ -92,16 +94,18 @@ export function buildClientSummary(rows: EnAlmacenRow[]): ClientSummaryItem[] {
         pesoKg: 0,
         wrs: [],
         trackings: new Set<string>(),
-        tipos: new Set<string>()
+        tipos: new Set<string>(),
+        items: []
       };
       map.set(cli, current);
     }
 
     current.paquetes += 1;
     current.pesoKg += r.pesoKg > 0 ? r.pesoKg : 0;
+    current.items.push(r);
     if (r.wr && r.wr !== 'SIN WR') current.wrs.push(r.wr);
     if (r.tracking && r.tracking !== '—') current.trackings.add(r.tracking);
-    if (r.tipo && r.tipo !== 'SIN TIPO') current.tipos.add(r.tipo);
+    if (r.tipo) current.tipos.add(r.tipo);
   }
 
   const result: ClientSummaryItem[] = [];
@@ -112,11 +116,12 @@ export function buildClientSummary(rows: EnAlmacenRow[]): ClientSummaryItem[] {
       pesoKg: Math.round(data.pesoKg * 100) / 100,
       wrs: data.wrs,
       trackings: Array.from(data.trackings),
-      tipos: Array.from(data.tipos)
+      tipos: Array.from(data.tipos),
+      items: data.items
     });
   }
 
-  // Orden descendente por paquetes, luego por peso, luego por nombre
+  // Orden descendente por cantidad de paquetes, luego por peso, luego por nombre
   return result.sort((a, b) => {
     if (b.paquetes !== a.paquetes) {
       return b.paquetes - a.paquetes;
@@ -129,9 +134,8 @@ export function buildClientSummary(rows: EnAlmacenRow[]): ClientSummaryItem[] {
 }
 
 /**
- * Construye el archivo Excel (.xlsx) limpio y 100% estándar con 2 hojas:
- * 1. "Resumen por Cliente": Cantidad de clientes, paquetes por persona, peso total y lista de sus WRs.
- * 2. "Detalle de Paquetes": Lista completa de cada paquete físico en almacén.
+ * Construye el archivo Excel (.xlsx) con filas individuales para cada paquete
+ * y encabezados en Azul Marino Corporativo (NO negro).
  */
 export async function buildEnAlmacenReport(paquetes: Paquete[]): Promise<Blob> {
   const rows = selectEnAlmacen(paquetes);
@@ -143,46 +147,113 @@ export async function buildEnAlmacenReport(paquetes: Paquete[]): Promise<Blob> {
   const totalPaquetes = rows.length;
   const totalPeso = Math.round(rows.reduce((acc, r) => acc + r.pesoKg, 0) * 100) / 100;
 
-  // -------------------------------------------------------------
-  // HOJA 1: Resumen por Cliente (Personas, Cantidad y Cuáles Son)
-  // -------------------------------------------------------------
+  // Encabezado en Azul Marino Corporativo elegante (#1e40af) con texto blanco
   const headerStyle = {
     fontWeight: 'bold' as const,
     color: '#ffffff',
-    backgroundColor: '#0f172a'
+    backgroundColor: '#1e40af',
+    align: 'center' as const
   };
 
+  // -------------------------------------------------------------
+  // HOJA 1: "Carga por Cliente (Detallada)"
+  // Cada paquete en una fila individual, agrupado por cliente.
+  // -------------------------------------------------------------
   const headerRow1 = [
-    { value: 'N°', ...headerStyle, align: 'center' as const },
-    { value: 'Cliente / Consignatario', ...headerStyle },
-    { value: 'Cant. Paquetes', ...headerStyle, align: 'right' as const },
-    { value: 'Peso Total (Kg)', ...headerStyle, align: 'right' as const },
-    { value: 'Guías WR en Almacén', ...headerStyle },
-    { value: 'Trackings USA', ...headerStyle },
-    { value: 'Tipos de Empaque', ...headerStyle }
+    { value: 'N° Cliente', ...headerStyle },
+    { value: 'Cliente / Consignatario', ...headerStyle, align: 'left' as const },
+    { value: 'Cant. Total Pqtes', ...headerStyle },
+    { value: 'Pqte N°', ...headerStyle },
+    { value: 'Guía WR', ...headerStyle },
+    { value: 'Tracking USA', ...headerStyle },
+    { value: 'Peso (Kg)', ...headerStyle, align: 'right' as const },
+    { value: 'Tipo de Empaque', ...headerStyle },
+    { value: 'Posición WMS', ...headerStyle },
+    { value: 'Fecha Registro', ...headerStyle }
   ];
 
-  const dataRows1 = summary.map((item, idx) => [
-    { value: idx + 1, align: 'center' as const },
-    { value: item.cliente, fontWeight: 'bold' as const },
-    { value: item.paquetes, type: Number, format: '#,##0', align: 'right' as const },
-    { value: item.pesoKg, type: Number, format: '0.00', align: 'right' as const },
-    { value: item.wrs.join(', ') || '—' },
-    { value: item.trackings.join(', ') || '—' },
-    { value: item.tipos.join(', ') || '—' }
-  ]);
+  const dataRows1: any[] = [];
 
+  summary.forEach((clientGroup, clientIdx) => {
+    // Alternancia suave de color por cliente para distinguir fácilmente cada bloque
+    const rowBg = clientIdx % 2 === 1 ? '#f8fafc' : '#ffffff';
+
+    clientGroup.items.forEach((item, itemIdx) => {
+      dataRows1.push([
+        {
+          value: clientIdx + 1,
+          align: 'center' as const,
+          backgroundColor: rowBg
+        },
+        {
+          value: clientGroup.cliente,
+          fontWeight: itemIdx === 0 ? ('bold' as const) : undefined,
+          backgroundColor: rowBg
+        },
+        {
+          value: clientGroup.paquetes,
+          type: Number,
+          format: '#,##0',
+          align: 'center' as const,
+          backgroundColor: rowBg
+        },
+        {
+          value: `${itemIdx + 1} de ${clientGroup.paquetes}`,
+          align: 'center' as const,
+          backgroundColor: rowBg
+        },
+        {
+          value: item.wr,
+          align: 'center' as const,
+          fontWeight: 'bold' as const,
+          backgroundColor: rowBg
+        },
+        {
+          value: item.tracking,
+          backgroundColor: rowBg
+        },
+        {
+          value: item.pesoKg > 0 ? item.pesoKg : '',
+          type: Number,
+          format: '0.00',
+          align: 'right' as const,
+          backgroundColor: rowBg
+        },
+        {
+          value: item.tipo,
+          align: 'center' as const,
+          backgroundColor: rowBg
+        },
+        {
+          value: item.posicion || 'REC',
+          align: 'center' as const,
+          backgroundColor: rowBg
+        },
+        {
+          value: item.fecha || '—',
+          align: 'center' as const,
+          backgroundColor: rowBg
+        }
+      ]);
+    });
+  });
+
+  // Fila Totalizadora General al final de Hoja 1
   const totalStyle = {
     fontWeight: 'bold' as const,
-    backgroundColor: '#f1f5f9'
+    backgroundColor: '#dbeafe', // Azul suave
+    color: '#1e3a8a'
   };
 
   const totalRow1 = [
     { value: '', ...totalStyle },
     { value: `TOTAL GENERAL (${summary.length} CLIENTES)`, ...totalStyle },
-    { value: totalPaquetes, type: Number, format: '#,##0', ...totalStyle, align: 'right' as const },
+    { value: totalPaquetes, type: Number, format: '#,##0', ...totalStyle, align: 'center' as const },
+    { value: `${totalPaquetes} paquetes`, ...totalStyle, align: 'center' as const },
+    { value: '', ...totalStyle },
+    { value: '', ...totalStyle },
     { value: totalPeso, type: Number, format: '0.00', ...totalStyle, align: 'right' as const },
-    { value: `${totalPaquetes} guías en almacén`, ...totalStyle },
+    { value: '', ...totalStyle },
     { value: '', ...totalStyle },
     { value: '', ...totalStyle }
   ];
@@ -190,78 +261,68 @@ export async function buildEnAlmacenReport(paquetes: Paquete[]): Promise<Blob> {
   const sheet1Data = [headerRow1, ...dataRows1, totalRow1];
 
   const sheet1Columns = [
-    { width: 6 },   // N°
-    { width: 34 },  // Cliente
-    { width: 16 },  // Cant. Paquetes
-    { width: 16 },  // Peso Total
-    { width: 38 },  // Guías WR
-    { width: 34 },  // Trackings
-    { width: 22 }   // Tipos
+    { width: 12 },  // N° Cliente
+    { width: 36 },  // Cliente
+    { width: 18 },  // Cant. Total Pqtes
+    { width: 14 },  // Pqte N°
+    { width: 18 },  // Guía WR
+    { width: 28 },  // Tracking USA
+    { width: 14 },  // Peso (Kg)
+    { width: 18 },  // Tipo Empaque
+    { width: 16 },  // Posición WMS
+    { width: 16 }   // Fecha
   ];
 
   // -------------------------------------------------------------
-  // HOJA 2: Detalle de Paquetes en Almacén
+  // HOJA 2: "Resumen de Clientes" (Totales limpios por persona)
   // -------------------------------------------------------------
   const headerRow2 = [
-    { value: 'N°', ...headerStyle, align: 'center' as const },
-    { value: 'Cliente / Consignatario', ...headerStyle },
-    { value: 'Guía WR', ...headerStyle, align: 'center' as const },
-    { value: 'Tracking USA', ...headerStyle },
-    { value: 'Peso (Kg)', ...headerStyle, align: 'right' as const },
-    { value: 'Tipo de Empaque', ...headerStyle },
-    { value: 'Estado AMEX', ...headerStyle, align: 'center' as const },
-    { value: 'Posición WMS', ...headerStyle, align: 'center' as const },
-    { value: 'Fecha Registro', ...headerStyle, align: 'center' as const }
+    { value: 'N°', ...headerStyle },
+    { value: 'Cliente / Consignatario', ...headerStyle, align: 'left' as const },
+    { value: 'Cant. Paquetes', ...headerStyle, align: 'right' as const },
+    { value: 'Peso Total (Kg)', ...headerStyle, align: 'right' as const },
+    { value: 'Promedio Kg/Pqte', ...headerStyle, align: 'right' as const }
   ];
 
-  const dataRows2 = rows.map((r, idx) => [
-    { value: idx + 1, align: 'center' as const },
-    { value: r.cliente },
-    { value: r.wr, align: 'center' as const },
-    { value: r.tracking },
-    { value: r.pesoKg > 0 ? r.pesoKg : '', type: Number, format: '0.00', align: 'right' as const },
-    { value: r.tipo },
-    { value: 'En Almacén', align: 'center' as const },
-    { value: r.posicion || 'REC', align: 'center' as const },
-    { value: r.fecha || '—', align: 'center' as const }
-  ]);
+  const dataRows2 = summary.map((client, idx) => {
+    const avg = client.paquetes > 0 ? client.pesoKg / client.paquetes : 0;
+    return [
+      { value: idx + 1, align: 'center' as const },
+      { value: client.cliente, fontWeight: 'bold' as const },
+      { value: client.paquetes, type: Number, format: '#,##0', align: 'right' as const },
+      { value: client.pesoKg, type: Number, format: '0.00', align: 'right' as const },
+      { value: Math.round(avg * 100) / 100, type: Number, format: '0.00', align: 'right' as const }
+    ];
+  });
 
   const totalRow2 = [
     { value: '', ...totalStyle },
-    { value: `TOTAL: ${totalPaquetes} PAQUETES`, ...totalStyle },
-    { value: '', ...totalStyle },
-    { value: '', ...totalStyle },
+    { value: `TOTAL GENERAL (${summary.length} CLIENTES)`, ...totalStyle },
+    { value: totalPaquetes, type: Number, format: '#,##0', ...totalStyle, align: 'right' as const },
     { value: totalPeso, type: Number, format: '0.00', ...totalStyle, align: 'right' as const },
-    { value: '', ...totalStyle },
-    { value: '', ...totalStyle },
-    { value: '', ...totalStyle },
-    { value: '', ...totalStyle }
+    { value: Math.round((totalPeso / (totalPaquetes || 1)) * 100) / 100, type: Number, format: '0.00', ...totalStyle, align: 'right' as const }
   ];
 
   const sheet2Data = [headerRow2, ...dataRows2, totalRow2];
 
   const sheet2Columns = [
-    { width: 6 },   // N°
-    { width: 32 },  // Cliente
-    { width: 16 },  // Guía WR
-    { width: 26 },  // Tracking
-    { width: 14 },  // Peso (Kg)
-    { width: 18 },  // Tipo Empaque
-    { width: 16 },  // Estado AMEX
-    { width: 16 },  // Posición WMS
-    { width: 16 }   // Fecha
+    { width: 8 },   // N°
+    { width: 36 },  // Cliente
+    { width: 18 },  // Cant. Paquetes
+    { width: 18 },  // Peso Total
+    { width: 20 }   // Promedio
   ];
 
-  // Generar archivo nativo 100% estándar con write-excel-file
+  // Generar archivo estándar OpenXML
   const blob = await writeXlsxFile([
     {
       data: sheet1Data,
-      sheet: 'Resumen por Cliente',
+      sheet: 'Carga por Cliente',
       columns: sheet1Columns
     },
     {
       data: sheet2Data,
-      sheet: 'Detalle de Paquetes',
+      sheet: 'Totales por Cliente',
       columns: sheet2Columns
     }
   ]).toBlob();

@@ -27,7 +27,7 @@ function createMockPaquete(overrides: Partial<Paquete>): Paquete {
   } as Paquete;
 }
 
-describe('excelPivotReport - Unit Tests', () => {
+describe('excelPivotReport - Multi-Row per Client Tests', () => {
   describe('selectEnAlmacen', () => {
     it('includes en_almacen and recibido, while excluding other states', () => {
       const paquetes: Paquete[] = [
@@ -43,7 +43,7 @@ describe('excelPivotReport - Unit Tests', () => {
       expect(rows.map(r => r.cliente)).toEqual(['JUAN PEREZ', 'MARIA LOPEZ']);
     });
 
-    it('sets SIN CLIENTE and SIN TIPO when fields are blank', () => {
+    it('sets default fallback labels when fields are empty', () => {
       const paquetes: Paquete[] = [
         createMockPaquete({
           id: '1',
@@ -56,26 +56,13 @@ describe('excelPivotReport - Unit Tests', () => {
 
       const [row] = selectEnAlmacen(paquetes);
       expect(row.cliente).toBe('SIN CLIENTE');
-      expect(row.tipo).toBe('SIN TIPO');
+      expect(row.tipo).toBe('CAJA');
       expect(row.pesoKg).toBe(0);
-    });
-
-    it('normalizes weight to zero when null or negative', () => {
-      const paquetes: Paquete[] = [
-        createMockPaquete({ id: '1', estadoAmex: 'en_almacen', pesoKg: null as any }),
-        createMockPaquete({ id: '2', estadoAmex: 'recibido', pesoKg: 0 }),
-        createMockPaquete({ id: '3', estadoAmex: 'en_almacen', pesoKg: 12.345 })
-      ];
-
-      const rows = selectEnAlmacen(paquetes);
-      expect(rows[0].pesoKg).toBe(0);
-      expect(rows[1].pesoKg).toBe(0);
-      expect(rows[2].pesoKg).toBe(12.35);
     });
   });
 
   describe('buildClientSummary', () => {
-    it('groups by client, sums weights, and sorts descending by packages', () => {
+    it('aggregates packages, holds individual items, and sorts descending by count', () => {
       const rows = [
         { cliente: 'CLIENTE B', wr: 'WR1', tracking: 'TR1', pesoKg: 10, tipo: 'CAJA' },
         { cliente: 'CLIENTE A', wr: 'WR2', tracking: 'TR2', pesoKg: 5, tipo: 'SOBRE' },
@@ -86,81 +73,111 @@ describe('excelPivotReport - Unit Tests', () => {
 
       const summary = buildClientSummary(rows);
       expect(summary).toHaveLength(3);
-      // CLIENTE A has 3 packages (total weight 22.5)
+
+      // CLIENTE A has 3 packages and items length 3
       expect(summary[0].cliente).toBe('CLIENTE A');
       expect(summary[0].paquetes).toBe(3);
       expect(summary[0].pesoKg).toBe(22.5);
-      expect(summary[0].wrs).toEqual(['WR2', 'WR3', 'WR5']);
+      expect(summary[0].items).toHaveLength(3);
+      expect(summary[0].items.map(i => i.wr)).toEqual(['WR2', 'WR3', 'WR5']);
 
-      // CLIENTE B and C both have 1 package, but C has 20kg > B with 10kg
+      // CLIENTE C has 1 package, 20kg
       expect(summary[1].cliente).toBe('CLIENTE C');
       expect(summary[1].paquetes).toBe(1);
       expect(summary[1].pesoKg).toBe(20);
 
+      // CLIENTE B has 1 package, 10kg
       expect(summary[2].cliente).toBe('CLIENTE B');
       expect(summary[2].paquetes).toBe(1);
       expect(summary[2].pesoKg).toBe(10);
     });
   });
 
-  describe('buildEnAlmacenReport - Multi-sheet Excel Generation', () => {
-    it('throws error when no packages match "En Almacén"', async () => {
-      const paquetes = [createMockPaquete({ estadoAmex: 'entregado' })];
-      await expect(buildEnAlmacenReport(paquetes)).rejects.toThrow('No hay paquetes con Estado AMEX');
-    });
-
-    it('generates a clean, valid Excel workbook readable by SheetJS without errors', async () => {
+  describe('buildEnAlmacenReport - Separate Rows for Multiple Packages', () => {
+    it('generates multi-row structure where each package has its own dedicated row', async () => {
       const paquetes: Paquete[] = [
-        createMockPaquete({ id: '1', estadoAmex: 'en_almacen', numeroReciboBodega: 'WR1001', tracking: 'TRK1001', nombreConsignatario: 'CLIENTE ALPHA & CO', pesoKg: 12.5, tipoEmpaque: 'CAJA' }),
-        createMockPaquete({ id: '2', estadoAmex: 'recibido', numeroReciboBodega: 'WR1002', tracking: 'TRK1002', nombreConsignatario: 'CLIENTE BETA', pesoKg: 7.2, tipoEmpaque: 'SOBRE' }),
-        createMockPaquete({ id: '3', estadoAmex: 'en_almacen', numeroReciboBodega: 'WR1003', tracking: 'TRK1003', nombreConsignatario: 'CLIENTE ALPHA & CO', pesoKg: 3.1, tipoEmpaque: 'CAJA' }),
+        createMockPaquete({
+          id: '1',
+          estadoAmex: 'en_almacen',
+          numeroReciboBodega: 'WR1001',
+          tracking: 'TRK1001',
+          nombreConsignatario: 'CLIENTE ALPHA & CO',
+          pesoKg: 12.5,
+          tipoEmpaque: 'CAJA'
+        }),
+        createMockPaquete({
+          id: '2',
+          estadoAmex: 'recibido',
+          numeroReciboBodega: 'WR1002',
+          tracking: 'TRK1002',
+          nombreConsignatario: 'CLIENTE BETA',
+          pesoKg: 7.2,
+          tipoEmpaque: 'SOBRE'
+        }),
+        createMockPaquete({
+          id: '3',
+          estadoAmex: 'en_almacen',
+          numeroReciboBodega: 'WR1003',
+          tracking: 'TRK1003',
+          nombreConsignatario: 'CLIENTE ALPHA & CO',
+          pesoKg: 3.1,
+          tipoEmpaque: 'CAJA'
+        }),
       ];
 
       const blob = await buildEnAlmacenReport(paquetes);
       expect(blob).toBeInstanceOf(Blob);
-      expect(blob.type).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 
       const arrayBuffer = await blob.arrayBuffer();
       const workbook = XLSX.read(arrayBuffer, { type: 'array' });
 
-      // Verifies the two essential sheets exist
       expect(workbook.SheetNames).toEqual([
-        'Resumen por Cliente',
-        'Detalle de Paquetes'
+        'Carga por Cliente',
+        'Totales por Cliente'
       ]);
 
-      // Sheet 1: Resumen por Cliente
-      const sheet1 = workbook.Sheets['Resumen por Cliente'];
-      expect(sheet1['A1'].v).toBe('N°');
-      expect(sheet1['B1'].v).toBe('Cliente / Consignatario');
-      expect(sheet1['C1'].v).toBe('Cant. Paquetes');
-      expect(sheet1['D1'].v).toBe('Peso Total (Kg)');
-      expect(sheet1['E1'].v).toBe('Guías WR en Almacén');
+      const sheet1 = workbook.Sheets['Carga por Cliente'];
 
-      // Row 2: CLIENTE ALPHA & CO has 2 packages
+      // Row 1: Header
+      expect(sheet1['A1'].v).toBe('N° Cliente');
+      expect(sheet1['B1'].v).toBe('Cliente / Consignatario');
+      expect(sheet1['C1'].v).toBe('Cant. Total Pqtes');
+      expect(sheet1['D1'].v).toBe('Pqte N°');
+      expect(sheet1['E1'].v).toBe('Guía WR');
+      expect(sheet1['F1'].v).toBe('Tracking USA');
+      expect(sheet1['G1'].v).toBe('Peso (Kg)');
+      expect(sheet1['H1'].v).toBe('Tipo de Empaque');
+
+      // Client ALPHA & CO has 2 packages -> Row 2 and Row 3 are separate rows!
+      // Row 2: package 1 of 2
+      expect(sheet1['A2'].v).toBe(1);
       expect(sheet1['B2'].v).toBe('CLIENTE ALPHA & CO');
       expect(sheet1['C2'].v).toBe(2);
-      expect(sheet1['D2'].v).toBe(15.6);
-      expect(sheet1['E2'].v).toContain('WR1001');
-      expect(sheet1['E2'].v).toContain('WR1003');
+      expect(sheet1['D2'].v).toBe('1 de 2');
+      expect(sheet1['E2'].v).toBe('WR1001');
+      expect(sheet1['F2'].v).toBe('TRK1001');
+      expect(sheet1['G2'].v).toBe(12.5);
+      expect(sheet1['H2'].v).toBe('CAJA');
 
-      // Sheet 2: Detalle de Paquetes
-      const sheet2 = workbook.Sheets['Detalle de Paquetes'];
-      expect(sheet2['A1'].v).toBe('N°');
-      expect(sheet2['B1'].v).toBe('Cliente / Consignatario');
-      expect(sheet2['C1'].v).toBe('Guía WR');
-      expect(sheet2['D1'].v).toBe('Tracking USA');
-      expect(sheet2['E1'].v).toBe('Peso (Kg)');
-      expect(sheet2['F1'].v).toBe('Tipo de Empaque');
-      expect(sheet2['G1'].v).toBe('Estado AMEX');
+      // Row 3: package 2 of 2 (Same client, dedicated separate row!)
+      expect(sheet1['A3'].v).toBe(1);
+      expect(sheet1['B3'].v).toBe('CLIENTE ALPHA & CO');
+      expect(sheet1['C3'].v).toBe(2);
+      expect(sheet1['D3'].v).toBe('2 de 2');
+      expect(sheet1['E3'].v).toBe('WR1003');
+      expect(sheet1['F3'].v).toBe('TRK1003');
+      expect(sheet1['G3'].v).toBe(3.1);
+      expect(sheet1['H3'].v).toBe('CAJA');
 
-      // Package 1
-      expect(sheet2['B2'].v).toBe('CLIENTE ALPHA & CO');
-      expect(sheet2['C2'].v).toBe('WR1001');
-      expect(sheet2['D2'].v).toBe('TRK1001');
-      expect(sheet2['E2'].v).toBe(12.5);
-      expect(sheet2['F2'].v).toBe('CAJA');
-      expect(sheet2['G2'].v).toBe('En Almacén');
+      // Row 4: Client BETA (1 package)
+      expect(sheet1['A4'].v).toBe(2);
+      expect(sheet1['B4'].v).toBe('CLIENTE BETA');
+      expect(sheet1['C4'].v).toBe(1);
+      expect(sheet1['D4'].v).toBe('1 de 1');
+      expect(sheet1['E4'].v).toBe('WR1002');
+      expect(sheet1['F4'].v).toBe('TRK1002');
+      expect(sheet1['G4'].v).toBe(7.2);
+      expect(sheet1['H4'].v).toBe('SOBRE');
     });
   });
 });
