@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { authorizeUser, getUserDisplayName } from '@/lib/auth/guards';
 import { parseWarehouseLocation } from '@/lib/validations/locations';
+import { isValidWr } from '@/lib/validations/wr';
 
 export const dynamic = 'force-dynamic';
 
@@ -167,6 +168,19 @@ export async function POST(req: NextRequest) {
       if (p.tracking) foundCodesSet.add(p.tracking.toUpperCase());
     });
     const missingCodes = cleanCodes.filter((c) => !foundCodesSet.has(c));
+
+    // Validar formato estricto de códigos nuevos antes de intentar insertarlos en base de datos
+    if (autoCreateMissing && missingCodes.length > 0) {
+      const invalidMissing = missingCodes.filter((c) => !isValidWr(c));
+      if (invalidMissing.length > 0) {
+        return NextResponse.json(
+          {
+            error: `Se detectaron ${invalidMissing.length} código(s) con formato no admitido (deben tener 11 caracteres y empezar por WR, ej. WR000481893). Códigos observados: ${invalidMissing.slice(0, 5).join(', ')}${invalidMissing.length > 5 ? '...' : ''}`
+          },
+          { status: 400 }
+        );
+      }
+    }
 
     // Si no hay existentes y no se permite auto-crear los no encontrados
     if (paquetesToUpdate.length === 0 && (!autoCreateMissing || missingCodes.length === 0)) {

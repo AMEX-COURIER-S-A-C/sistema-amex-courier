@@ -22,6 +22,7 @@ import {
 import { Paquete } from '@/types';
 import * as XLSX from 'xlsx';
 import { alertDialog } from '@/lib/dialog';
+import { isValidWr, cleanWr, WR_LENGTH, WR_PREFIX } from '@/lib/validations/wr';
 
 export interface ScannerBulkLocationViewProps {
   paquetes?: Paquete[];
@@ -85,6 +86,45 @@ export default function ScannerBulkLocationView({
     const clean = Array.from(new Set(items.map((c) => c.toUpperCase())));
     return { rawCodes: items, uniqueCodes: clean };
   }, [rawText]);
+
+  // Auditoría en tiempo real de códigos anómalos (longitud distinta de 11 o formato no-WR)
+  const invalidCodes = useMemo(() => {
+    if (uniqueCodes.length === 0) return [];
+    return uniqueCodes
+      .map((code, index) => {
+        const clean = cleanWr(code);
+        if (!clean.startsWith(WR_PREFIX)) {
+          return {
+            index: index + 1,
+            code,
+            motivo: `No comienza con el prefijo obligatorio "${WR_PREFIX}"`,
+            longitud: code.length
+          };
+        }
+        if (clean.length !== WR_LENGTH) {
+          return {
+            index: index + 1,
+            code,
+            motivo: `Longitud incorrecta: tiene ${code.length} caracteres (debe tener exactamente ${WR_LENGTH})`,
+            longitud: code.length
+          };
+        }
+        if (!isValidWr(clean)) {
+          return {
+            index: index + 1,
+            code,
+            motivo: `Formato inválido (solo permite letras y números después de "${WR_PREFIX}")`,
+            longitud: code.length
+          };
+        }
+        return null;
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+  }, [uniqueCodes]);
+
+  const invalidCodesSet = useMemo(() => {
+    return new Set(invalidCodes.map((x) => x.code));
+  }, [invalidCodes]);
 
   // Cruce en memoria combinando paquetes locales y paquetes traídos de BD
   const combinedPackages = useMemo(() => {
@@ -187,6 +227,15 @@ export default function ScannerBulkLocationView({
         title: 'Asignación no válida',
         message: 'No hay paquetes válidos para asignar.',
         variant: 'warning'
+      });
+      return;
+    }
+
+    if (autoCreateMissing && invalidCodes.length > 0) {
+      await alertDialog({
+        title: 'Códigos no admitidos',
+        message: `Existen ${invalidCodes.length} código(s) que no cumplen la regla de 11 caracteres WR (ej. WR000481893). Por favor corrígelos en el cuadro de texto para continuar.`,
+        variant: 'danger'
       });
       return;
     }
@@ -460,6 +509,11 @@ export default function ScannerBulkLocationView({
                   {autoCreateMissing ? '✨ Nuevos a registrar' : '⚠️ No en BD'}: {missingCodes.length}
                 </span>
               )}
+              {invalidCodes.length > 0 && (
+                <span style={{ fontSize: '11.5px', background: '#fef2f2', color: '#b91c1c', border: '1px solid #fca5a5', padding: '3px 8px', borderRadius: '6px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <AlertTriangle className="w-3.5 h-3.5 text-rose-600" /> Formato inválido: {invalidCodes.length}
+                </span>
+              )}
             </div>
           </div>
 
@@ -688,7 +742,8 @@ export default function ScannerBulkLocationView({
             {/* Botón de Confirmación Principal */}
             {(() => {
               const totalToProcess = autoCreateMissing ? uniqueCodes.length : matchedPackages.length;
-              const canSubmit = !isSubmitting && totalToProcess > 0;
+              const hasInvalidCodes = autoCreateMissing && invalidCodes.length > 0;
+              const canSubmit = !isSubmitting && totalToProcess > 0 && !hasInvalidCodes;
 
               return (
                 <button
@@ -696,7 +751,7 @@ export default function ScannerBulkLocationView({
                   disabled={!canSubmit}
                   style={{
                     marginTop: '6px',
-                    background: !canSubmit ? '#94a3b8' : '#059669',
+                    background: hasInvalidCodes ? '#ef4444' : !canSubmit ? '#94a3b8' : '#059669',
                     color: '#ffffff',
                     border: 'none',
                     padding: '12px 20px',
@@ -708,12 +763,16 @@ export default function ScannerBulkLocationView({
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: '8px',
-                    boxShadow: !canSubmit ? 'none' : '0 4px 10px rgba(5, 150, 105, 0.3)'
+                    boxShadow: !canSubmit ? 'none' : hasInvalidCodes ? '0 4px 10px rgba(239, 68, 68, 0.3)' : '0 4px 10px rgba(5, 150, 105, 0.3)'
                   }}
                 >
                   {isSubmitting ? (
                     <>
                       <RefreshCw className="w-4 h-4 animate-spin" /> Guardando en Base de Datos Master...
+                    </>
+                  ) : hasInvalidCodes ? (
+                    <>
+                      <AlertTriangle className="w-4 h-4 text-white" /> Bloqueado: Corrige {invalidCodes.length} código(s) con error
                     </>
                   ) : (
                     <>
@@ -791,6 +850,84 @@ export default function ScannerBulkLocationView({
             </button>
           </div>
 
+          {/* TARJETA FIJA DE RESUMEN Y ADVERTENCIA DE ERRORES */}
+          {invalidCodes.length > 0 && (
+            <div
+              style={{
+                background: '#fef2f2',
+                border: '1.5px solid #f87171',
+                borderRadius: '10px',
+                padding: '12px 16px',
+                boxShadow: '0 4px 12px -2px rgba(220, 38, 38, 0.12)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#991b1b', fontWeight: 900, fontSize: '13px' }}>
+                  <AlertTriangle className="w-5 h-5 text-rose-600 flex-shrink-0" />
+                  <span>
+                    ⚠️ Advertencia: {invalidCodes.length} código(s) con formato no admitido
+                  </span>
+                </div>
+                <span
+                  style={{
+                    background: '#fee2e2',
+                    color: '#b91c1c',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    border: '1px solid #fca5a5'
+                  }}
+                >
+                  Bloqueo Activo
+                </span>
+              </div>
+
+              <p style={{ margin: 0, fontSize: '12px', color: '#7f1d1d', lineHeight: '1.4' }}>
+                La base de datos exige que cada guía WR tenga <strong>exactamente 11 caracteres</strong> (prefijo <code>WR</code> + 9 caracteres alfanuméricos). El botón de asignación permanecerá bloqueado hasta corregir o borrar estos códigos en el cuadro de texto:
+              </p>
+
+              <div
+                style={{
+                  maxHeight: '120px',
+                  overflowY: 'auto',
+                  background: '#ffffff',
+                  border: '1px solid #fecdd3',
+                  borderRadius: '6px',
+                  padding: '6px 10px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '4px'
+                }}
+              >
+                {invalidCodes.map((item) => (
+                  <div
+                    key={`${item.code}-${item.index}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      fontSize: '11.5px',
+                      padding: '3px 4px',
+                      borderBottom: '1px dashed #ffe4e6'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ color: '#94a3b8', fontWeight: 700, fontSize: '10.5px' }}>#{item.index}</span>
+                      <strong style={{ fontFamily: 'monospace', color: '#dc2626' }}>{item.code}</strong>
+                    </div>
+                    <span style={{ color: '#991b1b', fontSize: '11px', fontWeight: 600 }}>
+                      {item.motivo}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* TAB 1: PAQUETES LISTOS PARA ASIGNAR */}
           {activeTabPreview === 'matched' && (
             <div style={{ background: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
@@ -829,15 +966,26 @@ export default function ScannerBulkLocationView({
                       {(autoCreateMissing ? uniqueCodes : matchedPackages.map((p) => p.numeroReciboBodega || p.tracking || '')).map((code, idx) => {
                         const pkg = combinedPackages.get(code);
                         const isNew = !pkg;
+                        const isInvalid = invalidCodesSet.has(code);
 
                         return (
-                          <tr key={code || idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                            <td style={{ padding: '8px 12px', color: '#94a3b8', fontWeight: 700 }}>{idx + 1}</td>
-                            <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontWeight: 800, color: '#1e40af' }}>
+                          <tr
+                            key={code || idx}
+                            style={{
+                              borderBottom: '1px solid #f1f5f9',
+                              background: isInvalid ? '#fff1f2' : undefined
+                            }}
+                          >
+                            <td style={{ padding: '8px 12px', color: isInvalid ? '#dc2626' : '#94a3b8', fontWeight: 700 }}>{idx + 1}</td>
+                            <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontWeight: 800, color: isInvalid ? '#dc2626' : '#1e40af' }}>
                               {code}
                             </td>
                             <td style={{ padding: '8px 12px' }}>
-                              {isNew ? (
+                              {isInvalid ? (
+                                <span style={{ background: '#fee2e2', color: '#991b1b', border: '1px solid #fca5a5', fontSize: '10.5px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                  <AlertTriangle className="w-3 h-3 text-rose-600" /> Inválido ({code.length} car.)
+                                </span>
+                              ) : isNew ? (
                                 <span style={{ background: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0', fontSize: '10.5px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px' }}>
                                   ✨ Nuevo Ingreso
                                 </span>
@@ -949,23 +1097,31 @@ export default function ScannerBulkLocationView({
                       : 'Estos códigos no figuran en la base de datos de paquetes y se omitirán al asignar:'}
                   </p>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                    {missingCodes.map((code, idx) => (
-                      <span
-                        key={idx}
-                        style={{
-                          fontFamily: 'monospace',
-                          fontSize: '11.5px',
-                          fontWeight: 700,
-                          background: autoCreateMissing ? '#ecfdf5' : '#fee2e2',
-                          color: autoCreateMissing ? '#065f46' : '#b91c1c',
-                          border: autoCreateMissing ? '1px solid #a7f3d0' : '1px solid #fca5a5',
-                          padding: '2px 8px',
-                          borderRadius: '4px'
-                        }}
-                      >
-                        {code}
-                      </span>
-                    ))}
+                    {missingCodes.map((code, idx) => {
+                      const isInvalid = invalidCodesSet.has(code);
+                      return (
+                        <span
+                          key={idx}
+                          style={{
+                            fontFamily: 'monospace',
+                            fontSize: '11.5px',
+                            fontWeight: 700,
+                            background: isInvalid ? '#fee2e2' : autoCreateMissing ? '#ecfdf5' : '#fee2e2',
+                            color: isInvalid ? '#b91c1c' : autoCreateMissing ? '#065f46' : '#b91c1c',
+                            border: isInvalid ? '1.5px solid #f87171' : autoCreateMissing ? '1px solid #a7f3d0' : '1px solid #fca5a5',
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          {isInvalid && <AlertTriangle className="w-3 h-3 text-rose-600" />}
+                          {code}
+                          {isInvalid && <span style={{ fontSize: '10px', opacity: 0.85 }}>({code.length} car.)</span>}
+                        </span>
+                      );
+                    })}
                   </div>
                 </div>
               )}
