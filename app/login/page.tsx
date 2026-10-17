@@ -75,11 +75,17 @@ export default function LoginPage() {
       return;
     }
     setIsLoading(true);
+    setErrorMessage(null);
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://www.sistema-amex.online'}/login?recovered=true`
+      const res = await fetch('/api/auth/recuperar-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() }),
       });
-      if (error) throw error;
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al enviar recuperación');
+      }
       setRecoverySent(true);
       setErrorMessage(null);
     } catch (err: unknown) {
