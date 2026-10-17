@@ -195,14 +195,14 @@ export default function TibMiamiRadarView() {
       alertDialog({
         title: '¡Reporte Enviado al Correo!',
         message: `El reporte matutino de Miami con archivo Excel adjunto (${result.kpis.totalBultos} bultos, ${result.kpis.pesoTotalLbs.toFixed(1)} lbs) fue enviado exitosamente a:\n• sistemaamexcourier@gmail.com\n• maldonado4250@gmail.com`,
-        type: 'success',
+        variant: 'info',
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error inesperado al enviar correo';
       alertDialog({
         title: 'Error al Enviar Reporte',
         message: msg,
-        type: 'error',
+        variant: 'danger',
       });
     } finally {
       setIsSendingEmail(false);
