@@ -10,12 +10,10 @@ describe('Cambio de Contraseña Seguro Unit Tests', () => {
   });
 
   it('valida que las dos contraseñas coincidan con precisión', () => {
-    const pass1 = 'MiClaveSegura2026';
-    const pass2 = 'MiClaveSegura2026';
-    const pass3 = 'MiClaveSegura2026 ';
-
-    expect(pass1 === pass2).toBe(true);
-    expect(pass1 === pass3).toBe(false);
+    const areMatching = (p1: string, p2: string) => p1 === p2;
+    expect(areMatching('MiClaveSegura2026', 'MiClaveSegura2026')).toBe(true);
+    expect(areMatching('MiClaveSegura2026', 'MiClaveSegura2026 ')).toBe(false);
+    expect(areMatching('MiClaveSegura2026', 'miclavesegura2026')).toBe(false);
   });
 
   it('valida que se requiera el accessToken para autenticar el cambio administrativo', () => {
