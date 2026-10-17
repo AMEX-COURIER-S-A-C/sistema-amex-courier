@@ -16,10 +16,12 @@ import {
   Database,
   ArrowRight,
   History,
-  Sparkles
+  Sparkles,
+  Radio
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import ManifiestosTibHistorial from './ManifiestosTibHistorial';
+import TibMiamiRadarView from './TibMiamiRadarView';
 import { alertDialog } from '@/lib/dialog';
 
 interface HeaderData {
@@ -59,7 +61,7 @@ interface ManifestRow {
 }
 
 export default function ManifiestosTibTab({ onRefreshData }: { onRefreshData?: () => Promise<void> }) {
-  const [activeTab, setActiveTab] = useState<'extractor' | 'historial'>('extractor');
+  const [activeTab, setActiveTab] = useState<'extractor' | 'radar-miami' | 'historial'>('extractor');
   const [file, setFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState<string>('');
@@ -327,7 +329,30 @@ export default function ManifiestosTibTab({ onRefreshData }: { onRefreshData?: (
           }}
         >
           <Sparkles className="w-4 h-4 text-blue-600" />
-          Digitalizar Manifiesto
+          17.1 Digitalizar Manifiesto
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('radar-miami')}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '8px 18px',
+            borderRadius: '8px',
+            border: 'none',
+            fontWeight: 800,
+            fontSize: '13px',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+            background: activeTab === 'radar-miami' ? '#ffffff' : 'transparent',
+            color: activeTab === 'radar-miami' ? '#0f172a' : '#64748b',
+            boxShadow: activeTab === 'radar-miami' ? '0 2px 4px rgba(0,0,0,0.06)' : 'none',
+          }}
+        >
+          <Radio className="w-4 h-4 text-emerald-600 animate-pulse" />
+          17.2 📡 Recepción Diaria Miami
         </button>
 
         <button
@@ -350,7 +375,7 @@ export default function ManifiestosTibTab({ onRefreshData }: { onRefreshData?: (
           }}
         >
           <History className="w-4 h-4 text-violet-600" />
-          Historial & Auditoría
+          17.3 Historial & Auditoría
         </button>
       </div>
 
@@ -402,6 +427,8 @@ export default function ManifiestosTibTab({ onRefreshData }: { onRefreshData?: (
 
       {activeTab === 'historial' ? (
         <ManifiestosTibHistorial onRefreshParent={onRefreshData} />
+      ) : activeTab === 'radar-miami' ? (
+        <TibMiamiRadarView />
       ) : (
         <>
           {/* Zona de Carga de Documento */}

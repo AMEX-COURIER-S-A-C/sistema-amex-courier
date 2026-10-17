@@ -100,6 +100,36 @@ export const COBROS_SUBMODULES: SubmoduleMetadata[] = [
   }
 ];
 
+export const MANIFIESTOS_TIB_SUBMODULES: SubmoduleMetadata[] = [
+  {
+    id: 'extractor',
+    tabId: 'manifiestos-tib',
+    label: '17.1 📄 Digitalizador',
+    shortLabel: 'Digitalizador',
+    path: '/manifiestos-tib',
+    icon: 'fa-solid fa-file-invoice',
+    accentColor: '#3b82f6'
+  },
+  {
+    id: 'radar-miami',
+    tabId: 'manifiestos-tib-miami',
+    label: '17.2 📡 Recepción Diaria Miami',
+    shortLabel: 'Recepción Miami',
+    path: '/manifiestos-tib/miami',
+    icon: 'fa-solid fa-tower-broadcast',
+    accentColor: '#10b981'
+  },
+  {
+    id: 'historial',
+    tabId: 'manifiestos-tib-historial',
+    label: '17.3 🕒 Historial & Auditoría',
+    shortLabel: 'Historial',
+    path: '/manifiestos-tib/historial',
+    icon: 'fa-solid fa-clock-rotate-left',
+    accentColor: '#8b5cf6'
+  }
+];
+
 export const SYSTEM_MODULES: ModuleMetadata[] = [
   {
     id: 'dashboard',
@@ -306,7 +336,8 @@ export const SYSTEM_MODULES: ModuleMetadata[] = [
     icon: 'fa-solid fa-file-invoice',
     category: 'documentacion',
     permissionKey: 'manifiestos_tib',
-    permissionAliases: ['manifiestos-tib', 'manifiestos']
+    permissionAliases: ['manifiestos-tib', 'manifiestos', 'manifiestos-tib-miami', 'manifiestos-tib-historial'],
+    submodules: MANIFIESTOS_TIB_SUBMODULES
   },
   {
     id: 'configuracion',
@@ -341,6 +372,14 @@ export function getCobrosSubmoduleByTabId(tabId: string): SubmoduleMetadata | un
 
 export function getCobrosSubmoduleById(id: string): SubmoduleMetadata | undefined {
   return COBROS_SUBMODULES.find(s => s.id === id);
+}
+
+export function getManifiestosTibSubmoduleByTabId(tabId: string): SubmoduleMetadata | undefined {
+  return MANIFIESTOS_TIB_SUBMODULES.find(s => s.tabId === tabId);
+}
+
+export function getManifiestosTibSubmoduleById(id: string): SubmoduleMetadata | undefined {
+  return MANIFIESTOS_TIB_SUBMODULES.find(s => s.id === id);
 }
 
 export interface UserAccessContext {
