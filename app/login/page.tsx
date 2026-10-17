@@ -10,9 +10,19 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [recoverySent, setRecoverySent] = useState(false);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
   const [isRecoveryMode, setIsRecoveryMode] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return;
+    const timer = setInterval(() => {
+      setCooldownSeconds((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [cooldownSeconds]);
+
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -71,7 +81,10 @@ export default function LoginPage() {
 
   const handlePasswordRecovery = async () => {
     if (!email.trim()) {
-      setErrorMessage('Ingresa tu correo electrónico para enviarte el enlace de recuperación.');
+      setErrorMessage('Ingresa tu correo electrónico corporativo para enviarte el enlace de recuperación.');
+      return;
+    }
+    if (cooldownSeconds > 0) {
       return;
     }
     setIsLoading(true);
@@ -84,9 +97,13 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) {
+        if (res.status === 429 && data.retryAfter) {
+          setCooldownSeconds(data.retryAfter);
+        }
         throw new Error(data.error || 'Error al enviar recuperación');
       }
       setRecoverySent(true);
+      setCooldownSeconds(45);
       setErrorMessage(null);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al enviar recuperación';
@@ -195,20 +212,25 @@ export default function LoginPage() {
         {recoverySent && (
           <div
             style={{
-              background: 'rgba(16, 185, 129, 0.15)',
+              background: 'rgba(16, 185, 129, 0.12)',
               border: '1px solid rgba(16, 185, 129, 0.35)',
               color: '#86efac',
-              padding: '12px 14px',
-              borderRadius: '8px',
+              padding: '14px 16px',
+              borderRadius: '10px',
               fontSize: '13px',
               marginBottom: '20px',
               display: 'flex',
-              alignItems: 'center',
-              gap: '8px'
+              flexDirection: 'column',
+              gap: '6px'
             }}
           >
-            <i className="fa-solid fa-circle-check"></i>
-            Enlace de recuperación enviado. Revisa tu bandeja de entrada.
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800 }}>
+              <i className="fa-solid fa-circle-check" style={{ color: '#34d399' }}></i>
+              <span>Enlace enviado a tu correo</span>
+            </div>
+            <p style={{ margin: 0, fontSize: '12px', color: '#cbd5e1', lineHeight: 1.5 }}>
+              Hemos enviado un enlace seguro a <strong>{email}</strong>. Revisa tu bandeja de entrada o spam. El enlace caduca en 60 minutos.
+            </p>
           </div>
         )}
 
@@ -259,17 +281,19 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={handlePasswordRecovery}
+                  disabled={isLoading || cooldownSeconds > 0}
                   style={{
                     background: 'none',
                     border: 'none',
-                    color: '#38bdf8',
+                    color: cooldownSeconds > 0 ? '#94a3b8' : '#38bdf8',
                     fontSize: '11.5px',
                     fontWeight: 600,
-                    cursor: 'pointer',
-                    padding: 0
+                    cursor: cooldownSeconds > 0 ? 'not-allowed' : 'pointer',
+                    padding: 0,
+                    transition: 'color 0.2s ease'
                   }}
                 >
-                  ¿Olvidaste tu contraseña?
+                  {cooldownSeconds > 0 ? `Reenviar en ${cooldownSeconds}s` : '¿Olvidaste tu contraseña?'}
                 </button>
               )}
             </div>
