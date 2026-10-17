@@ -19,6 +19,7 @@ import {
   Image as ImageIcon,
   FileText,
   MapPin,
+  Mail,
   X
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -172,6 +173,42 @@ export default function TibMiamiRadarView() {
     XLSX.writeFile(wb, fileName);
   };
 
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+
+  // Enviar reporte diario con Excel adjunto a Gerencia
+  const handleSendEmailReport = async () => {
+    if (!data?.paquetes || data.paquetes.length === 0) return;
+    setIsSendingEmail(true);
+    try {
+      const res = await fetch('/api/tib/recepcion-diaria/enviar-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: selectedDate,
+          recipients: ['sistemaamexcourier@gmail.com', 'maldonado4250@gmail.com'],
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result.error || 'Error al enviar el reporte por correo.');
+      }
+      alertDialog({
+        title: '¡Reporte Enviado al Correo!',
+        message: `El reporte matutino de Miami con archivo Excel adjunto (${result.kpis.totalBultos} bultos, ${result.kpis.pesoTotalLbs.toFixed(1)} lbs) fue enviado exitosamente a:\n• sistemaamexcourier@gmail.com\n• maldonado4250@gmail.com`,
+        type: 'success',
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error inesperado al enviar correo';
+      alertDialog({
+        title: 'Error al Enviar Reporte',
+        message: msg,
+        type: 'error',
+      });
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '1440px', margin: '0 auto' }}>
       
@@ -278,6 +315,31 @@ export default function TibMiamiRadarView() {
             }}
           >
             <Download className="w-4 h-4" /> Exportar a Excel
+          </button>
+
+          <button
+            type="button"
+            onClick={handleSendEmailReport}
+            disabled={!data || data.paquetes.length === 0 || isSendingEmail}
+            title="Enviar este reporte con archivo Excel adjunto a sistemaamexcourier@gmail.com y maldonado4250@gmail.com"
+            style={{
+              background: isSendingEmail ? '#475569' : '#0284c7',
+              color: '#ffffff',
+              border: 'none',
+              padding: '9px 16px',
+              borderRadius: '8px',
+              fontSize: '12.5px',
+              fontWeight: 900,
+              cursor: (!data || data.paquetes.length === 0 || isSendingEmail) ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 4px 12px rgba(2, 132, 199, 0.35)',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <Mail className={`w-4 h-4 ${isSendingEmail ? 'animate-spin' : ''}`} />
+            {isSendingEmail ? 'Enviando Reporte...' : '📧 Enviar Resumen al Correo'}
           </button>
         </div>
       </div>

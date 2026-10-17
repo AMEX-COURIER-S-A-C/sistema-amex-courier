@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { authorizeAdmin } from '@/lib/auth/guards';
+import { sendUserWelcomeEmail } from '@/lib/email/welcomeUser';
 
 async function requireAdmin() {
   const auth = await authorizeAdmin();
@@ -165,7 +166,68 @@ export async function POST(request: Request) {
         activo: true
       });
 
-      return NextResponse.json({ success: true, user: newUser });
+      // Enviar correo formal de bienvenida con enlace seguro para definir contraseña
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://sistema-amex.online';
+      let welcomeSent = false;
+      try {
+        const { data: linkData } = await supabase.auth.admin.generateLink({
+          type: 'recovery',
+          email: email.trim().toLowerCase(),
+          options: {
+            redirectTo: `${appUrl}/login?recovered=true`,
+          },
+        });
+
+        const activationLink = linkData?.properties?.action_link || `${appUrl}/login`;
+        const emailRes = await sendUserWelcomeEmail({
+          email: email.trim().toLowerCase(),
+          nombreCompleto: nombre_completo.trim(),
+          rolNombre,
+          activationLink,
+        });
+        welcomeSent = Boolean(emailRes.success);
+      } catch (emailErr) {
+        console.warn('⚠️ No se pudo enviar el correo de bienvenida:', emailErr);
+      }
+
+      return NextResponse.json({ success: true, user: newUser, welcome_sent: welcomeSent });
+    }
+
+    // Acción 5: Reenviar Invitación / Bienvenida al colaborador
+    if (action === 'resend_invite') {
+      const { email, nombre_completo, rol_nombre } = body;
+      const cleanEmail = (email || '').trim().toLowerCase();
+      if (!cleanEmail) {
+        return NextResponse.json({ error: 'El correo del colaborador es requerido' }, { status: 400 });
+      }
+
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://sistema-amex.online';
+      const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+        type: 'recovery',
+        email: cleanEmail,
+        options: {
+          redirectTo: `${appUrl}/login?recovered=true`,
+        },
+      });
+
+      if (linkError) throw linkError;
+      const activationLink = linkData?.properties?.action_link || `${appUrl}/login`;
+
+      const emailRes = await sendUserWelcomeEmail({
+        email: cleanEmail,
+        nombreCompleto: nombre_completo || cleanEmail.split('@')[0],
+        rolNombre: rol_nombre || 'Colaborador AMEX',
+        activationLink,
+      });
+
+      if (!emailRes.success) {
+        return NextResponse.json({ error: emailRes.error || 'Error al enviar correo de bienvenida' }, { status: 500 });
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Correo de bienvenida y activación reenviado exitosamente a ${cleanEmail}`,
+      });
     }
 
     // Acción 4: Actualizar rol, nombre, permisos o estado de usuario

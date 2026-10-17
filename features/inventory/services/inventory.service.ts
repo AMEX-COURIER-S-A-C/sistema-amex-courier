@@ -366,10 +366,61 @@ export const inventoryService = {
           skippedList.push(pkg);
         }
       }
+
+      // 🛡️ Alerta de Seguridad: Escudo Anti-Chancado
+      if (skippedList.length > 0 && typeof window !== 'undefined') {
+        try {
+          fetch('/api/admin/alertas-seguridad', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'anti_chancado_entregado',
+              detalles: {
+                totalPaquetes: skippedList.length,
+                accion: `Intento de cambio masivo a estado '${targetStatusAmex}' bloqueado por escudo anti-chancado`,
+                paquetes: skippedList.map(p => ({
+                  wr: p.numeroReciboBodega,
+                  consignatario: p.nombreConsignatario,
+                  estadoPrevio: 'ENTREGADO',
+                  estadoIntentado: targetStatusAmex.toUpperCase(),
+                })),
+              },
+            }),
+          }).catch(() => {});
+        } catch {}
+      }
     }
 
     if (idsToUpdate.length === 0) {
       return { updatedList: [], skippedList };
+    }
+
+    // 🌙 Alerta de Seguridad: Movimiento Masivo Fuera del Horario Laboral (antes de 7am o después de 9pm)
+    if (typeof window !== 'undefined' && idsToUpdate.length >= 5) {
+      try {
+        const currentHourLima = parseInt(
+          new Intl.DateTimeFormat('es-PE', {
+            timeZone: 'America/Lima',
+            hour: 'numeric',
+            hour12: false,
+          }).format(new Date()),
+          10
+        );
+        const isOffHours = currentHourLima < 7 || currentHourLima >= 21;
+        if (isOffHours) {
+          fetch('/api/admin/alertas-seguridad', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'movimiento_fuera_horario',
+              detalles: {
+                totalPaquetes: idsToUpdate.length,
+                accion: `Movimiento masivo de ${idsToUpdate.length} paquetes a estado '${targetStatusAmex}' ejecutado en horario nocturno (${currentHourLima}:00 hrs Lima)`,
+              },
+            }),
+          }).catch(() => {});
+        }
+      } catch {}
     }
 
     const nowIso = new Date().toISOString();

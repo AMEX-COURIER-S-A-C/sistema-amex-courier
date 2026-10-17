@@ -771,6 +771,8 @@ export default function AdminUsersTab({ currentUser }: AdminUsersTabProps = {}) 
       showToast(
         isEdit
           ? `✓ Permisos guardados con éxito. Se reinició la sesión de ${targetUserNombre} para aplicar los cambios inmediatamente.`
+          : j.welcome_sent
+          ? `✓ Usuario creado con éxito. Se envió el correo de bienvenida a ${uForm.email} para definir su contraseña.`
           : '✓ Usuario creado con accesos exitosamente.',
         true
       );
@@ -780,6 +782,36 @@ export default function AdminUsersTab({ currentUser }: AdminUsersTabProps = {}) 
       showToast((e as Error).message, false);
     } finally {
       setSavingU(false);
+    }
+  }
+
+  async function handleResendInvite(u: UserRow) {
+    if (!u.email) return;
+    const ok = await confirmDialog({
+      title: '📧 Reenviar Correo de Bienvenida',
+      message: `¿Deseas enviar un correo de bienvenida y activación a ${u.nombre_completo} (${u.email})?\n\nEl colaborador recibirá un enlace seguro con acceso institucional para definir o actualizar su contraseña por primera vez.`,
+      confirmText: 'Sí, Enviar Correo',
+      cancelText: 'Cancelar',
+    });
+    if (!ok) return;
+
+    try {
+      showToast('Enviando correo formal de bienvenida...', true);
+      const res = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'resend_invite',
+          email: u.email,
+          nombre_completo: u.nombre_completo,
+          rol_nombre: u.rol_nombre,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error al enviar correo de bienvenida');
+      showToast(`✓ Correo de bienvenida enviado exitosamente a ${u.email}`, true);
+    } catch (err) {
+      showToast((err as Error).message, false);
     }
   }
 
@@ -1559,6 +1591,28 @@ export default function AdminUsersTab({ currentUser }: AdminUsersTabProps = {}) 
                                     }}
                                   >
                                     <i className="fa-solid fa-pen" />
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleResendInvite(u)}
+                                    title="Enviar correo formal de bienvenida e invitación para definir contraseña"
+                                    style={{
+                                      width: '36px',
+                                      height: '36px',
+                                      borderRadius: '9px',
+                                      background: '#ecfdf5',
+                                      border: '1px solid #a7f3d0',
+                                      color: '#059669',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      fontSize: '13px',
+                                      transition: 'all 0.15s ease',
+                                    }}
+                                  >
+                                    <i className="fa-solid fa-envelope" />
                                   </button>
 
                                   <button

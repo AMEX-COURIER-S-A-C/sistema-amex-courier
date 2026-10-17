@@ -381,6 +381,23 @@ export async function syncCompletedExcelToDatabase(
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Error al sincronizar datos a la base de datos.';
     console.error('Error en syncCompletedExcelToDatabase:', err);
+
+    // 🚨 Alerta en tiempo real si falla la sincronización del lote/worker
+    try {
+      const { sendSecurityAlert } = await import('@/lib/email/securityAlerts');
+      await sendSecurityAlert({
+        type: 'fallo_sincronizacion_worker',
+        detalles: {
+          loteId: options?.jobId || 'Sincronización Directa',
+          mensajeError: message,
+          accion: 'Sincronización de lote Excel con Supabase',
+        },
+        operador: options?.userEmail || options?.userNombre || 'Sistema Automático',
+      });
+    } catch (alertErr) {
+      console.warn('No se pudo enviar alerta de fallo de worker:', alertErr);
+    }
+
     return {
       ok: false,
       totalRows: 0,
