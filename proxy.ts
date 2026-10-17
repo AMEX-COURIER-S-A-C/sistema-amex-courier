@@ -49,7 +49,8 @@ export async function proxy(request: NextRequest) {
   const isPublicAuthRoute =
     pathname.startsWith('/api/auth/login') ||
     pathname.startsWith('/api/auth/logout') ||
-    pathname.startsWith('/api/auth/recuperar-password');
+    pathname.startsWith('/api/auth/recuperar-password') ||
+    pathname.startsWith('/api/auth/cambiar-password');
 
   if (!supabaseUrl || !supabaseAnonKey) {
     if (isLoginPage || isPublicAuthRoute) return response;

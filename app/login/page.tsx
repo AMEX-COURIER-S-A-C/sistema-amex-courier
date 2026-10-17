@@ -9,11 +9,18 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [recoverySent, setRecoverySent] = useState(false);
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
   const [isRecoveryMode, setIsRecoveryMode] = useState(false);
+  const [recoveryAccessToken, setRecoveryAccessToken] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+
+  // Estados para mostrar / ocultar contraseñas (botón de ojo)
+  const [showPassword, setShowPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   useEffect(() => {
     if (cooldownSeconds <= 0) return;
@@ -23,18 +30,47 @@ export default function LoginPage() {
     return () => clearInterval(timer);
   }, [cooldownSeconds]);
 
-
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const hasHashToken = typeof window !== 'undefined' && window.location.hash.includes('access_token');
+    let tokenFromHash: string | null = null;
+    let refreshTokenFromHash: string | null = null;
 
-    if (params.get('recovered') === 'true' || params.has('code') || hasHashToken) {
+    if (typeof window !== 'undefined' && window.location.hash) {
+      const hashStr = window.location.hash.startsWith('#')
+        ? window.location.hash.substring(1)
+        : window.location.hash;
+      const hashParams = new URLSearchParams(hashStr);
+      tokenFromHash = hashParams.get('access_token');
+      refreshTokenFromHash = hashParams.get('refresh_token');
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const isRecoveredFlag = params.get('recovered') === 'true';
+
+    // Capturar y preservar el token de recuperación
+    if (tokenFromHash) {
       setIsRecoveryMode(true);
-      // Limpiar el hash con el token de la barra de direcciones para máxima seguridad e higiene visual
-      if (hasHashToken) {
-        setTimeout(() => {
+      setRecoveryAccessToken(tokenFromHash);
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('amex_recovery_token', tokenFromHash);
+      }
+
+      // Activar la sesión en el cliente Supabase
+      supabase.auth.setSession({
+        access_token: tokenFromHash,
+        refresh_token: refreshTokenFromHash || '',
+      }).catch(() => {});
+
+      // Limpiar hash de la URL para estética y seguridad
+      setTimeout(() => {
+        if (typeof window !== 'undefined') {
           window.history.replaceState(null, '', window.location.pathname + window.location.search);
-        }, 150);
+        }
+      }, 400);
+    } else if (isRecoveredFlag) {
+      setIsRecoveryMode(true);
+      if (typeof window !== 'undefined') {
+        const stored = sessionStorage.getItem('amex_recovery_token');
+        if (stored) setRecoveryAccessToken(stored);
       }
     }
 
@@ -47,11 +83,14 @@ export default function LoginPage() {
       setErrorMessage('Tu cuenta ha sido desactivada por el Administrador. Comunícate con gerencia para más información.');
     }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'PASSWORD_RECOVERY') {
         setIsRecoveryMode(true);
-        if (typeof window !== 'undefined' && window.location.hash) {
-          window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        if (session?.access_token) {
+          setRecoveryAccessToken(session.access_token);
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('amex_recovery_token', session.access_token);
+          }
         }
       }
     });
@@ -63,6 +102,7 @@ export default function LoginPage() {
     e.preventDefault();
     setIsLoading(true);
     setErrorMessage(null);
+    setSuccessMessage(null);
 
     try {
       const { error } = await supabase.auth.signInWithPassword({
@@ -100,6 +140,7 @@ export default function LoginPage() {
     }
     setIsLoading(true);
     setErrorMessage(null);
+    setSuccessMessage(null);
     try {
       const res = await fetch('/api/auth/recuperar-password', {
         method: 'POST',
@@ -137,14 +178,51 @@ export default function LoginPage() {
 
     setIsLoading(true);
     setErrorMessage(null);
+    setSuccessMessage(null);
+
+    const token = recoveryAccessToken || (typeof window !== 'undefined' ? sessionStorage.getItem('amex_recovery_token') : null);
+
     try {
+      // 1. Intento primario: Usar el endpoint backend blindado con el token de recuperación
+      if (token) {
+        const res = await fetch('/api/auth/cambiar-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accessToken: token, newPassword }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'No se pudo actualizar la contraseña.');
+        }
+
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('amex_recovery_token');
+        }
+
+        setSuccessMessage('¡Contraseña actualizada con éxito! Redirigiendo al sistema...');
+        setTimeout(() => {
+          window.history.replaceState({}, '', '/login');
+          window.location.href = '/dashboard';
+        }, 1200);
+        return;
+      }
+
+      // 2. Fallback estándar cliente Supabase
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw error;
-      window.history.replaceState({}, '', '/login');
-      window.location.href = '/dashboard';
+
+      setSuccessMessage('¡Contraseña actualizada con éxito! Redirigiendo al sistema...');
+      setTimeout(() => {
+        window.history.replaceState({}, '', '/login');
+        window.location.href = '/dashboard';
+      }, 1200);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'No se pudo actualizar la contraseña.';
-      setErrorMessage(msg);
+      if (msg === 'Auth session missing!') {
+        setErrorMessage('El enlace de recuperación ha caducado o no se detectó el token. Por favor, solicita un nuevo enlace de recuperación.');
+      } else {
+        setErrorMessage(msg);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -220,6 +298,26 @@ export default function LoginPage() {
           </div>
         )}
 
+        {successMessage && (
+          <div
+            style={{
+              background: 'rgba(16, 185, 129, 0.2)',
+              border: '1px solid rgba(16, 185, 129, 0.45)',
+              color: '#86efac',
+              padding: '12px 14px',
+              borderRadius: '8px',
+              fontSize: '13px',
+              marginBottom: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            <i className="fa-solid fa-circle-check" style={{ color: '#34d399' }}></i>
+            {successMessage}
+          </div>
+        )}
+
         {recoverySent && (
           <div
             style={{
@@ -286,7 +384,7 @@ export default function LoginPage() {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
               <label style={{ fontSize: '12px', fontWeight: 700, color: '#cbd5e1' }}>
-                {isRecoveryMode ? 'Nueva contraseña' : 'Contraseña'}
+                {isRecoveryMode ? 'Nueva contraseña (mínimo 8 caracteres)' : 'Contraseña'}
               </label>
               {!isRecoveryMode && (
                 <button
@@ -321,14 +419,14 @@ export default function LoginPage() {
                 }}
               ></i>
               <input
-                type="password"
+                type={isRecoveryMode ? (showNewPassword ? 'text' : 'password') : (showPassword ? 'text' : 'password')}
                 required
                 value={isRecoveryMode ? newPassword : password}
                 onChange={e => isRecoveryMode ? setNewPassword(e.target.value) : setPassword(e.target.value)}
                 placeholder="••••••••"
                 style={{
                   width: '100%',
-                  padding: '11px 12px 11px 36px',
+                  padding: '11px 40px 11px 36px',
                   borderRadius: '8px',
                   background: 'rgba(15, 23, 42, 0.6)',
                   border: '1px solid rgba(255, 255, 255, 0.12)',
@@ -338,6 +436,29 @@ export default function LoginPage() {
                   boxSizing: 'border-box'
                 }}
               />
+              <button
+                type="button"
+                onClick={() => isRecoveryMode ? setShowNewPassword(!showNewPassword) : setShowPassword(!showPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: (isRecoveryMode ? showNewPassword : showPassword) ? '#38bdf8' : '#64748b',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  padding: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                tabIndex={-1}
+                title={(isRecoveryMode ? showNewPassword : showPassword) ? 'Ocultar contraseña' : 'Ver contraseña'}
+              >
+                <i className={(isRecoveryMode ? showNewPassword : showPassword) ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'}></i>
+              </button>
             </div>
           </div>
 
@@ -346,24 +467,60 @@ export default function LoginPage() {
               <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#cbd5e1', marginBottom: '6px' }}>
                 Confirmar nueva contraseña
               </label>
-              <input
-                type="password"
-                required
-                value={confirmPassword}
-                onChange={e => setConfirmPassword(e.target.value)}
-                placeholder="••••••••"
-                style={{
-                  width: '100%',
-                  padding: '11px 12px',
-                  borderRadius: '8px',
-                  background: 'rgba(15, 23, 42, 0.6)',
-                  border: '1px solid rgba(255, 255, 255, 0.12)',
-                  color: '#f8fafc',
-                  fontSize: '13.5px',
-                  outline: 'none',
-                  boxSizing: 'border-box'
-                }}
-              />
+              <div style={{ position: 'relative' }}>
+                <i
+                  className="fa-solid fa-lock"
+                  style={{
+                    position: 'absolute',
+                    left: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    color: '#64748b',
+                    fontSize: '14px'
+                  }}
+                ></i>
+                <input
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  required
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                  placeholder="••••••••"
+                  style={{
+                    width: '100%',
+                    padding: '11px 40px 11px 36px',
+                    borderRadius: '8px',
+                    background: 'rgba(15, 23, 42, 0.6)',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    color: '#f8fafc',
+                    fontSize: '13.5px',
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    color: showConfirmPassword ? '#38bdf8' : '#64748b',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    padding: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                  tabIndex={-1}
+                  title={showConfirmPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                >
+                  <i className={showConfirmPassword ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'}></i>
+                </button>
+              </div>
             </div>
           )}
 
