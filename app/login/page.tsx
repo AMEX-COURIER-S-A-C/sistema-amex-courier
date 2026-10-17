@@ -26,8 +26,16 @@ export default function LoginPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('recovered') === 'true' || params.has('code')) {
+    const hasHashToken = typeof window !== 'undefined' && window.location.hash.includes('access_token');
+
+    if (params.get('recovered') === 'true' || params.has('code') || hasHashToken) {
       setIsRecoveryMode(true);
+      // Limpiar el hash con el token de la barra de direcciones para máxima seguridad e higiene visual
+      if (hasHashToken) {
+        setTimeout(() => {
+          window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        }, 150);
+      }
     }
 
     const errorParam = params.get('error');
@@ -42,6 +50,9 @@ export default function LoginPage() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') {
         setIsRecoveryMode(true);
+        if (typeof window !== 'undefined' && window.location.hash) {
+          window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
       }
     });
 
