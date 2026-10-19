@@ -35,8 +35,8 @@
     "semantic_hash": ""
   },
   "app/api/auth/logout/route.ts": {
-    "mtime": 1791762333.3257725,
-    "ast_hash": "a1f42dd48fce07920c2b5cdbbe03e199",
+    "mtime": 1792390245.8902168,
+    "ast_hash": "989571a9ad7bf301ebf4d762f0b052fc",
     "semantic_hash": ""
   },
   "app/api/auth/me/route.ts": {
@@ -90,28 +90,28 @@
     "semantic_hash": ""
   },
   "app/layout.tsx": {
-    "mtime": 1792360174.4130657,
-    "ast_hash": "ac8189cdf9c324aade915b1a134a62f3",
+    "mtime": 1792389616.3355472,
+    "ast_hash": "95cd97ef082e5f8b0c6b14574fe8a1f1",
     "semantic_hash": ""
   },
   "app/login/page.tsx": {
-    "mtime": 1792360174.4172752,
-    "ast_hash": "83f7bbd58eb4baf5e79b2562a3b39c2c",
+    "mtime": 1792391643.903638,
+    "ast_hash": "74983b58842786a76c15f94c2dc422d2",
     "semantic_hash": ""
   },
   "app/page.tsx": {
-    "mtime": 1791692132.8707838,
-    "ast_hash": "15ae0a1ea0d5be56368e0a2689055437",
+    "mtime": 1792390413.3915656,
+    "ast_hash": "f92333fe60d2ed2045d70cb5fe831985",
     "semantic_hash": ""
   },
   "components/HeaderBar.tsx": {
-    "mtime": 1790997728.9550827,
-    "ast_hash": "143f3724c3cfb037446de1679e643600",
+    "mtime": 1792389617.7812202,
+    "ast_hash": "fc681a3e64b77e5d521539eeba6e5125",
     "semantic_hash": ""
   },
   "components/Sidebar.tsx": {
-    "mtime": 1791944133.987686,
-    "ast_hash": "26d71e471db1492c6d856f6f1d44f0fb",
+    "mtime": 1792389619.026396,
+    "ast_hash": "39328f4fbae50c19198bd011820446bf",
     "semantic_hash": ""
   },
   "components/modals/NewClientModal.tsx": {
@@ -546,8 +546,8 @@
     "semantic_hash": ""
   },
   "features/dashboard/hooks/useDashboardSession.ts": {
-    "mtime": 1791763948.2686238,
-    "ast_hash": "c72475c9ea4bc785b8a55243e0794795",
+    "mtime": 1792390331.6768653,
+    "ast_hash": "f1738a92be4bf4cf1901127ad40bdbcf",
     "semantic_hash": ""
   },
   "features/dashboard/index.ts": {
@@ -1076,8 +1076,8 @@
     "semantic_hash": "251bbc2cbda7fdcf91cfa9cb3e42f173"
   },
   "next-env.d.ts": {
-    "mtime": 1792360357.6631274,
-    "ast_hash": "c7b887684e81cfa5830eeeb7286485f6",
+    "mtime": 1792388423.1795235,
+    "ast_hash": "0e4a65e8b2b9aa3ed0f8957b9406bd41",
     "semantic_hash": ""
   },
   "next.config.ts": {
@@ -1332,13 +1332,13 @@
     "semantic_hash": ""
   },
   ".github/workflows/worker-container-test.yml": {
-    "mtime": 1790479118.217304,
-    "ast_hash": "5565a3065fb406a318a4a36df9f2dd54",
+    "mtime": 1792388278.0395892,
+    "ast_hash": "b68f0ef706029fe325538130acacf26a",
     "semantic_hash": ""
   },
   ".github/workflows/worker-docker-build.yml": {
-    "mtime": 1791084173.8518815,
-    "ast_hash": "5eb92258bbb517adc01f871552c74a04",
+    "mtime": 1792388275.805118,
+    "ast_hash": "3b96929f292a10d61715b5588c660f1d",
     "semantic_hash": ""
   },
   ".github/workflows/worker-processor-test.yml": {
@@ -2037,8 +2037,8 @@
     "semantic_hash": ""
   },
   "app/api/auth/recuperar-password/route.ts": {
-    "mtime": 1792385080.0676103,
-    "ast_hash": "a977b977df581c551bd1b03732cd7c65",
+    "mtime": 1792389684.037425,
+    "ast_hash": "d4776e9612e4a18b001a665a1fc0d810",
     "semantic_hash": ""
   },
   "app/api/tib/recepcion-diaria/enviar-email/route.ts": {
@@ -2102,8 +2102,8 @@
     "semantic_hash": ""
   },
   "lib/email/welcomeUser.ts": {
-    "mtime": 1792385089.2696047,
-    "ast_hash": "95c9c23693eb51df4442a933b045beef",
+    "mtime": 1792389684.9690516,
+    "ast_hash": "e1fb0adeeeaf587c933651e253a4afe7",
     "semantic_hash": ""
   },
   "lib/excelPivotReport.ts": {

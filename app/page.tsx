@@ -44,18 +44,18 @@ export default function DashboardPage() {
     setActiveTab('fico-cobros');
   }, [setActiveTab]);
 
-  const { currentUser, isLoadingSession, logout: handleLogout } = useDashboardSession();
+  const { currentUser, isLoadingSession, isLoggingOut, logout: handleLogout } = useDashboardSession();
 
   // Redirección reactiva: Si el usuario entra a una pestaña no permitida, llevarlo al primer módulo autorizado
   useEffect(() => {
-    if (!currentUser || isLoadingSession) return;
+    if (!currentUser || isLoadingSession || isLoggingOut) return;
     if (!hasModuleAccess(currentUser, activeTab)) {
       const fallbackTab = getFirstAvailableTab(currentUser);
       if (fallbackTab && fallbackTab !== activeTab) {
         setActiveTab(fallbackTab as DashboardTabId);
       }
     }
-  }, [currentUser, isLoadingSession, activeTab, setActiveTab]);
+  }, [currentUser, isLoadingSession, isLoggingOut, activeTab, setActiveTab]);
 
   const smoothScroll = useSmoothScroll();
 
@@ -129,7 +129,13 @@ export default function DashboardPage() {
     handleScanCode
   } = dashboardActions;
 
-  if (isLoadingSession) {
+  const isTabAllowed = currentUser ? hasModuleAccess(currentUser, activeTab) : false;
+  const fallbackAllowedTab = currentUser ? getFirstAvailableTab(currentUser) : null;
+  const isRedirectingInitialTab = Boolean(
+    currentUser && !isTabAllowed && fallbackAllowedTab && fallbackAllowedTab !== activeTab
+  );
+
+  if (isLoadingSession || isRedirectingInitialTab || (!currentUser && !isLoggingOut)) {
     return (
       <div
         style={{
@@ -138,39 +144,204 @@ export default function DashboardPage() {
           alignItems: 'center',
           justifyContent: 'center',
           minHeight: '100vh',
-          background: '#090d16',
+          background:
+            'radial-gradient(circle at 15% 20%, rgba(245, 158, 11, 0.08) 0%, transparent 45%), radial-gradient(circle at 85% 80%, rgba(37, 99, 235, 0.14) 0%, transparent 50%), linear-gradient(135deg, #070b14 0%, #0f172a 55%, #090d16 100%)',
           color: '#f8fafc',
-          fontFamily: "'Inter', sans-serif"
+          fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
+          padding: 24,
         }}
       >
+        <style>{`
+          @keyframes amexProgressSlide {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(250%); }
+          }
+          @keyframes amexCardPulse {
+            0%, 100% { box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(245, 158, 11, 0.18); }
+            50% { box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 24px rgba(245, 158, 11, 0.25); }
+          }
+        `}</style>
         <div
           style={{
-            width: 56,
-            height: 56,
-            borderRadius: 16,
-            background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+            padding: '28px 36px',
+            borderRadius: 20,
+            background: 'rgba(15, 23, 42, 0.82)',
+            backdropFilter: 'blur(16px)',
+            border: '1px solid rgba(255, 255, 255, 0.09)',
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 8px 24px rgba(37, 99, 235, 0.35)',
-            marginBottom: 20
+            maxWidth: 380,
+            width: '100%',
+            textAlign: 'center',
+            animation: 'amexCardPulse 2.4s ease-in-out infinite',
           }}
         >
-          <i className="fa-solid fa-boxes-stacked" style={{ color: '#fff', fontSize: 24 }} />
+          <div
+            style={{
+              padding: '12px 20px',
+              borderRadius: 14,
+              background: 'rgba(9, 13, 22, 0.85)',
+              border: '1px solid rgba(245, 158, 11, 0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: 18,
+            }}
+          >
+            <img
+              src="/images/logo-amex-clean.png"
+              alt="AMEX Courier"
+              style={{ height: 40, width: 'auto', objectFit: 'contain' }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 6 }}>
+            <i className="fa-solid fa-circle-notch fa-spin" style={{ color: '#f59e0b', fontSize: 15 }} />
+            <span style={{ fontSize: 14.5, fontWeight: 800, letterSpacing: '-0.2px', color: '#f8fafc' }}>
+              Preparando estación de trabajo
+            </span>
+          </div>
+          <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 18px 0', lineHeight: 1.45 }}>
+            Sincronizando credenciales y módulos operativos...
+          </p>
+
+          <div
+            style={{
+              width: '100%',
+              height: 4,
+              borderRadius: 999,
+              background: 'rgba(255, 255, 255, 0.07)',
+              overflow: 'hidden',
+              position: 'relative',
+            }}
+          >
+            <div
+              style={{
+                width: '45%',
+                height: '100%',
+                borderRadius: 999,
+                background: 'linear-gradient(90deg, #2563eb, #f59e0b)',
+                animation: 'amexProgressSlide 1.15s cubic-bezier(0.4, 0, 0.2, 1) infinite',
+              }}
+            />
+          </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-          <i className="fa-solid fa-spinner fa-spin" style={{ color: '#38bdf8', fontSize: 16 }} />
-          <span style={{ fontSize: 15, fontWeight: 800, letterSpacing: '-0.2px' }}>SISTEMA AMEX COURIER</span>
-        </div>
-        <p style={{ fontSize: 12, color: '#64748b', margin: 0 }}>Validando credenciales y permisos de acceso...</p>
       </div>
     );
   }
 
-  const isTabAllowed = currentUser ? hasModuleAccess(currentUser, activeTab) : false;
-
   return (
-    <div className="app-layout-shell">
+    <div className="app-layout-shell" style={{ animation: 'amexShellFadeIn 0.26s cubic-bezier(0.16, 1, 0.3, 1)' }}>
+      <style>{`
+        @keyframes amexShellFadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes amexLogoutOverlayIn {
+          from { opacity: 0; backdrop-filter: blur(0px); }
+          to { opacity: 1; backdrop-filter: blur(14px); }
+        }
+        @keyframes amexLogoutCardIn {
+          from { opacity: 0; transform: scale(0.96) translateY(8px); }
+          to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        @keyframes amexProgressSlide {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(250%); }
+        }
+      `}</style>
+
+      {isLoggingOut && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 99999,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(7, 11, 20, 0.84)',
+            backdropFilter: 'blur(14px)',
+            WebkitBackdropFilter: 'blur(14px)',
+            color: '#f8fafc',
+            fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
+            padding: 24,
+            animation: 'amexLogoutOverlayIn 0.2s ease-out forwards',
+          }}
+        >
+          <div
+            style={{
+              padding: '28px 36px',
+              borderRadius: 20,
+              background: 'rgba(15, 23, 42, 0.92)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              boxShadow: '0 25px 60px rgba(0, 0, 0, 0.75)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              maxWidth: 380,
+              width: '100%',
+              textAlign: 'center',
+              animation: 'amexLogoutCardIn 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+            }}
+          >
+            <div
+              style={{
+                padding: '12px 20px',
+                borderRadius: 14,
+                background: 'rgba(9, 13, 22, 0.9)',
+                border: '1px solid rgba(245, 158, 11, 0.25)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 18,
+              }}
+            >
+              <img
+                src="/images/logo-amex-clean.png"
+                alt="AMEX Courier"
+                style={{ height: 38, width: 'auto', objectFit: 'contain' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 6 }}>
+              <i className="fa-solid fa-shield-halved" style={{ color: '#38bdf8', fontSize: 15 }} />
+              <span style={{ fontSize: 14.5, fontWeight: 800, letterSpacing: '-0.2px', color: '#f8fafc' }}>
+                Cerrando sesión de forma segura
+              </span>
+            </div>
+            <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 18px 0', lineHeight: 1.45 }}>
+              Finalizando sesión encriptada y liberando estación de trabajo...
+            </p>
+
+            <div
+              style={{
+                width: '100%',
+                height: 4,
+                borderRadius: 999,
+                background: 'rgba(255, 255, 255, 0.08)',
+                overflow: 'hidden',
+                position: 'relative',
+              }}
+            >
+              <div
+                style={{
+                  width: '45%',
+                  height: '100%',
+                  borderRadius: 999,
+                  background: 'linear-gradient(90deg, #38bdf8, #2563eb)',
+                  animation: 'amexProgressSlide 1s cubic-bezier(0.4, 0, 0.2, 1) infinite',
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       <HeaderBar
         currentUser={currentUser}
         isSidebarCollapsed={isSidebarCollapsed}

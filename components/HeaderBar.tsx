@@ -55,11 +55,17 @@ export default function HeaderBar({
             color: '#ffffff',
             display: 'flex',
             alignItems: 'center',
-            gap: '8px'
+            gap: '10px'
           }}
         >
-          <i className="fa-solid fa-boxes-stacked" style={{ color: '#38bdf8' }}></i>
-          Sistema Amex Courier
+          <img
+            src="/images/logo-amex-clean.png"
+            alt="AMEX Courier"
+            style={{ height: '22px', width: 'auto', objectFit: 'contain' }}
+          />
+          <span style={{ borderLeft: '1px solid rgba(255,255,255,0.15)', paddingLeft: '10px' }}>
+            Sistema Amex Courier
+          </span>
         </span>
       </div>
     </header>

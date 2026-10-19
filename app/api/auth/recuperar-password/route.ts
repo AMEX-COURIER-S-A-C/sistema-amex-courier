@@ -157,6 +157,7 @@ export async function POST(req: NextRequest) {
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                 <tr>
                   <td align="center">
+                    <img src="https://www.sistemaamexcourier.online/images/logo-amex-clean.png" alt="AMEX Courier" width="175" style="display: block; margin: 0 auto 14px auto; max-width: 175px; height: auto;" />
                     <div style="display: inline-block; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(147, 197, 253, 0.35); color: #93c5fd; padding: 4px 14px; border-radius: 20px; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 12px;">
                       Seguridad de Acceso • Operaciones
                     </div>

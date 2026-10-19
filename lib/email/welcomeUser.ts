@@ -39,6 +39,7 @@ export async function sendUserWelcomeEmail(options: SendWelcomeEmailOptions) {
           <!-- Encabezado Institucional -->
           <tr>
             <td style="background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 60%, #065f46 100%); padding: 36px 30px; text-align: center; border-bottom: 3px solid #10b981;">
+              <img src="https://www.sistemaamexcourier.online/images/logo-amex-clean.png" alt="AMEX Courier" width="175" style="display: block; margin: 0 auto 14px auto; max-width: 175px; height: auto;" />
               <span style="display: inline-block; background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); color: #6ee7b7; padding: 4px 14px; border-radius: 20px; font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 12px;">
                 👤 Módulo de Usuarios & Seguridad • AMEX Courier
               </span>

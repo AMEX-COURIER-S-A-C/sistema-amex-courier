@@ -7,6 +7,11 @@ import ToastProvider from "@/components/providers/ToastProvider";
 export const metadata: Metadata = {
   title: "SISTEMA AMEX COURIER",
   description: "Plataforma Logística para Gestión de Paquetes, Almacén Central Lince y Despachos",
+  icons: {
+    icon: "/logo-amex.jpg",
+    shortcut: "/logo-amex.jpg",
+    apple: "/logo-amex.jpg",
+  },
 };
 
 export const viewport: Viewport = {
