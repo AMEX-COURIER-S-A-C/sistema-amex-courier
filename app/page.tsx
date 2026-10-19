@@ -17,6 +17,8 @@ import DashboardTabContent from '@/features/dashboard/components/DashboardTabCon
 import { EMPTY_CLIENT_FORM, EMPTY_PKG_FORM } from '@/features/dashboard/data/default-forms';
 import { hasModuleAccess, getFirstAvailableTab } from '@/lib/navigation/registry';
 import { useSmoothScroll } from '@/components/providers/SmoothScrollProvider';
+import { getLoginThemeTokens } from '@/lib/themes/seasonalConfig';
+import { HalloweenBackdrop } from '@/components/themes/HalloweenBackdrop';
 
 const NewClientModal = dynamic(() => import('@/components/modals/NewClientModal'), { ssr: false });
 const NewPackageModal = dynamic(() => import('@/components/modals/NewPackageModal'), { ssr: false });
@@ -24,6 +26,7 @@ const ThermalLabelModal = dynamic(() => import('@/components/modals/ThermalLabel
 const PdfViewerModal = dynamic(() => import('@/components/modals/PdfViewerModal'), { ssr: false });
 
 export default function DashboardPage() {
+  const loginTheme = getLoginThemeTokens();
   const {
     activeTab,
     isSidebarCollapsed,
@@ -144,13 +147,15 @@ export default function DashboardPage() {
           alignItems: 'center',
           justifyContent: 'center',
           minHeight: '100vh',
-          background:
-            'radial-gradient(circle at 15% 20%, rgba(245, 158, 11, 0.08) 0%, transparent 45%), radial-gradient(circle at 85% 80%, rgba(37, 99, 235, 0.14) 0%, transparent 50%), linear-gradient(135deg, #070b14 0%, #0f172a 55%, #090d16 100%)',
+          background: loginTheme.pageBackground,
           color: '#f8fafc',
           fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
           padding: 24,
+          position: 'relative',
+          overflow: 'hidden',
         }}
       >
+        {loginTheme.isHalloween && <HalloweenBackdrop />}
         <style>{`
           @keyframes amexProgressSlide {
             0% { transform: translateX(-100%); }
@@ -163,11 +168,14 @@ export default function DashboardPage() {
         `}</style>
         <div
           style={{
+            position: 'relative',
+            zIndex: 2,
             padding: '28px 36px',
             borderRadius: 20,
-            background: 'rgba(15, 23, 42, 0.82)',
+            background: 'rgba(15, 23, 42, 0.85)',
             backdropFilter: 'blur(16px)',
-            border: '1px solid rgba(255, 255, 255, 0.09)',
+            border: loginTheme.shellBorder,
+            boxShadow: loginTheme.shellShadow,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -181,8 +189,8 @@ export default function DashboardPage() {
             style={{
               padding: '12px 20px',
               borderRadius: 14,
-              background: 'rgba(9, 13, 22, 0.85)',
-              border: '1px solid rgba(245, 158, 11, 0.25)',
+              background: 'rgba(9, 13, 22, 0.88)',
+              border: loginTheme.logoBoxBorder,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -192,12 +200,12 @@ export default function DashboardPage() {
             <img
               src="/images/logo-amex-clean.png"
               alt="AMEX Courier"
-              style={{ height: 40, width: 'auto', objectFit: 'contain' }}
+              style={{ height: 40, width: 'auto', objectFit: 'contain', filter: loginTheme.logoDropShadow }}
             />
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 6 }}>
-            <i className="fa-solid fa-circle-notch fa-spin" style={{ color: '#f59e0b', fontSize: 15 }} />
+            <i className="fa-solid fa-circle-notch fa-spin" style={{ color: loginTheme.spinnerColor, fontSize: 15 }} />
             <span style={{ fontSize: 14.5, fontWeight: 800, letterSpacing: '-0.2px', color: '#f8fafc' }}>
               Preparando estación de trabajo
             </span>
@@ -221,7 +229,7 @@ export default function DashboardPage() {
                 width: '45%',
                 height: '100%',
                 borderRadius: 999,
-                background: 'linear-gradient(90deg, #2563eb, #f59e0b)',
+                background: loginTheme.progressGradient,
                 animation: 'amexProgressSlide 1.15s cubic-bezier(0.4, 0, 0.2, 1) infinite',
               }}
             />
@@ -264,22 +272,26 @@ export default function DashboardPage() {
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            background: 'rgba(7, 11, 20, 0.84)',
+            background: loginTheme.isHalloween ? 'rgba(7, 4, 14, 0.88)' : 'rgba(7, 11, 20, 0.84)',
             backdropFilter: 'blur(14px)',
             WebkitBackdropFilter: 'blur(14px)',
             color: '#f8fafc',
             fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
             padding: 24,
             animation: 'amexLogoutOverlayIn 0.2s ease-out forwards',
+            overflow: 'hidden',
           }}
         >
+          {loginTheme.isHalloween && <HalloweenBackdrop />}
           <div
             style={{
+              position: 'relative',
+              zIndex: 2,
               padding: '28px 36px',
               borderRadius: 20,
               background: 'rgba(15, 23, 42, 0.92)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              boxShadow: '0 25px 60px rgba(0, 0, 0, 0.75)',
+              border: loginTheme.shellBorder,
+              boxShadow: loginTheme.shellShadow,
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
@@ -294,7 +306,7 @@ export default function DashboardPage() {
                 padding: '12px 20px',
                 borderRadius: 14,
                 background: 'rgba(9, 13, 22, 0.9)',
-                border: '1px solid rgba(245, 158, 11, 0.25)',
+                border: loginTheme.logoBoxBorder,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -304,12 +316,12 @@ export default function DashboardPage() {
               <img
                 src="/images/logo-amex-clean.png"
                 alt="AMEX Courier"
-                style={{ height: 38, width: 'auto', objectFit: 'contain' }}
+                style={{ height: 38, width: 'auto', objectFit: 'contain', filter: loginTheme.logoDropShadow }}
               />
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 6 }}>
-              <i className="fa-solid fa-shield-halved" style={{ color: '#38bdf8', fontSize: 15 }} />
+              <i className="fa-solid fa-shield-halved" style={{ color: loginTheme.logoutShieldColor, fontSize: 15 }} />
               <span style={{ fontSize: 14.5, fontWeight: 800, letterSpacing: '-0.2px', color: '#f8fafc' }}>
                 Cerrando sesión de forma segura
               </span>
@@ -333,7 +345,7 @@ export default function DashboardPage() {
                   width: '45%',
                   height: '100%',
                   borderRadius: 999,
-                  background: 'linear-gradient(90deg, #38bdf8, #2563eb)',
+                  background: loginTheme.progressGradient,
                   animation: 'amexProgressSlide 1s cubic-bezier(0.4, 0, 0.2, 1) infinite',
                 }}
               />

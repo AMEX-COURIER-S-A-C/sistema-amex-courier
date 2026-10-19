@@ -3,8 +3,11 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { SESSION_START_COOKIE, SESSION_MAX_AGE_SECONDS } from '@/lib/auth/constants';
+import { getLoginThemeTokens } from '@/lib/themes/seasonalConfig';
+import { HalloweenBackdrop, HalloweenCornerWebs } from '@/components/themes/HalloweenBackdrop';
 
 export default function LoginPage() {
+  const theme = getLoginThemeTokens();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -271,13 +274,15 @@ export default function LoginPage() {
           alignItems: 'center',
           justifyContent: 'center',
           minHeight: '100vh',
-          background:
-            'radial-gradient(circle at 15% 20%, rgba(245, 158, 11, 0.08) 0%, transparent 45%), radial-gradient(circle at 85% 80%, rgba(37, 99, 235, 0.14) 0%, transparent 50%), linear-gradient(135deg, #070b14 0%, #0f172a 55%, #090d16 100%)',
+          background: theme.pageBackground,
           color: '#f8fafc',
           fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
           padding: 24,
+          position: 'relative',
+          overflow: 'hidden',
         }}
       >
+        {theme.isHalloween && <HalloweenBackdrop />}
         <style>{`
           @keyframes amexEntryCardIn {
             from { opacity: 0; transform: scale(0.97) translateY(6px); }
@@ -290,12 +295,14 @@ export default function LoginPage() {
         `}</style>
         <div
           style={{
+            position: 'relative',
+            zIndex: 2,
             padding: '28px 36px',
             borderRadius: 20,
-            background: 'rgba(15, 23, 42, 0.82)',
+            background: 'rgba(15, 23, 42, 0.85)',
             backdropFilter: 'blur(16px)',
-            border: '1px solid rgba(255, 255, 255, 0.09)',
-            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(245, 158, 11, 0.18)',
+            border: theme.shellBorder,
+            boxShadow: theme.shellShadow,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -309,8 +316,8 @@ export default function LoginPage() {
             style={{
               padding: '12px 20px',
               borderRadius: 14,
-              background: 'rgba(9, 13, 22, 0.85)',
-              border: '1px solid rgba(245, 158, 11, 0.25)',
+              background: 'rgba(9, 13, 22, 0.88)',
+              border: theme.logoBoxBorder,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -320,12 +327,12 @@ export default function LoginPage() {
             <img
               src="/images/logo-amex-clean.png"
               alt="AMEX Courier"
-              style={{ height: 40, width: 'auto', objectFit: 'contain' }}
+              style={{ height: 40, width: 'auto', objectFit: 'contain', filter: theme.logoDropShadow }}
             />
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 6 }}>
-            <i className="fa-solid fa-circle-notch fa-spin" style={{ color: '#f59e0b', fontSize: 15 }} />
+            <i className="fa-solid fa-circle-notch fa-spin" style={{ color: theme.spinnerColor, fontSize: 15 }} />
             <span style={{ fontSize: 14.5, fontWeight: 800, letterSpacing: '-0.2px', color: '#f8fafc' }}>
               Preparando estación de trabajo
             </span>
@@ -349,7 +356,7 @@ export default function LoginPage() {
                 width: '45%',
                 height: '100%',
                 borderRadius: 999,
-                background: 'linear-gradient(90deg, #2563eb, #f59e0b)',
+                background: theme.progressGradient,
                 animation: 'amexProgressSlide 1.15s cubic-bezier(0.4, 0, 0.2, 1) infinite',
               }}
             />
@@ -363,40 +370,59 @@ export default function LoginPage() {
     <div
       style={{
         minHeight: '100vh',
-        background:
-          'radial-gradient(circle at 15% 20%, rgba(245, 158, 11, 0.08) 0%, transparent 45%), radial-gradient(circle at 85% 80%, rgba(37, 99, 235, 0.14) 0%, transparent 50%), linear-gradient(135deg, #070b14 0%, #0f172a 55%, #090d16 100%)',
+        background: theme.pageBackground,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         padding: '24px 16px',
         fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+        position: 'relative',
+        overflow: 'hidden',
       }}
     >
+      {theme.isHalloween && <HalloweenBackdrop />}
+
       <style>{`
         @keyframes amexLoginShellIn {
           from { opacity: 0; transform: translateY(10px) scale(0.992); }
           to { opacity: 1; transform: translateY(0) scale(1); }
         }
         .amex-login-shell {
+          position: relative;
+          z-index: 2;
           width: 100%;
           max-width: 980px;
           display: grid;
           grid-template-columns: 1.08fr 1fr;
           border-radius: 22px;
           overflow: hidden;
-          background: rgba(15, 23, 42, 0.78);
+          background: rgba(15, 23, 42, 0.8);
           backdrop-filter: blur(20px);
-          border: 1px solid rgba(255, 255, 255, 0.09);
-          box-shadow: 0 30px 70px -15px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(245, 158, 11, 0.08);
+          border: ${theme.shellBorder};
+          box-shadow: ${theme.shellShadow};
           animation: amexLoginShellIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          --spot-x: 50%;
+          --spot-y: 50%;
+          --spot-opacity: 0;
+        }
+        .amex-login-shell::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          z-index: 4;
+          background: radial-gradient(
+            420px circle at var(--spot-x) var(--spot-y),
+            ${theme.isHalloween ? 'rgba(249, 115, 22, 0.11)' : 'rgba(56, 189, 248, 0.08)'},
+            transparent 65%
+          );
+          opacity: var(--spot-opacity);
+          transition: opacity 0.25s ease;
         }
         .amex-login-left {
           position: relative;
           padding: 42px 38px;
-          background:
-            radial-gradient(circle at 20% 15%, rgba(245, 158, 11, 0.14) 0%, transparent 55%),
-            radial-gradient(circle at 85% 90%, rgba(37, 99, 235, 0.18) 0%, transparent 55%),
-            linear-gradient(160deg, #060911 0%, #0b1120 60%, #0f172a 100%);
+          background: ${theme.leftPanelBackground};
           border-right: 1px solid rgba(255, 255, 255, 0.07);
           display: flex;
           flex-direction: column;
@@ -404,11 +430,12 @@ export default function LoginPage() {
           gap: 28px;
         }
         .amex-login-right {
+          position: relative;
           padding: 42px 38px;
           display: flex;
           flex-direction: column;
           justify-content: center;
-          background: rgba(15, 23, 42, 0.55);
+          background: rgba(15, 23, 42, 0.58);
           color: #f8fafc;
         }
         .amex-input-field {
@@ -424,17 +451,17 @@ export default function LoginPage() {
           transition: all 0.18s ease;
         }
         .amex-input-field:focus {
-          border-color: #f59e0b;
-          box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15);
+          border-color: ${theme.inputFocusBorder};
+          box-shadow: ${theme.inputFocusShadow};
           background: rgba(9, 13, 22, 0.92);
         }
         .amex-submit-btn {
           margin-top: 6px;
           padding: 13px 16px;
           border-radius: 10px;
-          background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+          background: ${theme.submitBtnBackground};
           color: #ffffff;
-          border: 1px solid rgba(56, 189, 248, 0.25);
+          border: ${theme.submitBtnBorder};
           font-weight: 800;
           font-size: 14px;
           letter-spacing: 0.2px;
@@ -443,13 +470,13 @@ export default function LoginPage() {
           align-items: center;
           justify-content: center;
           gap: 9px;
-          box-shadow: 0 8px 20px -4px rgba(37, 99, 235, 0.5);
+          box-shadow: ${theme.submitBtnShadow};
           transition: all 0.18s ease;
         }
         .amex-submit-btn:hover:not(:disabled) {
           transform: translateY(-1px);
-          box-shadow: 0 12px 24px -4px rgba(37, 99, 235, 0.65);
-          background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+          box-shadow: ${theme.submitBtnHoverShadow};
+          filter: brightness(1.06);
         }
         .amex-submit-btn:disabled {
           opacity: 0.65;
@@ -472,7 +499,20 @@ export default function LoginPage() {
         }
       `}</style>
 
-      <div className="amex-login-shell">
+      <div
+        className="amex-login-shell"
+        onMouseMove={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          e.currentTarget.style.setProperty('--spot-x', `${e.clientX - rect.left}px`);
+          e.currentTarget.style.setProperty('--spot-y', `${e.clientY - rect.top}px`);
+          e.currentTarget.style.setProperty('--spot-opacity', '1');
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.setProperty('--spot-opacity', '0');
+        }}
+      >
+        {theme.isHalloween && <HalloweenCornerWebs />}
+
         {/* ==================== PANEL CORPORATIVO IZQUIERDO ==================== */}
         <div className="amex-login-left">
           {/* Top Badge & Logo Oficial */}
@@ -484,9 +524,9 @@ export default function LoginPage() {
                 gap: '8px',
                 padding: '5px 12px',
                 borderRadius: '999px',
-                background: 'rgba(245, 158, 11, 0.12)',
-                border: '1px solid rgba(245, 158, 11, 0.3)',
-                color: '#fbbf24',
+                background: theme.badgeBackground,
+                border: theme.badgeBorder,
+                color: theme.badgeColor,
                 fontSize: '11px',
                 fontWeight: 800,
                 letterSpacing: '0.7px',
@@ -494,15 +534,15 @@ export default function LoginPage() {
                 marginBottom: '22px',
               }}
             >
-              <i className="fa-solid fa-plane-departure" style={{ fontSize: '11px' }} />
-              <span>ERP Logístico Internacional</span>
+              <i className={theme.badgeIcon} style={{ fontSize: '11px' }} />
+              <span>{theme.badgeText}</span>
             </div>
 
             {/* Contenedor del Logo Oficial AMEX Courier */}
             <div
               style={{
                 background: 'linear-gradient(145deg, rgba(15, 23, 42, 0.9) 0%, rgba(7, 11, 20, 0.95) 100%)',
-                border: '1px solid rgba(245, 158, 11, 0.22)',
+                border: theme.logoBoxBorder,
                 borderRadius: '16px',
                 padding: '22px 24px',
                 marginBottom: '18px',
@@ -520,7 +560,7 @@ export default function LoginPage() {
                   maxWidth: '290px',
                   height: 'auto',
                   objectFit: 'contain',
-                  filter: 'drop-shadow(0 4px 14px rgba(245, 158, 11, 0.2))',
+                  filter: theme.logoDropShadow,
                 }}
               />
             </div>
@@ -566,13 +606,13 @@ export default function LoginPage() {
                 gap: '6px',
                 fontSize: '11.5px',
                 fontWeight: 700,
-                color: '#38bdf8',
+                color: theme.portalLabelColor,
                 marginBottom: '6px',
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
               }}
             >
-              <i className="fa-solid fa-shield-halved" />
+              <i className={theme.portalIcon} />
               <span>{isRecoveryMode ? 'Restablecimiento de Credenciales' : 'Portal de Operaciones'}</span>
             </div>
             <h1

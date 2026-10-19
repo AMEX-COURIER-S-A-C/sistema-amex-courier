@@ -95,13 +95,13 @@
     "semantic_hash": ""
   },
   "app/login/page.tsx": {
-    "mtime": 1792391643.903638,
-    "ast_hash": "74983b58842786a76c15f94c2dc422d2",
+    "mtime": 1792393134.398139,
+    "ast_hash": "b3366beda013dd1146801839fb7ece8f",
     "semantic_hash": ""
   },
   "app/page.tsx": {
-    "mtime": 1792390413.3915656,
-    "ast_hash": "f92333fe60d2ed2045d70cb5fe831985",
+    "mtime": 1792392622.2825851,
+    "ast_hash": "9e2a65e3b359968c98dc078410524b1f",
     "semantic_hash": ""
   },
   "components/HeaderBar.tsx": {
@@ -2234,6 +2234,16 @@
   "tests/unit/toast.test.ts": {
     "mtime": 1792360174.5765078,
     "ast_hash": "593c2f0d9fa8eef729e3e585c8c208ad",
+    "semantic_hash": ""
+  },
+  "components/themes/HalloweenBackdrop.tsx": {
+    "mtime": 1792393444.6120346,
+    "ast_hash": "13ae6a7cf2e509c85e4ab03d8f1ba489",
+    "semantic_hash": ""
+  },
+  "lib/themes/seasonalConfig.ts": {
+    "mtime": 1792392308.7253911,
+    "ast_hash": "c93f1f75ecab24108e927fc1504f487a",
     "semantic_hash": ""
   }
 }
