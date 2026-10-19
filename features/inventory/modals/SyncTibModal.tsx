@@ -13,7 +13,6 @@ import {
   Server,
   Database,
   ArrowRight,
-  Download,
   Clock,
   Layers
 } from 'lucide-react';
@@ -413,24 +412,6 @@ export default function SyncTibModal({ isOpen, onClose, onRefreshData }: SyncTib
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '14px' }}>
-              {successResult.resultadoKey && (
-                <a
-                  href={`/api/storage/file?key=${encodeURIComponent(successResult.resultadoKey)}&download=true`}
-                  className="btn"
-                  style={{
-                    background: '#ffffff',
-                    border: '1px solid #bbf7d0',
-                    color: '#15803d',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    fontSize: '12px',
-                    fontWeight: 700,
-                  }}
-                >
-                  <Download className="w-3.5 h-3.5" /> Descargar Excel Cruzado
-                </a>
-              )}
               <button
                 className="btn btn-primary"
                 onClick={onClose}

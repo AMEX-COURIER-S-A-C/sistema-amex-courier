@@ -28,7 +28,7 @@ dotnet build worker/processor/AmexInventoryProcessor/AmexInventoryProcessor.cspr
 El worker no debe iniciarse localmente contra una cola Supabase/R2 compartida. Para E2E remoto se deben proporcionar las variables sólo al proceso de Playwright:
 
 ```powershell
-$env:PLAYWRIGHT_BASE_URL = 'https://www.sistema-amex.online'
+$env:PLAYWRIGHT_BASE_URL = 'https://www.sistemaamexcourier.online'
 $env:E2E_EMAIL = '<cuenta-de-pruebas>'
 $env:E2E_PASSWORD = '<secreto-no-guardado>'
 npx playwright test tests/e2e/real-readonly.auth.spec.ts --project=chromium

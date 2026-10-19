@@ -6,7 +6,7 @@ export const resend = apiKey ? new Resend(apiKey) : null;
 
 export const DEFAULT_FROM_EMAIL = 
   process.env.RESEND_FROM_EMAIL || 
-  'AMEX Courier <notificaciones@sistema-amex.online>';
+  'AMEX Courier <notificaciones@sistemaamexcourier.online>';
 
 export interface SendEmailOptions {
   to: string | string[];
@@ -34,7 +34,7 @@ export async function sendEmail(options: SendEmailOptions) {
     const { data, error } = await resend.emails.send({
       from: DEFAULT_FROM_EMAIL,
       to: Array.isArray(options.to) ? options.to : [options.to],
-      replyTo: options.replyTo || 'notificaciones@sistema-amex.online',
+      replyTo: options.replyTo || 'notificaciones@sistemaamexcourier.online',
       subject: options.subject,
       html: options.html,
       text: options.text,

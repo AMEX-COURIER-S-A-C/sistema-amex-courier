@@ -22,7 +22,7 @@ async function testRecovery() {
     type: 'recovery',
     email: testEmail,
     options: {
-      redirectTo: 'https://sistema-amex.online/login?recovered=true',
+      redirectTo: 'https://sistemaamexcourier.online/login?recovered=true',
     },
   });
 

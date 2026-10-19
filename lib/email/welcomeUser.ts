@@ -9,7 +9,7 @@ export interface SendWelcomeEmailOptions {
 
 export async function sendUserWelcomeEmail(options: SendWelcomeEmailOptions) {
   const { email, nombreCompleto, rolNombre, activationLink } = options;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://sistema-amex.online';
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://sistemaamexcourier.online';
 
   const fechaLima = new Date().toLocaleString('es-PE', {
     timeZone: 'America/Lima',
@@ -127,7 +127,7 @@ export async function sendUserWelcomeEmail(options: SendWelcomeEmailOptions) {
                 AMEX Courier S.A.C. — Gestión y Operaciones Logísticas
               </p>
               <p style="margin: 4px 0 0 0; font-size: 11px; color: #94a3b8;">
-                Plataforma oficial: <a href="${appUrl}" style="color: #64748b; text-decoration: none;">sistema-amex.online</a> • Emitido el ${fechaLima}
+                Plataforma oficial: <a href="${appUrl}" style="color: #64748b; text-decoration: none;">sistemaamexcourier.online</a> • Emitido el ${fechaLima}
               </p>
             </td>
           </tr>

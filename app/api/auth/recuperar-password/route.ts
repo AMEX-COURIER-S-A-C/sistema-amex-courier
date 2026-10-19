@@ -240,7 +240,7 @@ export async function POST(req: NextRequest) {
                 AMEX Courier S.A.C. — Gestión Logística & Envíos USA - Perú
               </p>
               <p style="margin: 5px 0 0 0; font-size: 11px; color: #64748b;">
-                Soporte y Seguridad: <a href="mailto:notificaciones@sistema-amex.online" style="color: #2563eb; text-decoration: none;">notificaciones@sistema-amex.online</a>
+                Soporte y Seguridad: <a href="mailto:notificaciones@sistemaamexcourier.online" style="color: #2563eb; text-decoration: none;">notificaciones@sistemaamexcourier.online</a>
               </p>
               <p style="margin: 6px 0 0 0; font-size: 11px; color: #94a3b8;">
                 Lima, Perú • Mensaje transaccional generado automáticamente por el sistema central.
@@ -283,7 +283,7 @@ Lima, Perú.
       subject: 'Restablecer contraseña - AMEX Courier',
       html: htmlContent,
       text: textContent,
-      replyTo: 'notificaciones@sistema-amex.online',
+      replyTo: 'notificaciones@sistemaamexcourier.online',
     });
 
     if (!emailResult.success) {

@@ -13,7 +13,7 @@ describe('Password Recovery Architecture Tests', () => {
   });
 
   it('asegura que el redireccionamiento incluya el flag recovered=true para activar el modo de cambio de contraseña', () => {
-    const siteUrl = 'https://sistema-amex.online';
+    const siteUrl = 'https://sistemaamexcourier.online';
     const redirectTo = `${siteUrl}/login?recovered=true`;
 
     const url = new URL(redirectTo);

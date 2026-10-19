@@ -7,7 +7,7 @@ describe('Suite Profesional de Recuperación de Contraseña con Resend', () => {
 
     const validos = [
       'sistemaamexcourier@gmail.com',
-      'operaciones@sistema-amex.online',
+      'operaciones@sistemaamexcourier.online',
       'admin.logistica@amex.com.pe',
       'juan_perez123@hotmail.com'
     ];
@@ -93,7 +93,7 @@ describe('Suite Profesional de Recuperación de Contraseña con Resend', () => {
       'AMEX COURIER',
       'Restablecer Mi Contraseña',
       'Lima, Perú',
-      'notificaciones@sistema-amex.online',
+      'notificaciones@sistemaamexcourier.online',
       '60 minutos'
     ];
 
@@ -105,7 +105,7 @@ describe('Suite Profesional de Recuperación de Contraseña con Resend', () => {
           <h1>AMEX COURIER</h1>
           <a href="#">Restablecer Mi Contraseña</a>
           <p>Válido por 60 minutos</p>
-          <footer>Lima, Perú • notificaciones@sistema-amex.online</footer>
+          <footer>Lima, Perú • notificaciones@sistemaamexcourier.online</footer>
         </body>
       </html>
     `;

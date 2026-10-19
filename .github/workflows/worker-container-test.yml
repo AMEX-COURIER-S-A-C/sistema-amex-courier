@@ -61,7 +61,7 @@ jobs:
         run: |
           echo '--- TEST3 node-spawn sin límites ---' > /tmp/diag.log
           docker run --rm -v /tmp/t:/t -v /tmp/spawn-test.js:/s.js \
-            --entrypoint node ghcr.io/martinmaldonado5/amex-inventory-worker:latest \
+            --entrypoint node ghcr.io/amex-courier-s-a-c/amex-inventory-worker:latest \
             /s.js T3 >> /tmp/diag.log 2>&1 || echo "docker exit=$?" >> /tmp/diag.log
           ls -la /tmp/t/ >> /tmp/diag.log 2>&1
       - name: Test 4 node-spawn con límites Render Free
@@ -69,7 +69,7 @@ jobs:
           echo '--- TEST4 node-spawn 512m 0.5cpu ---' >> /tmp/diag.log
           docker run --rm -v /tmp/t:/t -v /tmp/spawn-test.js:/s.js \
             --memory=512m --cpus=0.5 \
-            --entrypoint node ghcr.io/martinmaldonado5/amex-inventory-worker:latest \
+            --entrypoint node ghcr.io/amex-courier-s-a-c/amex-inventory-worker:latest \
             /s.js T4 >> /tmp/diag.log 2>&1 || echo "docker exit=$?" >> /tmp/diag.log
           ls -la /tmp/t/ >> /tmp/diag.log 2>&1
       - name: Test 5 inventario con y sin acento
@@ -77,12 +77,12 @@ jobs:
           echo '--- TEST5 acento vs ascii ---' >> /tmp/diag.log
           docker run --rm -v /tmp/t:/t \
             --entrypoint /app/processor/AmexInventoryProcessor \
-            ghcr.io/martinmaldonado5/amex-inventory-worker:latest \
+            ghcr.io/amex-courier-s-a-c/amex-inventory-worker:latest \
             /t/inv.xlsx /t/ent.xlsx /t/env.xlsx /t/env.xlsx /t/out5a.xlsx /t/un5a.csv \
             >> /tmp/diag.log 2>&1 || echo "inv-acento exit=$?" >> /tmp/diag.log
           docker run --rm -v /tmp/t:/t \
             --entrypoint /app/processor/AmexInventoryProcessor \
-            ghcr.io/martinmaldonado5/amex-inventory-worker:latest \
+            ghcr.io/amex-courier-s-a-c/amex-inventory-worker:latest \
             /t/inv-ascii.xlsx /t/ent.xlsx /t/env.xlsx /t/env.xlsx /t/out5b.xlsx /t/un5b.csv \
             >> /tmp/diag.log 2>&1 || echo "inv-ascii exit=$?" >> /tmp/diag.log
           ls -la /tmp/t/out5* >> /tmp/diag.log 2>&1 || true

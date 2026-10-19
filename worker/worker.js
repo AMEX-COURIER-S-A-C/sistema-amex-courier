@@ -26,7 +26,7 @@ const fsp = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
-const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const XLSX = require('xlsx');
 const { createProcessorClient } = require('./processor-client');
 
@@ -282,6 +282,16 @@ async function uploadToR2(localPath, key, contentType) {
     },
     { maxRetries: 3, initialDelayMs: 1500, operationName: `Subida R2 (${key})` }
   );
+}
+
+async function deleteFromR2(key) {
+  if (!key) return;
+  try {
+    await s3.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: key }));
+    console.log(`[worker] Archivo temporal eliminado de R2: ${key}`);
+  } catch (err) {
+    console.warn(`[worker] Advertencia al eliminar archivo temporal de R2 (${key}): ${err.message}`);
+  }
 }
 
 // -------------------------------------------------------- TIB local disk cache
@@ -641,6 +651,8 @@ async function processJob(job) {
 
     const inventoryPath = path.join(jobDir, INVENTORY_FILE_NAME);
     await downloadFromR2(job.inventario_key, inventoryPath);
+    // Eliminar de inmediato el archivo de entrada en R2 ya que ya está en el disco local del worker
+    void deleteFromR2(job.inventario_key);
 
     const sourcePaths = [];
     const emptyTemplate = await fsp.readFile(EMPTY_TEMPLATE);
@@ -793,7 +805,7 @@ function readCgroup() {
 const server = http.createServer(async (req, res) => {
   const requestId = req.headers['x-request-id'] || crypto.randomUUID();
   const correlationId = req.headers['x-correlation-id'] || requestId;
-  const allowedOrigins = (process.env.WORKER_ALLOWED_ORIGINS || 'https://www.sistema-amex.online,http://localhost:3000,http://127.0.0.1:3000')
+  const allowedOrigins = (process.env.WORKER_ALLOWED_ORIGINS || 'https://www.sistemaamexcourier.online,https://sistemaamexcourier.online,http://localhost:3000,http://127.0.0.1:3000')
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);

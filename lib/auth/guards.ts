@@ -83,7 +83,7 @@ export async function authorizeAdmin(): Promise<
         ok: true,
         user: {
           id: 'service-role-admin',
-          email: 'admin@sistema-amex.online',
+          email: 'admin@sistemaamexcourier.online',
           app_metadata: { rol: 'administrador' },
           user_metadata: { nombre_completo: 'Administrador AMEX (Servicio)' },
         } as unknown as User,

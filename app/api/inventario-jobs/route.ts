@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'node:crypto';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { authorizeUser, getUserDisplayName, hasAdminRole } from '@/lib/auth/guards';
-import { uploadFileToR2 } from '@/lib/r2/client';
+import { uploadFileToR2, deleteFileFromR2, deletePrefixFromR2, R2_ROOT_FOLDER } from '@/lib/r2/client';
 import { generateInventoryExcelBufferFromDb, getDbInventoryCount } from '@/lib/inventory-jobs/exportDbInventory';
 import { CreateInventarioJobSchema } from '@/lib/validations/inventario-jobs.schema';
 import { validateBody } from '@/lib/api/validate';
@@ -28,6 +28,40 @@ function isXlsxKey(key: string): boolean {
   return key.toLowerCase().endsWith('.xlsx') && !key.includes('..');
 }
 
+/**
+ * Purga automáticamente trabajos ya sincronizados o huérfanos (> 10 min) tanto de R2 como de inventario_jobs
+ */
+async function purgeCompletedAndStaleJobs(admin: ReturnType<typeof getSupabaseAdmin>) {
+  try {
+    const cutoffIso = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const { data: staleJobs } = await admin
+      .from('inventario_jobs')
+      .select('id, estado, db_sincronizado, inventario_key, resultado_key, csv_key, creado_en')
+      .or(`db_sincronizado.eq.true,estado.eq.error,creado_en.lt.${cutoffIso}`)
+      .limit(50);
+
+    if (!staleJobs || staleJobs.length === 0) return;
+
+    const idsToDelete: string[] = [];
+    for (const job of staleJobs) {
+      idsToDelete.push(job.id);
+      await Promise.all([
+        deletePrefixFromR2(`${R2_ROOT_FOLDER}/inventario-jobs/${job.id}/`),
+        job.inventario_key ? deleteFileFromR2(String(job.inventario_key)) : Promise.resolve(),
+        job.resultado_key ? deleteFileFromR2(String(job.resultado_key)) : Promise.resolve(),
+        job.csv_key ? deleteFileFromR2(String(job.csv_key)) : Promise.resolve(),
+      ]);
+    }
+
+    if (idsToDelete.length > 0) {
+      await admin.from('inventario_jobs').delete().in('id', idsToDelete);
+    }
+  } catch (err) {
+    console.warn('[inventario-jobs] Advertencia en purga automática:', err);
+  }
+}
+
+
 async function handlePost(req: NextRequest) {
   try {
     const auth = await authorizeUser();
@@ -38,6 +72,7 @@ async function handlePost(req: NextRequest) {
     const body = validation.data;
 
     const admin = getSupabaseAdmin();
+    void purgeCompletedAndStaleJobs(admin);
     const usarTibDiario = Boolean(body.usar_tib_diario);
     let fuentes: string[] = [];
     const tibKeys: Record<string, string> = {};
@@ -185,6 +220,7 @@ async function handleGet() {
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
     const admin = getSupabaseAdmin();
+    await purgeCompletedAndStaleJobs(admin);
     let query = admin
       .from('inventario_jobs')
       .select(

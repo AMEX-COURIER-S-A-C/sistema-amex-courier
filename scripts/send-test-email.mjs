@@ -7,7 +7,7 @@ const apiKey = matchKey ? matchKey[1].trim() : '';
 
 async function sendTest() {
   const recipient = 'sistemaamexcourier@gmail.com';
-  const fromEmail = 'AMEX Courier <notificaciones@sistema-amex.online>';
+  const fromEmail = 'AMEX Courier <notificaciones@sistemaamexcourier.online>';
   const sentDate = new Date().toLocaleString('es-PE', { timeZone: 'America/Lima' });
 
   console.log(`Enviando correo de prueba a ${recipient} desde ${fromEmail}...`);
@@ -62,7 +62,7 @@ async function sendTest() {
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px;">
                 <tr>
                   <td style="padding: 8px 12px; font-size: 13px; color: #64748b; font-weight: 600; width: 40%;">Dominio Verificado:</td>
-                  <td style="padding: 8px 12px; font-size: 13px; color: #0f172a; font-weight: 700;">sistema-amex.online</td>
+                  <td style="padding: 8px 12px; font-size: 13px; color: #0f172a; font-weight: 700;">sistemaamexcourier.online</td>
                 </tr>
                 <tr>
                   <td style="padding: 8px 12px; font-size: 13px; color: #64748b; font-weight: 600; border-top: 1px solid #f1f5f9;">Estado Autenticación:</td>
@@ -130,7 +130,7 @@ Hola,
 Este es un correo de prueba oficial generado para confirmar la vinculación exitosa entre el Sistema AMEX Courier y la plataforma de envíos Resend.
 
 Parámetros Verificados:
-- Dominio: sistema-amex.online (SPF y DKIM verificados)
+- Dominio: sistemaamexcourier.online (SPF y DKIM verificados)
 - Proyecto Vercel: sistema-amex-courier
 - Fecha y Hora (Lima): ${sentDate}
 - Destinatario: ${recipient}
@@ -154,7 +154,7 @@ Lima, Perú.
     body: JSON.stringify({
       from: fromEmail,
       to: [recipient],
-      reply_to: 'notificaciones@sistema-amex.online',
+      reply_to: 'notificaciones@sistemaamexcourier.online',
       subject: 'Verificación Exitosa: Sistema AMEX Courier conectado con Resend',
       html: htmlContent,
       text: textContent,

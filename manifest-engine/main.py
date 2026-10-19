@@ -26,7 +26,7 @@ allowed_origins = [
     origin.strip()
     for origin in os.getenv(
         "MANIFEST_ALLOWED_ORIGINS",
-        "https://www.sistema-amex.online,http://localhost:3000,http://127.0.0.1:3000",
+        "https://www.sistemaamexcourier.online,https://sistemaamexcourier.online,http://localhost:3000,http://127.0.0.1:3000",
     ).split(",")
     if origin.strip()
 ]

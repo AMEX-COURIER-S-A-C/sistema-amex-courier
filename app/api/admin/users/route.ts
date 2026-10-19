@@ -167,7 +167,7 @@ export async function POST(request: Request) {
       });
 
       // Enviar correo formal de bienvenida con enlace seguro para definir contraseña
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://sistema-amex.online';
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://sistemaamexcourier.online';
       let welcomeSent = false;
       try {
         const { data: linkData } = await supabase.auth.admin.generateLink({
@@ -201,7 +201,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'El correo del colaborador es requerido' }, { status: 400 });
       }
 
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://sistema-amex.online';
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://sistemaamexcourier.online';
       const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
         type: 'recovery',
         email: cleanEmail,

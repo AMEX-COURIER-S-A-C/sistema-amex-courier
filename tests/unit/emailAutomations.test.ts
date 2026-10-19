@@ -18,7 +18,7 @@ describe('Email Automations Suite (Puntos 1, 5 y 6)', () => {
       email: 'colaborador@amex.com',
       nombreCompleto: 'Carlos Chofer',
       rolNombre: 'Chofer / Despachador',
-      activationLink: 'https://sistema-amex.online/login?recovered=true#token=xyz',
+      activationLink: 'https://sistemaamexcourier.online/login?recovered=true#token=xyz',
     });
 
     expect(result.success).toBe(true);
@@ -28,7 +28,7 @@ describe('Email Automations Suite (Puntos 1, 5 y 6)', () => {
     expect(callArgs.subject).toContain('Carlos Chofer');
     expect(callArgs.subject).toContain('Chofer / Despachador');
     expect(callArgs.html).toContain('Carlos Chofer');
-    expect(callArgs.html).toContain('https://sistema-amex.online/login?recovered=true#token=xyz');
+    expect(callArgs.html).toContain('https://sistemaamexcourier.online/login?recovered=true#token=xyz');
   });
 
   it('generates and sends security alert for anti-chancado (Punto 5)', async () => {

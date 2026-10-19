@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { authorizeUser, getUserDisplayName, hasAdminRole } from '@/lib/auth/guards';
 import { syncCompletedExcelToDatabase } from '@/lib/inventory-jobs/syncDb';
+import { deleteFileFromR2, deletePrefixFromR2, R2_ROOT_FOLDER } from '@/lib/r2/client';
 
 /**
  * POST /api/inventario-jobs/[id]/sync-db
- * Sincroniza e inyecta los resultados del cruce TIB directamente en la tabla paquetes y kardex de Supabase.
+ * Sincroniza e inyecta los resultados del cruce TIB directamente en la tabla paquetes y kardex de Supabase,
+ * e inmediatamente purga los archivos temporales en Cloudflare R2 y la fila de la cola inventario_jobs.
  */
 export async function POST(
   _req: NextRequest,
@@ -42,7 +44,7 @@ export async function POST(
       );
     }
 
-    // Ejecutar sincronización a base de datos
+    // 1. Ejecutar sincronización a base de datos
     const result = await syncCompletedExcelToDatabase(job.resultado_key, {
       jobId: job.id,
       userEmail: auth.user.email || '',
@@ -54,8 +56,23 @@ export async function POST(
       return NextResponse.json({ error: result.error || 'Fallo al sincronizar en base de datos.' }, { status: 500 });
     }
 
+    // 2. Purgar inmediatamente los archivos temporales de Cloudflare R2 y eliminar la fila de inventario_jobs
+    try {
+      await Promise.all([
+        deletePrefixFromR2(`${R2_ROOT_FOLDER}/inventario-jobs/${job.id}/`),
+        job.inventario_key ? deleteFileFromR2(String(job.inventario_key)) : Promise.resolve(),
+        job.resultado_key ? deleteFileFromR2(String(job.resultado_key)) : Promise.resolve(),
+        job.csv_key ? deleteFileFromR2(String(job.csv_key)) : Promise.resolve(),
+      ]);
+      await admin.from('inventario_jobs').delete().eq('id', job.id);
+      console.log(`[sync-db] Trabajo ${job.id} sincronizado y purgado de R2 + inventario_jobs.`);
+    } catch (cleanupErr) {
+      console.warn(`[sync-db] Advertencia al purgar recursos temporales del job ${job.id}:`, cleanupErr);
+    }
+
     return NextResponse.json({
       ok: true,
+      purged: true,
       message: `¡Éxito! Se actualizaron ${result.updatedCount} paquetes${result.insertedCount > 0 ? ` y se registraron ${result.insertedCount} nuevos` : ''} en la base de datos master.`,
       updatedCount: result.updatedCount,
       insertedCount: result.insertedCount,
@@ -67,3 +84,4 @@ export async function POST(
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+

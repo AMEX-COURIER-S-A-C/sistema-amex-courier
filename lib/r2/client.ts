@@ -1,4 +1,11 @@
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+  ListObjectsV2Command,
+  DeleteObjectsCommand,
+} from '@aws-sdk/client-s3';
 
 function getEnv(name: string, defaultValue: string = ''): string {
   const val = process.env[name];
@@ -149,4 +156,39 @@ export async function deleteFileFromR2(key: string): Promise<void> {
     console.warn(`[R2] Advertencia al eliminar archivo de R2 (${key}): ${msg}`);
   }
 }
+
+/**
+ * Elimina todos los objetos bajo un prefijo (carpeta) en Cloudflare R2
+ */
+export async function deletePrefixFromR2(prefix: string): Promise<number> {
+  if (!prefix) return 0;
+  try {
+    const client = getR2Client();
+    const listRes = await client.send(
+      new ListObjectsV2Command({
+        Bucket: R2_BUCKET_NAME,
+        Prefix: prefix,
+      })
+    );
+    const objects = (listRes.Contents || [])
+      .filter((obj) => Boolean(obj.Key))
+      .map((obj) => ({ Key: obj.Key! }));
+
+    if (objects.length === 0) return 0;
+
+    await client.send(
+      new DeleteObjectsCommand({
+        Bucket: R2_BUCKET_NAME,
+        Delete: { Objects: objects, Quiet: true },
+      })
+    );
+    console.log(`[R2] Carpeta/prefijo eliminado de Cloudflare R2 (${prefix}): ${objects.length} archivos.`);
+    return objects.length;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[R2] Advertencia al eliminar prefijo de R2 (${prefix}): ${msg}`);
+    return 0;
+  }
+}
+
 
