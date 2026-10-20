@@ -59,37 +59,48 @@ export async function generateInventoryExcelBufferFromDb(
   const admin = getSupabaseAdmin();
   const filtro = options?.filtroEstado || 'activos';
 
-  let query = admin
-    .from('paquetes')
-    .select(`
-      numero_recibo_bodega,
-      tracking,
-      nombre_consignatario,
-      tipo_empaque,
-      peso_kg,
-      estado_tib,
-      estado_amex,
-      anaquel,
-      piso,
-      posicion_estante,
-      ubicacion_actual,
-      usuario_email,
-      descripcion,
-      creado_en
-    `)
-    .is('eliminado_en', null)
-    .order('creado_en', { ascending: false });
+  const paquetes: any[] = [];
+  const PAGE_SIZE = 1000;
+  let offset = 0;
 
-  if (filtro === 'activos') {
-    query = query.neq('estado_amex', 'entregado').neq('ubicacion_actual', 'Entregado');
+  while (true) {
+    let query = admin
+      .from('paquetes')
+      .select(`
+        numero_recibo_bodega,
+        tracking,
+        nombre_consignatario,
+        tipo_empaque,
+        peso_kg,
+        estado_tib,
+        estado_amex,
+        anaquel,
+        piso,
+        posicion_estante,
+        ubicacion_actual,
+        usuario_email,
+        descripcion,
+        creado_en
+      `)
+      .is('eliminado_en', null)
+      .order('creado_en', { ascending: false })
+      .range(offset, offset + PAGE_SIZE - 1);
+
+    if (filtro === 'activos') {
+      query = query.neq('estado_amex', 'entregado').neq('ubicacion_actual', 'Entregado');
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      throw new Error(`Error al consultar paquetes de la base de datos: ${error.message}`);
+    }
+    if (!data || data.length === 0) break;
+    paquetes.push(...data);
+    if (data.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
   }
 
-  const { data: paquetes, error } = await query;
-  if (error) {
-    throw new Error(`Error al consultar paquetes de la base de datos: ${error.message}`);
-  }
-
-  if (!paquetes || paquetes.length === 0) {
+  if (paquetes.length === 0) {
     throw new Error(
       filtro === 'activos'
         ? 'No hay paquetes activos en almacén para cruzar.'

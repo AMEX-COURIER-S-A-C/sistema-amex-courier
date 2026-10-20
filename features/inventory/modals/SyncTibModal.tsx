@@ -9,12 +9,11 @@ import {
   AlertTriangle,
   Upload,
   RefreshCw,
-  FileSpreadsheet,
   Server,
-  Database,
-  ArrowRight,
-  Clock,
-  Layers
+  Globe,
+  ChevronDown,
+  ChevronUp,
+  Sparkles
 } from 'lucide-react';
 
 interface TibFileInfo {
@@ -81,38 +80,59 @@ function formatBytes(bytes: number): string {
 
 export default function SyncTibModal({ isOpen, onClose, onRefreshData }: SyncTibModalProps) {
   const [tibState, setTibState] = useState<TibState | null>(null);
-  const [isLoadingTib, setIsLoadingTib] = useState(false);
+  const [, setIsLoadingTib] = useState(false);
   const [isUploading, setIsUploading] = useState<Record<string, boolean>>({});
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
   const [dbCount, setDbCount] = useState<number>(0);
   const [filtroEstado, setFiltroEstado] = useState<'activos' | 'todos'>('activos');
+  const [syncCloudFiles, setSyncCloudFiles] = useState<boolean>(true);
+  const [showManualUpload, setShowManualUpload] = useState<boolean>(false);
+
+  // Estados de ejecución
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingStage, setProcessingStage] = useState<string>('');
   const [activeJob, setActiveJob] = useState<JobProgress | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [apiCredentialsReady, setApiCredentialsReady] = useState<boolean>(true);
+  const [accountEmail, setAccountEmail] = useState<string>('operaciones@amexcourierperu.com');
+
   const [successResult, setSuccessResult] = useState<{
+    modo: 'api_direct' | 'worker_job';
     coincidencias: number;
     dbActualizados: number;
+    cambiosDetectados?: number;
     sinCoincidencia: number;
-    resultadoKey?: string | null;
+    duracionSegundos?: string;
+    tibCounts?: {
+      recibido: number;
+      enviado: number;
+      entregado: number;
+      totalRaw: number;
+    };
   } | null>(null);
 
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Cargar estado de archivos TIB del día y conteo en BD
+  // Cargar estado de TIB y BD
   const loadTibState = useCallback(async () => {
     setIsLoadingTib(true);
     setErrorMessage(null);
     try {
-      const [tibRes, statsRes] = await Promise.all([
-        fetch('/api/inventario-tib').then((r) => r.json()),
-        fetch('/api/inventario-jobs').then((r) => r.json()),
+      const [tibRes, statsRes, apiCheckRes] = await Promise.all([
+        fetch('/api/inventario-tib').then((r) => r.json()).catch(() => ({})),
+        fetch('/api/inventario-jobs').then((r) => r.json()).catch(() => ({})),
+        fetch('/api/tib/sync-inventario').then((r) => r.json()).catch(() => ({})),
       ]);
 
-      if (tibRes.files) {
+      if (tibRes?.files) {
         setTibState(tibRes);
       }
-      if (statsRes.dbStats) {
+      if (statsRes?.dbStats) {
         setDbCount(filtroEstado === 'todos' ? statsRes.dbStats.todos : statsRes.dbStats.activos);
+      }
+      if (apiCheckRes?.ok) {
+        setApiCredentialsReady(Boolean(apiCheckRes.credentialsConfigured));
+        if (apiCheckRes.accountEmail) setAccountEmail(apiCheckRes.accountEmail);
       }
     } catch (err: unknown) {
       console.error('Error cargando estado TIB:', err);
@@ -127,12 +147,71 @@ export default function SyncTibModal({ isOpen, onClose, onRefreshData }: SyncTib
       setActiveJob(null);
       setSuccessResult(null);
       setErrorMessage(null);
+      setIsProcessing(false);
     } else {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     }
   }, [isOpen, loadTibState]);
 
-  // Subida de un archivo individual a R2 y registro en inventario_tib_diario
+  // =========================================================================
+  // MÉTODO 1: SINCRONIZACIÓN DIRECTA DESDE API TIB (100% AUTOMÁTICO, CERO EXCELS)
+  // =========================================================================
+  const handleStartDirectApiSync = async () => {
+    setIsProcessing(true);
+    setErrorMessage(null);
+    setSuccessResult(null);
+    setProcessingStage('Consultando API oficial TIB (RECIBIDO, ENVIADO, ENTREGADO)...');
+
+    try {
+      const t0 = Date.now();
+      const res = await fetch('/api/tib/sync-inventario', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filtro_estado: filtroEstado,
+          sync_cloud_files: syncCloudFiles,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || 'Ocurrió un error al sincronizar con la API de TIB.');
+      }
+
+      const totalSec = ((Date.now() - t0) / 1000).toFixed(1);
+
+      setSuccessResult({
+        modo: 'api_direct',
+        coincidencias: data.coincidencias ?? 0,
+        dbActualizados: data.dbActualizados ?? 0,
+        cambiosDetectados: data.cambiosDetectados ?? 0,
+        sinCoincidencia: data.sinCoincidencia ?? 0,
+        duracionSegundos: totalSec,
+        tibCounts: data.tibCounts,
+      });
+
+      // Refrescar inventario en pantalla
+      if (onRefreshData) {
+        try {
+          await onRefreshData();
+        } catch (e) {
+          console.error('Error refrescando tabla:', e);
+        }
+      }
+
+      // Recargar estadísticas
+      void loadTibState();
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : 'Error en sincronización directa TIB.');
+    } finally {
+      setIsProcessing(false);
+      setProcessingStage('');
+    }
+  };
+
+  // =========================================================================
+  // MÉTODO 2: FLUJO DE RESPALDO VÍA WORKER HOSTINGER (EXCELS MANUALES)
+  // =========================================================================
   const handleUploadSingleTib = async (tipo: 'delivered' | 'sent' | 'received', file: File) => {
     if (!file.name.toLowerCase().endsWith('.xlsx')) {
       setErrorMessage(`El archivo "${file.name}" debe ser formato .xlsx.`);
@@ -144,7 +223,6 @@ export default function SyncTibModal({ isOpen, onClose, onRefreshData }: SyncTib
     setErrorMessage(null);
 
     try {
-      // 1. Obtener URL presignada para TIB diario
       const presign = await fetch('/api/inventario-jobs/presign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -153,7 +231,6 @@ export default function SyncTibModal({ isOpen, onClose, onRefreshData }: SyncTib
 
       if (!presign.uploadUrl) throw new Error(presign.error || 'No se pudo generar URL de subida a R2.');
 
-      // 2. Subida directa con XHR
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open('PUT', presign.uploadUrl);
@@ -168,7 +245,6 @@ export default function SyncTibModal({ isOpen, onClose, onRefreshData }: SyncTib
         xhr.send(file);
       });
 
-      // 3. Confirmar registro en Supabase
       const confirmRes = await fetch('/api/inventario-tib', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -180,9 +256,7 @@ export default function SyncTibModal({ isOpen, onClose, onRefreshData }: SyncTib
         }),
       }).then((r) => r.json());
 
-      if (!confirmRes.ok) throw new Error(confirmRes.error || 'No se pudo registrar archivo TIB en la base de datos.');
-
-      // Refrescar estado
+      if (!confirmRes.ok) throw new Error(confirmRes.error || 'No se pudo registrar archivo TIB.');
       await loadTibState();
     } catch (err: unknown) {
       setErrorMessage(err instanceof Error ? err.message : 'Error al subir archivo TIB.');
@@ -191,8 +265,7 @@ export default function SyncTibModal({ isOpen, onClose, onRefreshData }: SyncTib
     }
   };
 
-  // Disparar cruce automático usando TIB del día
-  const handleStartSync = async () => {
+  const handleStartWorkerSync = async () => {
     setIsProcessing(true);
     setErrorMessage(null);
     setSuccessResult(null);
@@ -227,7 +300,6 @@ export default function SyncTibModal({ isOpen, onClose, onRefreshData }: SyncTib
         segundos: null,
       });
 
-      // Suscripción Realtime para barra de progreso en vivo
       const channel = supabase
         .channel(`sync-tib-job-${jobId}`)
         .on(
@@ -242,7 +314,7 @@ export default function SyncTibModal({ isOpen, onClose, onRefreshData }: SyncTib
             const updated = payload.new as JobProgress;
             setActiveJob(updated);
             if (updated.estado === 'done') {
-              handleJobFinished(jobId, updated);
+              handleWorkerJobFinished(jobId, updated);
             } else if (updated.estado === 'error') {
               setIsProcessing(false);
               setErrorMessage(updated.mensaje || 'Ocurrió un error en el procesador.');
@@ -251,7 +323,6 @@ export default function SyncTibModal({ isOpen, onClose, onRefreshData }: SyncTib
         )
         .subscribe();
 
-      // Polling de respaldo cada 1.5s
       pollIntervalRef.current = setInterval(async () => {
         try {
           const detailRes = await fetch(`/api/inventario-jobs/${jobId}`);
@@ -261,7 +332,7 @@ export default function SyncTibModal({ isOpen, onClose, onRefreshData }: SyncTib
             if (detailData.job.estado === 'done') {
               if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
               supabase.removeChannel(channel);
-              handleJobFinished(jobId, detailData.job);
+              handleWorkerJobFinished(jobId, detailData.job);
             } else if (detailData.job.estado === 'error') {
               if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
               supabase.removeChannel(channel);
@@ -275,15 +346,14 @@ export default function SyncTibModal({ isOpen, onClose, onRefreshData }: SyncTib
       }, 1500);
     } catch (err: unknown) {
       setIsProcessing(false);
-      setErrorMessage(err instanceof Error ? err.message : 'Error al iniciar cruce.');
+      setErrorMessage(err instanceof Error ? err.message : 'Error al iniciar cruce en worker.');
     }
   };
 
-  const handleJobFinished = async (jobId: string, jobData: JobProgress) => {
+  const handleWorkerJobFinished = async (jobId: string, jobData: JobProgress) => {
     setIsProcessing(false);
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
 
-    // Asegurar sincronización en BD si no fue automática
     let finalActualizados = jobData.db_actualizados || 0;
     try {
       const syncRes = await fetch(`/api/inventario-jobs/${jobId}/sync-db`, { method: 'POST' });
@@ -296,53 +366,72 @@ export default function SyncTibModal({ isOpen, onClose, onRefreshData }: SyncTib
     }
 
     setSuccessResult({
+      modo: 'worker_job',
       coincidencias: jobData.coincidencias ?? 0,
       dbActualizados: finalActualizados,
       sinCoincidencia: jobData.sin_coincidencia ?? 0,
-      resultadoKey: jobData.resultado_key,
+      duracionSegundos: String(jobData.segundos || ''),
     });
 
-    // Refrescar tabla en Módulo 3
     if (onRefreshData) {
       try {
         await onRefreshData();
       } catch (e) {
-        console.error('Error refrescando tabla en Módulo 3:', e);
+        console.error('Error refrescando tabla:', e);
       }
     }
   };
 
-  const hasAnyTib = Boolean(
+  const hasAnyTibFiles = Boolean(
     tibState?.files.delivered || tibState?.files.sent || tibState?.files.received
   );
 
   return (
     <Modal isOpen={isOpen} onClose={isProcessing ? () => {} : onClose} maxWidth="3xl">
       <div style={{ padding: '4px' }}>
-        {/* Encabezado */}
+        {/* ENCABEZADO */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div
               style={{
-                width: '42px',
-                height: '42px',
-                borderRadius: '10px',
-                background: '#eff6ff',
-                color: '#2563eb',
+                width: '44px',
+                height: '44px',
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                color: '#ffffff',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 fontSize: '20px',
+                boxShadow: '0 4px 12px rgba(37, 99, 235, 0.25)',
               }}
             >
-              <Zap className="w-5 h-5 text-blue-600" />
+              <Zap className="w-5 h-5 text-amber-300" />
             </div>
             <div>
-              <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#1e293b' }}>
-                Sincronización Rápida con TIB del Día
-              </h2>
-              <p style={{ margin: 0, fontSize: '12.5px', color: '#64748b' }}>
-                Cruce automático del inventario de paquetes con reportes TIB mediante el Worker Hostinger
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 900, color: '#0f172a' }}>
+                  Sincronización Automática con TIB Courier
+                </h2>
+                <span
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    background: '#dcfce7',
+                    color: '#15803d',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  <Globe className="w-3 h-3 text-emerald-600" />
+                  API En Vivo
+                </span>
+              </div>
+              <p style={{ margin: '2px 0 0', fontSize: '12.5px', color: '#64748b' }}>
+                Cruce directo de inventario contra TIB Courier sin necesidad de descargar ni subir Excels.
               </p>
             </div>
           </div>
@@ -352,7 +441,7 @@ export default function SyncTibModal({ isOpen, onClose, onRefreshData }: SyncTib
             style={{
               background: 'none',
               border: 'none',
-              fontSize: '20px',
+              fontSize: '22px',
               cursor: isProcessing ? 'not-allowed' : 'pointer',
               color: '#94a3b8',
               lineHeight: 1,
@@ -362,6 +451,7 @@ export default function SyncTibModal({ isOpen, onClose, onRefreshData }: SyncTib
           </button>
         </div>
 
+        {/* ALERTA DE ERROR */}
         {errorMessage && (
           <div
             style={{
@@ -382,40 +472,76 @@ export default function SyncTibModal({ isOpen, onClose, onRefreshData }: SyncTib
           </div>
         )}
 
-        {/* Éxito / Resultado final */}
+        {/* RESULTADO EXITOSO */}
         {successResult && (
           <div
             style={{
               padding: '16px',
               background: '#f0fdf4',
               border: '1px solid #bbf7d0',
-              borderRadius: '10px',
+              borderRadius: '12px',
               marginBottom: '18px',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#166534', fontWeight: 700, marginBottom: '8px' }}>
-              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-              <span>¡Cruce completado y base de datos actualizada con éxito!</span>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#166534', fontWeight: 800, fontSize: '14px' }}>
+                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                <span>¡Sincronización completada con éxito!</span>
+              </div>
+              {successResult.duracionSegundos && (
+                <span style={{ fontSize: '11.5px', color: '#15803d', fontWeight: 700, background: '#dcfce7', padding: '2px 8px', borderRadius: '10px' }}>
+                  ⚡ En solo {successResult.duracionSegundos}s
+                </span>
+              )}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginTop: '12px' }}>
-              <div style={{ background: '#ffffff', padding: '10px', borderRadius: '8px', border: '1px solid #dcfce7', textAlign: 'center' }}>
-                <div style={{ fontSize: '20px', fontWeight: 800, color: '#15803d' }}>{successResult.coincidencias}</div>
-                <div style={{ fontSize: '11px', color: '#4b5563', textTransform: 'uppercase' }}>Coincidencias TIB</div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+              <div style={{ background: '#ffffff', padding: '12px', borderRadius: '8px', border: '1px solid #dcfce7', textAlign: 'center' }}>
+                <div style={{ fontSize: '22px', fontWeight: 900, color: '#15803d' }}>
+                  {successResult.coincidencias.toLocaleString()}
+                </div>
+                <div style={{ fontSize: '11px', color: '#4b5563', textTransform: 'uppercase', fontWeight: 700 }}>
+                  Coincidencias TIB
+                </div>
               </div>
-              <div style={{ background: '#ffffff', padding: '10px', borderRadius: '8px', border: '1px solid #dcfce7', textAlign: 'center' }}>
-                <div style={{ fontSize: '20px', fontWeight: 800, color: '#2563eb' }}>{successResult.dbActualizados}</div>
-                <div style={{ fontSize: '11px', color: '#4b5563', textTransform: 'uppercase' }}>Paquetes Actualizados</div>
+              <div style={{ background: '#ffffff', padding: '12px', borderRadius: '8px', border: '1px solid #dcfce7', textAlign: 'center' }}>
+                <div style={{ fontSize: '22px', fontWeight: 900, color: '#2563eb' }}>
+                  {successResult.dbActualizados.toLocaleString()}
+                </div>
+                <div style={{ fontSize: '11px', color: '#4b5563', textTransform: 'uppercase', fontWeight: 700 }}>
+                  Paquetes Sincronizados
+                </div>
+                {successResult.cambiosDetectados !== undefined && successResult.cambiosDetectados > 0 && (
+                  <div style={{ fontSize: '10px', color: '#2563eb', fontWeight: 800, marginTop: '2px' }}>
+                    ({successResult.cambiosDetectados} con cambios nuevos)
+                  </div>
+                )}
               </div>
-              <div style={{ background: '#ffffff', padding: '10px', borderRadius: '8px', border: '1px solid #dcfce7', textAlign: 'center' }}>
-                <div style={{ fontSize: '20px', fontWeight: 800, color: '#d97706' }}>{successResult.sinCoincidencia}</div>
-                <div style={{ fontSize: '11px', color: '#4b5563', textTransform: 'uppercase' }}>Sin Coincidencia</div>
+              <div style={{ background: '#ffffff', padding: '12px', borderRadius: '8px', border: '1px solid #dcfce7', textAlign: 'center' }}>
+                <div style={{ fontSize: '22px', fontWeight: 900, color: '#d97706' }}>
+                  {successResult.sinCoincidencia.toLocaleString()}
+                </div>
+                <div style={{ fontSize: '11px', color: '#4b5563', textTransform: 'uppercase', fontWeight: 700 }}>
+                  Sin Coincidencia
+                </div>
               </div>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '14px' }}>
+
+            {successResult.tibCounts && (
+              <div style={{ marginTop: '10px', fontSize: '11.5px', color: '#166534', display: 'flex', gap: '12px', justifyContent: 'center' }}>
+                <span>Entregados: <strong>{successResult.tibCounts.entregado.toLocaleString()}</strong></span>
+                <span>•</span>
+                <span>Enviados: <strong>{successResult.tibCounts.enviado.toLocaleString()}</strong></span>
+                <span>•</span>
+                <span>Recibidos Miami: <strong>{successResult.tibCounts.recibido.toLocaleString()}</strong></span>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '14px' }}>
               <button
                 className="btn btn-primary"
                 onClick={onClose}
-                style={{ fontSize: '12.5px', fontWeight: 700 }}
+                style={{ fontSize: '12.5px', fontWeight: 800, padding: '8px 16px' }}
               >
                 Cerrar y Ver Inventario
               </button>
@@ -423,7 +549,37 @@ export default function SyncTibModal({ isOpen, onClose, onRefreshData }: SyncTib
           </div>
         )}
 
-        {/* Estado en progreso del Worker */}
+        {/* ESTADO EN PROCESAMIENTO DIRECTO API */}
+        {isProcessing && !activeJob && (
+          <div
+            style={{
+              padding: '16px',
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '10px',
+              marginBottom: '16px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+              <RefreshCw className="w-4 h-4 text-blue-600 animate-spin" />
+              <span style={{ fontSize: '13px', fontWeight: 800, color: '#1e293b' }}>
+                {processingStage || 'Sincronizando directamente con TIB Courier...'}
+              </span>
+            </div>
+            <div style={{ width: '100%', height: '6px', background: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
+              <div
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  background: 'linear-gradient(90deg, #2563eb, #38bdf8)',
+                  animation: 'pulse 1.5s infinite',
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* ESTADO EN PROGRESO DEL WORKER (LEGACY) */}
         {isProcessing && activeJob && (
           <div
             style={{
@@ -437,7 +593,7 @@ export default function SyncTibModal({ isOpen, onClose, onRefreshData }: SyncTib
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
               <span style={{ fontSize: '13px', fontWeight: 700, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Server className="w-4 h-4 text-blue-600 animate-pulse" />
-                Worker Hostinger (AMD EPYC): {activeJob.etapa}
+                Worker Hostinger: {activeJob.etapa}
               </span>
               <span style={{ fontSize: '13px', fontWeight: 800, color: '#2563eb' }}>{activeJob.progreso}%</span>
             </div>
@@ -455,196 +611,256 @@ export default function SyncTibModal({ isOpen, onClose, onRefreshData }: SyncTib
           </div>
         )}
 
-        {/* Tarjetas de Archivos TIB del Día */}
-        <div style={{ marginBottom: '16px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-            <span style={{ fontSize: '13px', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-              Archivos TIB Activos del Día
-            </span>
-            {tibState && (
-              <span
-                style={{
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  padding: '2px 8px',
-                  borderRadius: '12px',
-                  background: tibState.isComplete ? '#dcfce7' : '#fef3c7',
-                  color: tibState.isComplete ? '#15803d' : '#b45309',
-                }}
-              >
-                {tibState.isComplete ? '✓ Todos listos (3/3)' : 'Archivos parciales'}
-              </span>
-            )}
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
-            {TIB_CONFIG.map(({ tipo, label, fileHint, color, iconBg }) => {
-              const fileData = tibState?.files[tipo];
-              const uploading = isUploading[tipo];
-              const pct = uploadProgress[tipo] || 0;
-
-              return (
-                <div
-                  key={tipo}
-                  style={{
-                    padding: '12px',
-                    borderRadius: '8px',
-                    border: fileData ? '1px solid #bbf7d0' : '1px dashed #cbd5e1',
-                    background: fileData ? '#f8fafc' : '#ffffff',
-                    position: 'relative',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                    <span style={{ fontSize: '11.5px', fontWeight: 800, color }}>{label}</span>
-                    {fileData ? (
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    ) : (
-                      <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 600 }}>Pendiente</span>
-                    )}
-                  </div>
-
-                  {fileData ? (
-                    <div>
-                      <div
-                        style={{
-                          fontSize: '11.5px',
-                          fontWeight: 600,
-                          color: '#1e293b',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                        }}
-                        title={fileData.nombre_archivo}
-                      >
-                        {fileData.nombre_archivo}
-                      </div>
-                      <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '2px', display: 'flex', gap: '6px' }}>
-                        <span>{formatBytes(fileData.peso_bytes)}</span>
-                        <span>•</span>
-                        <span>{fileData.subido_en ? new Date(fileData.subido_en).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: '11px', color: '#94a3b8', margin: '4px 0' }}>
-                      Requerido: <code>{fileHint}</code>
-                    </div>
-                  )}
-
-                  {/* Botón de subida rápida / reemplazo */}
-                  <label
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      marginTop: '8px',
-                      fontSize: '11px',
-                      color: '#2563eb',
-                      cursor: uploading || isProcessing ? 'not-allowed' : 'pointer',
-                      fontWeight: 700,
-                    }}
-                  >
-                    <Upload className="w-3 h-3" />
-                    <span>{uploading ? `Subiendo ${pct}%` : fileData ? 'Reemplazar' : 'Subir'}</span>
-                    <input
-                      type="file"
-                      accept=".xlsx"
-                      disabled={uploading || isProcessing}
-                      style={{ display: 'none' }}
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        if (f) void handleUploadSingleTib(tipo, f);
-                        e.target.value = '';
-                      }}
-                    />
-                  </label>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Panel de Configuración de Cruce */}
+        {/* TARJETA PRINCIPAL: SINCRONIZACIÓN 100% AUTOMÁTICA DIRECTA DESDE API */}
         <div
           style={{
-            background: '#f8fafc',
-            border: '1px solid #e2e8f0',
-            borderRadius: '8px',
-            padding: '12px 14px',
+            background: 'linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%)',
+            border: '1.5px solid #bfdbfe',
+            borderRadius: '12px',
+            padding: '16px 18px',
             marginBottom: '16px',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '10px',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Database className="w-4 h-4 text-emerald-600" />
-            <span style={{ fontSize: '12.5px', color: '#334155' }}>
-              Inventario en base de datos: <strong>{dbCount.toLocaleString()} paquetes</strong>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Sparkles className="w-4 h-4 text-blue-600" />
+              <span style={{ fontSize: '13.5px', fontWeight: 800, color: '#1e3a8a' }}>
+                Conexión Oficial API TIB Courier
+              </span>
+            </div>
+            <span
+              style={{
+                fontSize: '11px',
+                color: '#1e40af',
+                background: '#ffffff',
+                border: '1px solid #bfdbfe',
+                padding: '2px 8px',
+                borderRadius: '8px',
+                fontWeight: 700,
+              }}
+            >
+              {accountEmail}
             </span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '12px', color: '#64748b' }}>Filtro:</span>
-            <select
-              value={filtroEstado}
-              onChange={(e) => setFiltroEstado(e.target.value as 'activos' | 'todos')}
-              disabled={isProcessing}
+          <p style={{ margin: '0 0 14px', fontSize: '12.5px', color: '#334155', lineHeight: 1.5 }}>
+            Al pulsar el botón, el sistema consulta en segundos las guías de <strong>RECIBIDO</strong>, <strong>ENVIADO</strong> y <strong>ENTREGADO</strong> desde la API oficial de TIB y actualiza automáticamente los pesos, trackings, consignatarios y estados en tu inventario master.
+          </p>
+
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '12px',
+              paddingTop: '12px',
+              borderTop: '1px solid #dbeafe',
+            }}
+          >
+            {/* Opciones de Filtro y Caché */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Filtro:</span>
+                <select
+                  value={filtroEstado}
+                  onChange={(e) => setFiltroEstado(e.target.value as 'activos' | 'todos')}
+                  disabled={isProcessing}
+                  style={{
+                    fontSize: '12px',
+                    padding: '4px 8px',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    background: '#ffffff',
+                    fontWeight: 600,
+                  }}
+                >
+                  <option value="activos">Solo activos en almacén ({dbCount.toLocaleString()} guías)</option>
+                  <option value="todos">Todos los paquetes registrados</option>
+                </select>
+              </div>
+
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '12px',
+                  color: '#475569',
+                  cursor: isProcessing ? 'not-allowed' : 'pointer',
+                  fontWeight: 600,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={syncCloudFiles}
+                  onChange={(e) => setSyncCloudFiles(e.target.checked)}
+                  disabled={isProcessing}
+                />
+                <span>Actualizar reportes del día para Cobros (R2 + VPS)</span>
+              </label>
+            </div>
+
+            {/* BOTÓN PRINCIPAL DE SINCRONIZACIÓN */}
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleStartDirectApiSync}
+              disabled={isProcessing || !apiCredentialsReady}
               style={{
-                fontSize: '12px',
-                padding: '4px 8px',
-                borderRadius: '6px',
-                border: '1px solid #cbd5e1',
-                background: '#ffffff',
+                fontSize: '13px',
+                fontWeight: 900,
+                padding: '9px 18px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                boxShadow: '0 4px 14px rgba(37, 99, 235, 0.35)',
+                cursor: isProcessing ? 'not-allowed' : 'pointer',
               }}
             >
-              <option value="activos">Solo paquetes activos en almacén (Recomendado)</option>
-              <option value="todos">Todos los paquetes registrados</option>
-            </select>
+              {isProcessing && !activeJob ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Sincronizando con TIB...</span>
+                </>
+              ) : (
+                <>
+                  <Zap className="w-4 h-4 text-amber-300" />
+                  <span>Sincronizar con API TIB Ahora</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
 
-        {/* Acciones principales */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', alignItems: 'center' }}>
+        {/* SECCIÓN COLAPSABLE: CARGA MANUAL DE EXCELS (RESPALDO / LEGACY) */}
+        <div style={{ marginTop: '12px', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
           <button
             type="button"
-            className="btn"
-            onClick={onClose}
-            disabled={isProcessing}
-            style={{ fontSize: '13px', color: '#64748b' }}
-          >
-            Cancelar
-          </button>
-
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={handleStartSync}
-            disabled={isProcessing || !hasAnyTib}
+            onClick={() => setShowManualUpload(!showManualUpload)}
             style={{
-              fontSize: '13px',
-              fontWeight: 800,
+              background: 'none',
+              border: 'none',
+              padding: '6px 0',
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              background: hasAnyTib ? 'linear-gradient(135deg, #2563eb, #1d4ed8)' : '#94a3b8',
-              boxShadow: hasAnyTib ? '0 2px 10px rgba(37, 99, 235, 0.3)' : 'none',
-              cursor: isProcessing || !hasAnyTib ? 'not-allowed' : 'pointer',
+              fontSize: '12px',
+              fontWeight: 700,
+              color: '#64748b',
+              cursor: 'pointer',
             }}
           >
-            {isProcessing ? (
-              <>
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>Procesando en Hostinger...</span>
-              </>
-            ) : (
-              <>
-                <Zap className="w-4 h-4 text-amber-300" />
-                <span>Iniciar Cruce con Worker Hostinger</span>
-              </>
-            )}
+            {showManualUpload ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            <span>¿Deseas subir archivos Excel manualmente con el Worker Hostinger?</span>
           </button>
+
+          {showManualUpload && (
+            <div style={{ marginTop: '12px', background: '#f8fafc', padding: '14px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 800, color: '#334155', textTransform: 'uppercase' }}>
+                  Archivos TIB Activos del Día (R2)
+                </span>
+                {tibState && (
+                  <span
+                    style={{
+                      fontSize: '10.5px',
+                      fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: '10px',
+                      background: tibState.isComplete ? '#dcfce7' : '#fef3c7',
+                      color: tibState.isComplete ? '#15803d' : '#b45309',
+                    }}
+                  >
+                    {tibState.isComplete ? '✓ 3/3 listos en nube' : 'Archivos parciales'}
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '12px' }}>
+                {TIB_CONFIG.map(({ tipo, label, fileHint, color }) => {
+                  const fileData = tibState?.files[tipo];
+                  const uploading = isUploading[tipo];
+                  const pct = uploadProgress[tipo] || 0;
+
+                  return (
+                    <div
+                      key={tipo}
+                      style={{
+                        padding: '10px',
+                        borderRadius: '8px',
+                        border: fileData ? '1px solid #bbf7d0' : '1px dashed #cbd5e1',
+                        background: '#ffffff',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 800, color }}>{label}</span>
+                        {fileData ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        ) : (
+                          <span style={{ fontSize: '9.5px', color: '#94a3b8' }}>Pendiente</span>
+                        )}
+                      </div>
+
+                      {fileData ? (
+                        <div style={{ fontSize: '10.5px', color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {fileData.nombre_archivo}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '10px', color: '#94a3b8' }}>{fileHint}</div>
+                      )}
+
+                      <label
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          marginTop: '6px',
+                          fontSize: '10.5px',
+                          color: '#2563eb',
+                          cursor: uploading || isProcessing ? 'not-allowed' : 'pointer',
+                          fontWeight: 700,
+                        }}
+                      >
+                        <Upload className="w-3 h-3" />
+                        <span>{uploading ? `${pct}%` : fileData ? 'Reemplazar' : 'Subir'}</span>
+                        <input
+                          type="file"
+                          accept=".xlsx"
+                          disabled={uploading || isProcessing}
+                          style={{ display: 'none' }}
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) void handleUploadSingleTib(tipo, f);
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={handleStartWorkerSync}
+                  disabled={isProcessing || !hasAnyTibFiles}
+                  style={{
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    color: '#1e293b',
+                    background: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                  }}
+                >
+                  Procesar vía Worker Hostinger (C#)
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </Modal>

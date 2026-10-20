@@ -108,6 +108,52 @@ export default function InventarioJobsTab({ onNavigateTab }: InventarioJobsTabPr
   const [error, setError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
   const [deletingTib, setDeletingTib] = useState<Record<string, boolean>>({});
+  const [isSyncingApi, setIsSyncingApi] = useState(false);
+
+  const handleSyncAllFromApi = async () => {
+    setIsSyncingApi(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/tib/sync-inventario', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ only_cloud_files: true }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || 'Error al descargar reportes desde la API de TIB.');
+      }
+      showSuccess('✓ Los 3 reportes TIB fueron descargados y sincronizados en la nube (R2) y Hostinger VPS desde la API oficial.');
+      await loadTibState();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al sincronizar desde API TIB.');
+    } finally {
+      setIsSyncingApi(false);
+    }
+  };
+
+  const handleSyncSlotFromApi = async (slot: FuenteKey) => {
+    setUploadingTib((p) => ({ ...p, [slot]: true }));
+    setError(null);
+    try {
+      const res = await fetch('/api/tib/sync-inventario', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ only_cloud_files: true, slot }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || 'Error al sincronizar ' + slot + ' desde la API de TIB.');
+      }
+      const fuenteConfig = FUENTES.find((f) => f.key === slot);
+      showSuccess('✓ Reporte ' + (fuenteConfig?.label || slot) + ' descargado directamente desde la API oficial de TIB.');
+      await loadTibState();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al sincronizar desde API.');
+    } finally {
+      setUploadingTib((p) => ({ ...p, [slot]: false }));
+    }
+  };
 
   const noticeTimerRef = useRef<NodeJS.Timeout | null>(null);
 
