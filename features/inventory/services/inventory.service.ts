@@ -766,7 +766,8 @@ export const inventoryService = {
       p_fecha_desde: params.fechaDesde || null,
       p_fecha_hasta: params.fechaHasta || null,
       p_page: params.page || 1,
-      p_page_size: params.pageSize || 50
+      p_page_size: params.pageSize || 50,
+      p_tipo_entrega: params.deliveryTypeFilter || 'ALL'
     });
 
     if (error || !data) {
