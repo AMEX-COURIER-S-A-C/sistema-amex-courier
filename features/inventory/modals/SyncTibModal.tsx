@@ -528,12 +528,14 @@ export default function SyncTibModal({ isOpen, onClose, onRefreshData }: SyncTib
             </div>
 
             {successResult.tibCounts && (
-              <div style={{ marginTop: '10px', fontSize: '11.5px', color: '#166534', display: 'flex', gap: '12px', justifyContent: 'center' }}>
+              <div style={{ marginTop: '10px', fontSize: '11.5px', color: '#166534', display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
                 <span>Entregados: <strong>{successResult.tibCounts.entregado.toLocaleString()}</strong></span>
                 <span>•</span>
                 <span>Enviados: <strong>{successResult.tibCounts.enviado.toLocaleString()}</strong></span>
                 <span>•</span>
                 <span>Recibidos Miami: <strong>{successResult.tibCounts.recibido.toLocaleString()}</strong></span>
+                <span>•</span>
+                <span>📸 Fotos y Tickets PDF Miami: <strong>Vinculados</strong></span>
               </div>
             )}
 

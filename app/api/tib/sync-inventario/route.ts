@@ -210,6 +210,8 @@ export async function POST(req: NextRequest) {
         estado_tib: string | null;
         ubicacion_actual: string | null;
         posicion_estante: string | null;
+        tib_imagen_url: string | null;
+        tib_ticket_pdf_url: string | null;
       }> = [];
 
       const PAGE_SIZE = 1000;
@@ -219,7 +221,7 @@ export async function POST(req: NextRequest) {
         let query = admin
           .from('paquetes')
           .select(
-            'id, numero_recibo_bodega, tracking, nombre_consignatario, tipo_empaque, peso_kg, estado_tib, ubicacion_actual, posicion_estante'
+            'id, numero_recibo_bodega, tracking, nombre_consignatario, tipo_empaque, peso_kg, estado_tib, ubicacion_actual, posicion_estante, tib_imagen_url, tib_ticket_pdf_url'
           )
           .is('eliminado_en', null)
           .order('creado_en', { ascending: false })
@@ -292,17 +294,24 @@ export async function POST(req: NextRequest) {
       const nextTipo = tibMatch.tipoEmpaque || pkg.tipo_empaque || 'CAJA';
       const nextPeso = tibMatch.peso !== null ? tibMatch.peso : pkg.peso_kg;
       const nextEstadoTib = tibMatch.estadoBd || pkg.estado_tib || 'Recibido';
+      const nextFotoUrl = tibMatch.fotoUrl || pkg.tib_imagen_url || null;
+      const nextTicketUrl = tibMatch.ticketUrl || pkg.tib_ticket_pdf_url || null;
 
       const prevPeso = pkg.peso_kg !== null && pkg.peso_kg !== undefined ? Number(pkg.peso_kg) : null;
       const pesoChanged =
         nextPeso !== null && (prevPeso === null || Math.abs(nextPeso - prevPeso) > 0.005);
+
+      const fotoChanged = Boolean(nextFotoUrl && pkg.tib_imagen_url !== nextFotoUrl);
+      const ticketChanged = Boolean(nextTicketUrl && pkg.tib_ticket_pdf_url !== nextTicketUrl);
 
       const hasDataChange =
         String(pkg.tracking || '').trim() !== nextTracking ||
         String(pkg.nombre_consignatario || '').trim() !== nextCliente ||
         String(pkg.tipo_empaque || '').trim().toUpperCase() !== nextTipo.toUpperCase() ||
         String(pkg.estado_tib || '').trim() !== nextEstadoTib ||
-        pesoChanged;
+        pesoChanged ||
+        fotoChanged ||
+        ticketChanged;
 
       if (hasDataChange) {
         cambiosDetectados++;
@@ -320,6 +329,8 @@ export async function POST(req: NextRequest) {
           tipo_empaque: nextTipo,
           peso_kg: nextPeso,
           estado_tib: nextEstadoTib,
+          tib_imagen_url: nextFotoUrl,
+          tib_ticket_pdf_url: nextTicketUrl,
           ubicacion_actual: pkg.ubicacion_actual || 'AmexLince',
           actualizado_en: nowIso,
           eliminado_en: null,
