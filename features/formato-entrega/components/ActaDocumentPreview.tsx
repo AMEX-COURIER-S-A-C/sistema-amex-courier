@@ -123,6 +123,12 @@ export default function ActaDocumentPreview({ data }: ActaDocumentPreviewProps) 
                 </td>
               </tr>
               <tr>
+                <td className="acta-field-label">DNI, CE:</td>
+                <td className="acta-field-fill">
+                  {data.recibidoPorDni || ''}
+                </td>
+              </tr>
+              <tr>
                 <td className="acta-field-label">Fecha:</td>
                 <td className="acta-field-fill">
                   {data.recibidoPorFecha || ''}

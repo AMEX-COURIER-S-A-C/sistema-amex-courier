@@ -283,6 +283,22 @@ export async function generateActaEntregaDocx(data: ActaEntregaData, filename?: 
               new Paragraph({
                 spacing: { before: 120, after: 120 },
                 children: [
+                  new TextRun({ text: 'DNI, CE:  ', bold: true, font: 'Calibri', size: 21 }),
+                  new TextRun({ text: data.recibidoPorDni || '', font: 'Calibri', size: 21 })
+                ]
+              })
+            ]
+          })
+        ]
+      }),
+      new TableRow({
+        children: [
+          new TableCell({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            children: [
+              new Paragraph({
+                spacing: { before: 120, after: 120 },
+                children: [
                   new TextRun({ text: 'Fecha:  ', bold: true, font: 'Calibri', size: 21 }),
                   new TextRun({ text: data.recibidoPorFecha || '', font: 'Calibri', size: 21 })
                 ]

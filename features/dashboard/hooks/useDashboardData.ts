@@ -63,6 +63,8 @@ function mapPaquete(row: Record<string, unknown>): Paquete {
     facturaPdfUrl: '',
     tibImagenUrl: row.tib_imagen_url ? String(row.tib_imagen_url) : undefined,
     tibTicketPdfUrl: row.tib_ticket_pdf_url ? String(row.tib_ticket_pdf_url) : undefined,
+    tipoEntrega: (row.tipo_entrega as any) || (row.estado_amex === 'entregado' ? 'Presencial' : undefined),
+    detalleEntrega: row.detalle_entrega ? String(row.detalle_entrega) : undefined,
     usuarioEmail: String(row.usuario_email || ''),
     creadoPor: row.creado_por ? String(row.creado_por) : undefined,
     creadoEn: String(row.creado_en || ''),

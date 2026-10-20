@@ -447,6 +447,17 @@ export default function ActaControlPanel({
             </div>
 
             <div className="acta-field-group">
+              <label className="acta-label">DNI, CE</label>
+              <input
+                type="text"
+                className="acta-input"
+                value={formData.recibidoPorDni || ''}
+                onChange={e => onUpdateField('recibidoPorDni', e.target.value)}
+                placeholder="DNI o Carné de Extranjería (o dejar vacío)"
+              />
+            </div>
+
+            <div className="acta-field-group">
               <label className="acta-label">Fecha de recepción</label>
               <input
                 type="text"

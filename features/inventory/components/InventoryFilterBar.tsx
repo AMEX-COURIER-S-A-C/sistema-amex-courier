@@ -16,6 +16,8 @@ export interface InventoryFilterBarProps {
   setFloorFilter: (s: string) => void;
   statusAmexFilter?: string;
   setStatusAmexFilter?: (s: string) => void;
+  deliveryTypeFilter?: string;
+  setDeliveryTypeFilter?: (s: string) => void;
   amexStatusCounts?: {
     total: number;
     activas?: number;
@@ -47,6 +49,8 @@ export default function InventoryFilterBar({
   setFloorFilter,
   statusAmexFilter = 'ALL',
   setStatusAmexFilter,
+  deliveryTypeFilter = 'ALL',
+  setDeliveryTypeFilter,
   amexStatusCounts,
   locationFilter,
   setLocationFilter,
@@ -290,6 +294,32 @@ export default function InventoryFilterBar({
               <option value="listo_recojo">🏪 Listo Recojo ({amexStatusCounts?.listo_recojo ?? 0})</option>
               <option value="en_ruta">🚚 En Ruta ({amexStatusCounts?.en_ruta ?? 0})</option>
               <option value="entregado">✅ Entregado ({amexStatusCounts?.entregado ?? 0})</option>
+            </select>
+          </div>
+        )}
+
+        {/* Filtro Rápido: Tipo de Entrega */}
+        {setDeliveryTypeFilter && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <span style={{ fontSize: '11.5px', fontWeight: 800, color: '#475569' }}>Tipo Entrega:</span>
+            <select
+              value={deliveryTypeFilter || 'ALL'}
+              onChange={e => setDeliveryTypeFilter(e.target.value)}
+              style={{
+                padding: '6px 10px',
+                borderRadius: '7px',
+                border: '1px solid #cbd5e1',
+                fontSize: '12px',
+                background: '#ffffff',
+                fontWeight: 700,
+                color: '#334155'
+              }}
+            >
+              <option value="ALL">Todas las Modalidades</option>
+              <option value="Presencial">🏢 Presencial</option>
+              <option value="Agencia">📦 Agencia</option>
+              <option value="Domicilio">🚐 A Domicilio</option>
+              <option value="Motorizado">🛵 Motorizado (Cliente)</option>
             </select>
           </div>
         )}

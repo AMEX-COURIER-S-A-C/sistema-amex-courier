@@ -1,10 +1,12 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Boxes,
-  Camera
+  Camera,
+  Edit3
 } from 'lucide-react';
+import ConfirmDeliveryModal from '../modals/ConfirmDeliveryModal';
 import { Paquete } from '@/types';
 import { formatFechaModificadoParts } from '@/lib/excelExport';
 import { confirmDialog } from '@/lib/dialog';
@@ -19,7 +21,8 @@ export interface InventoryTableProps {
   recentlyDeliveredIds?: string[];
   onToggleSelect: (id: string) => void;
   onSelectAll: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onQuickDeliver?: (pkg: Paquete) => void;
+  onQuickDeliver?: (pkg: Paquete, tipoEntrega?: string, detalleEntrega?: string) => Promise<void> | void;
+  onUpdateDeliveryMethod?: (pkgId: string, tipoEntrega: string, detalleEntrega?: string) => Promise<boolean | void> | boolean | void;
   onOpenTransferModal: (pkg: Paquete) => void;
   onOpenEditModal: (pkg: Paquete) => void;
   onSelectThermalPkg: (pkg: Paquete) => void;
@@ -43,6 +46,7 @@ export default function InventoryTable({
   onToggleSelect,
   onSelectAll,
   onQuickDeliver,
+  onUpdateDeliveryMethod,
   onOpenTransferModal,
   onOpenEditModal,
   onSelectThermalPkg,
@@ -55,6 +59,7 @@ export default function InventoryTable({
   setPageSize,
   totalPages
 }: InventoryTableProps) {
+  const [deliveryModalPkg, setDeliveryModalPkg] = useState<Paquete | null>(null);
   const total = totalCount !== undefined ? totalCount : filteredPaquetes.length;
 
   const renderPagination = (position: 'top' | 'bottom') => {
@@ -159,6 +164,7 @@ export default function InventoryTable({
               <th className="py-2.5 px-3.5">Peso</th>
               <th className="py-2.5 px-3.5">Ubicación</th>
               <th className="py-2.5 px-3.5">Estado AMEX</th>
+              <th className="py-2.5 px-3.5 whitespace-nowrap">Tipo Entrega</th>
               <th className="py-2.5 px-3.5 whitespace-nowrap">Modificado</th>
               <th className="py-2.5 px-3.5 text-center">Acciones</th>
             </tr>
@@ -166,7 +172,7 @@ export default function InventoryTable({
           <tbody>
             {filteredPaquetes.length === 0 ? (
               <tr>
-                <td colSpan={10} style={{ textAlign: 'center', padding: '36px', color: '#94a3b8' }}>
+                <td colSpan={11} style={{ textAlign: 'center', padding: '36px', color: '#94a3b8' }}>
                   <Boxes style={{ width: '40px', height: '40px', margin: '0 auto 8px auto', color: '#cbd5e1' }} />
                   <div style={{ fontWeight: 800, color: '#64748b' }}>
                     No se encontraron paquetes con los filtros seleccionados
@@ -377,6 +383,182 @@ export default function InventoryTable({
                       )}
                     </td>
 
+                    {/* TIPO DE ENTREGA (Modalidad: Presencial, Agencia, Domicilio, Motorizado) */}
+                    <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                      {isRecentlyDelivered || pkg.estadoAmex === 'entregado' ? (
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                          {(() => {
+                            const tipo = pkg.tipoEntrega || 'Presencial';
+                            if (tipo === 'Agencia') {
+                              return (
+                                <span
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '3px 8px',
+                                    borderRadius: '6px',
+                                    fontSize: '11px',
+                                    fontWeight: 800,
+                                    background: '#fffbeb',
+                                    color: '#b45309',
+                                    border: '1px solid #fde68a'
+                                  }}
+                                  title={pkg.detalleEntrega ? `Agencia: ${pkg.detalleEntrega}` : 'Agencia Externa'}
+                                >
+                                  <span>📦</span>
+                                  <span>{pkg.detalleEntrega || 'Agencia'}</span>
+                                </span>
+                              );
+                            }
+                            if (tipo === 'Domicilio') {
+                              return (
+                                <span
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '3px 8px',
+                                    borderRadius: '6px',
+                                    fontSize: '11px',
+                                    fontWeight: 800,
+                                    background: '#f0fdf4',
+                                    color: '#15803d',
+                                    border: '1px solid #bbf7d0'
+                                  }}
+                                  title="Entrega con Móvil/Carro AMEX a Domicilio"
+                                >
+                                  <span>🚐</span>
+                                  <span>A Domicilio</span>
+                                </span>
+                              );
+                            }
+                            if (tipo === 'Motorizado') {
+                              return (
+                                <span
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '3px 8px',
+                                    borderRadius: '6px',
+                                    fontSize: '11px',
+                                    fontWeight: 800,
+                                    background: '#faf5ff',
+                                    color: '#7e22ce',
+                                    border: '1px solid #e9d5ff'
+                                  }}
+                                  title={`Motorizado contratado por el cliente${pkg.detalleEntrega ? ': ' + pkg.detalleEntrega : ''}`}
+                                >
+                                  <span>🛵</span>
+                                  <span>Motorizado</span>
+                                </span>
+                              );
+                            }
+                            return (
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '3px 8px',
+                                  borderRadius: '6px',
+                                  fontSize: '11px',
+                                  fontWeight: 800,
+                                  background: '#eff6ff',
+                                  color: '#1d4ed8',
+                                  border: '1px solid #bfdbfe'
+                                }}
+                                title="Retiro presencial en mostrador Lince"
+                              >
+                                <span>🏢</span>
+                                <span>Presencial</span>
+                              </span>
+                            );
+                          })()}
+                          <button
+                            type="button"
+                            title="Modificar modalidad de entrega"
+                            onClick={() => setDeliveryModalPkg(pkg)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: '#94a3b8',
+                              cursor: 'pointer',
+                              padding: '2px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              borderRadius: '4px'
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.color = '#3b82f6')}
+                            onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
+                          >
+                            <Edit3 style={{ width: '12px', height: '12px' }} />
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                          <select
+                            value={pkg.tipoEntrega || 'Presencial'}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === 'Agencia' || val === 'Motorizado') {
+                                setDeliveryModalPkg({ ...pkg, tipoEntrega: val as any });
+                              } else {
+                                onUpdateDeliveryMethod?.(pkg.id, val);
+                              }
+                            }}
+                            style={{
+                              padding: '3px 6px',
+                              borderRadius: '6px',
+                              border: '1px solid #cbd5e1',
+                              background: '#ffffff',
+                              color: '#334155',
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              maxWidth: '135px'
+                            }}
+                          >
+                            <option value="Presencial">🏢 Presencial</option>
+                            <option value="Agencia">📦 Agencia</option>
+                            <option value="Domicilio">🚐 Domicilio</option>
+                            <option value="Motorizado">🛵 Motorizado</option>
+                          </select>
+                          {pkg.tipoEntrega === 'Agencia' && pkg.detalleEntrega && (
+                            <span
+                              style={{
+                                fontSize: '10px',
+                                color: '#b45309',
+                                fontWeight: 700,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                maxWidth: '135px'
+                              }}
+                              title={pkg.detalleEntrega}
+                            >
+                              {pkg.detalleEntrega}
+                            </span>
+                          )}
+                          {pkg.tipoEntrega === 'Motorizado' && pkg.detalleEntrega && (
+                            <span
+                              style={{
+                                fontSize: '10px',
+                                color: '#7e22ce',
+                                fontWeight: 700,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                maxWidth: '135px'
+                              }}
+                              title={pkg.detalleEntrega}
+                            >
+                              {pkg.detalleEntrega}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </td>
+
                     {/* MODIFICADO (Fecha y Hora idéntico a TIB: DD/MM/AAAA HH:mm:ss) */}
                     <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
                       {(() => {
@@ -416,17 +598,8 @@ export default function InventoryTable({
                         index={index}
                         totalRows={paginatedPaquetes.length}
                         isDelivering={isDelivering}
-                        onQuickDeliver={onQuickDeliver ? async (p) => {
-                          const confirmed = await confirmDialog({
-                            title: 'Confirmar Entrega Inmediata',
-                            message: `¿Deseas marcar como ENTREGADO el paquete WR #${p.numeroReciboBodega} del cliente "${p.nombreConsignatario || 'Sin Nombre'}"? Esta acción actualizará el inventario y notificará el cambio en tiempo real.`,
-                            confirmText: 'Sí, Entregar Ahora',
-                            cancelText: 'Cancelar',
-                            variant: 'success'
-                          });
-                          if (confirmed) {
-                            onQuickDeliver(p);
-                          }
+                        onQuickDeliver={onQuickDeliver ? (p) => {
+                          setDeliveryModalPkg(p);
                         } : undefined}
                         onOpenTransferModal={onOpenTransferModal}
                         onOpenEditModal={onOpenEditModal}
@@ -446,6 +619,26 @@ export default function InventoryTable({
 
       {/* Paginación Inferior */}
       {renderPagination('bottom')}
+
+      {/* Modal de Confirmación y Modalidad de Entrega */}
+      {deliveryModalPkg && (
+        <ConfirmDeliveryModal
+          isOpen={Boolean(deliveryModalPkg)}
+          pkg={deliveryModalPkg}
+          onClose={() => setDeliveryModalPkg(null)}
+          onConfirmDelivery={async (p, tipoEntrega, detalleEntrega) => {
+            if (p.estadoAmex === 'entregado') {
+              if (onUpdateDeliveryMethod) {
+                await onUpdateDeliveryMethod(p.id, tipoEntrega, detalleEntrega);
+              }
+            } else {
+              if (onQuickDeliver) {
+                await onQuickDeliver(p, tipoEntrega, detalleEntrega);
+              }
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -240,15 +240,34 @@ export const inventoryService = {
     });
   },
 
-  // Entrega rápida en 1 clic desde el mostrador/almacén
-  async quickDeliver(pkg: Paquete): Promise<Paquete> {
+  // Entrega con modalidad obligatoria (Presencial, Agencia, Domicilio, Motorizado)
+  async quickDeliver(
+    pkg: Paquete,
+    tipoEntrega: string = 'Presencial',
+    detalleEntrega?: string,
+    usuarioOperador?: string
+  ): Promise<Paquete> {
     const nowIso = new Date().toISOString();
+    
+    let detalleKardex = tipoEntrega;
+    if (tipoEntrega === 'Agencia') {
+      detalleKardex = `Agencia ${detalleEntrega || 'Shalom'}`;
+    } else if (tipoEntrega === 'Motorizado') {
+      detalleKardex = `Motorizado Cliente ${detalleEntrega ? `(${detalleEntrega})` : ''}`.trim();
+    } else if (tipoEntrega === 'Domicilio') {
+      detalleKardex = 'A Domicilio (Carro AMEX)';
+    } else if (tipoEntrega === 'Presencial') {
+      detalleKardex = 'Presencial (Mostrador Lince)';
+    }
+
     await supabase
       .from('paquetes')
       .update({
         estado_amex: 'entregado',
         estado_tib: 'Entregado',
         ubicacion_actual: 'Entregado',
+        tipo_entrega: tipoEntrega,
+        detalle_entrega: detalleEntrega || null,
         actualizado_en: nowIso
       })
       .eq('id', pkg.id);
@@ -258,10 +277,10 @@ export const inventoryService = {
       codigo_paquete: pkg.numeroReciboBodega,
       consignatario: pkg.nombreConsignatario || 'Cliente AMEX',
       origen_descripcion: `AmexLince (${pkg.posicionEstante || 'REC'})`,
-      destino_descripcion: 'Entregado al Cliente Final en Mostrador Lince',
+      destino_descripcion: `Entregado al Cliente - Modalidad: ${detalleKardex}`,
       tipo_movimiento: 'ENTREGA',
-      motivo: 'Entrega directa rápida desde Módulo de Inventario',
-      usuario_operador: 'Operador Logístico AMEX'
+      motivo: `Entrega completada [${detalleKardex}]`,
+      usuario_operador: usuarioOperador || 'Operador Logístico AMEX'
     });
 
     return {
@@ -270,8 +289,27 @@ export const inventoryService = {
       estadoTib: 'Entregado',
       estadoEntrega: 'Entregado',
       ubicacionActual: 'Entregado',
+      tipoEntrega: tipoEntrega as any,
+      detalleEntrega: detalleEntrega || undefined,
       actualizadoEn: nowIso
     };
+  },
+
+  // Pre-asignar o actualizar modalidad de entrega
+  async updateDeliveryMethod(
+    pkgId: string,
+    tipoEntrega: string,
+    detalleEntrega?: string
+  ): Promise<void> {
+    const nowIso = new Date().toISOString();
+    await supabase
+      .from('paquetes')
+      .update({
+        tipo_entrega: tipoEntrega,
+        detalle_entrega: detalleEntrega || null,
+        actualizado_en: nowIso
+      })
+      .eq('id', pkgId);
   },
 
   // Verificación fresca contra la base de datos para detectar si otros usuarios ya entregaron paquetes
@@ -770,6 +808,7 @@ export interface SearchPaquetesServerSideParams {
   fechaHasta?: string | null;
   page?: number;
   pageSize?: number;
+  deliveryTypeFilter?: string;
 }
 
 export interface SearchPaquetesServerSideResult {
@@ -811,6 +850,8 @@ function mapPaqueteDbRow(row: Record<string, unknown>): Paquete {
     facturaPdfUrl: '',
     tibImagenUrl: row.tib_imagen_url ? String(row.tib_imagen_url) : undefined,
     tibTicketPdfUrl: row.tib_ticket_pdf_url ? String(row.tib_ticket_pdf_url) : undefined,
+    tipoEntrega: (row.tipo_entrega as any) || (row.estado_amex === 'entregado' ? 'Presencial' : undefined),
+    detalleEntrega: row.detalle_entrega ? String(row.detalle_entrega) : undefined,
     usuarioEmail: String(row.usuario_email || ''),
     creadoPor: row.creado_por ? String(row.creado_por) : undefined,
     creadoEn: String(row.creado_en || ''),

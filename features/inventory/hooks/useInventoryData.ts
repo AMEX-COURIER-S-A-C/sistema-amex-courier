@@ -45,6 +45,7 @@ export function useInventoryData({
   const [packageTypeFilter, setPackageTypeFilter] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [statusAmexFilter, setStatusAmexFilter] = useState<string>('ALL');
+  const [deliveryTypeFilter, setDeliveryTypeFilter] = useState<string>('ALL');
   const [dateFilter, setDateFilter] = useState<DateFilterState>(initialDateFilter);
   const resetDateFilter = useCallback(() => setDateFilter(initialDateFilter), []);
 
@@ -192,6 +193,7 @@ export function useInventoryData({
         searchTerm,
         locationFilter,
         statusAmexFilter,
+        deliveryTypeFilter,
         shelfFilter,
         floorFilter,
         packageTypeFilter,
@@ -224,6 +226,7 @@ export function useInventoryData({
     searchTerm,
     locationFilter,
     statusAmexFilter,
+    deliveryTypeFilter,
     shelfFilter,
     floorFilter,
     packageTypeFilter,
@@ -258,7 +261,7 @@ export function useInventoryData({
   // Resetear página al cambiar filtros
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, locationFilter, shelfFilter, floorFilter, packageTypeFilter, statusFilter, statusAmexFilter, dateFilter, pageSize]);
+  }, [searchTerm, locationFilter, shelfFilter, floorFilter, packageTypeFilter, statusFilter, statusAmexFilter, deliveryTypeFilter, dateFilter, pageSize]);
 
   // Total de páginas determinado por el total devuelto por Supabase PostgreSQL
   const totalPages = Math.max(1, Math.ceil((serverTotal || serverPaquetes.length || paquetes.length) / pageSize));
@@ -270,6 +273,7 @@ export function useInventoryData({
       searchTerm.trim() !== '' ||
       locationFilter !== 'ALL' ||
       statusAmexFilter !== 'ALL' ||
+      deliveryTypeFilter !== 'ALL' ||
       shelfFilter !== 'ALL' ||
       floorFilter !== 'ALL' ||
       packageTypeFilter !== 'ALL' ||
@@ -287,6 +291,7 @@ export function useInventoryData({
     searchTerm,
     locationFilter,
     statusAmexFilter,
+    deliveryTypeFilter,
     shelfFilter,
     floorFilter,
     packageTypeFilter,
@@ -581,8 +586,12 @@ export function useInventoryData({
     }
   };
 
-  // Entrega rápida en 1 clic
-  const handleQuickDeliver = async (pkg: Paquete) => {
+  // Entrega con modalidad obligatoria (Presencial, Agencia, Domicilio, Motorizado)
+  const handleQuickDeliver = async (
+    pkg: Paquete,
+    tipoEntrega: string = 'Presencial',
+    detalleEntrega?: string
+  ) => {
     // 1. Marcar como procesando y guardar temporalmente en entrega reciente
     setDeliveringIds(prev => [...prev, pkg.id]);
     setRecentlyDeliveredIds(prev => [...prev, pkg.id]);
@@ -595,6 +604,8 @@ export function useInventoryData({
       estadoTib: 'Entregado',
       estadoEntrega: 'Entregado',
       ubicacionActual: 'Entregado',
+      tipoEntrega: tipoEntrega as any,
+      detalleEntrega: detalleEntrega || undefined,
       actualizadoEn: nowIso
     };
 
@@ -605,16 +616,17 @@ export function useInventoryData({
 
     // 3. Audio de éxito corporativo y Toast instantáneo
     soundEffects.playSuccess();
-    toast.success('Entrega Registrada', `Guía ${pkg.numeroReciboBodega} • ${pkg.nombreConsignatario || 'Cliente AMEX'}`);
+    const detalleToast = tipoEntrega === 'Agencia' ? `Agencia (${detalleEntrega || 'Shalom'})` : tipoEntrega;
+    toast.success('Entrega Registrada', `Guía ${pkg.numeroReciboBodega} • Modalidad: ${detalleToast}`);
 
     try {
-      const updated = await inventoryService.quickDeliver(pkg);
+      const updated = await inventoryService.quickDeliver(pkg, tipoEntrega, detalleEntrega);
       if (onUpdatePackage) {
         onUpdatePackage(updated);
       }
       setServerPaquetes(prev => prev.map(p => (p.id === updated.id ? updated : p)));
     } catch (err) {
-      console.error('Error al entregar paquete rápido:', err);
+      console.error('Error al entregar paquete:', err);
       // Revertir optimismo
       if (onUpdatePackage) {
         onUpdatePackage(pkg);
@@ -625,10 +637,27 @@ export function useInventoryData({
       toast.error('Error de entrega', 'No se pudo guardar la entrega en el servidor.');
     } finally {
       setDeliveringIds(prev => prev.filter(id => id !== pkg.id));
-      // Mantener en recentlyDeliveredIds durante 2.5s antes de retirar suavemente de la vista
       setTimeout(() => {
         setRecentlyDeliveredIds(prev => prev.filter(id => id !== pkg.id));
       }, 2500);
+    }
+  };
+
+  // Pre-asignar o actualizar modalidad de entrega
+  const handleUpdateDeliveryMethod = async (pkgId: string, tipoEntrega: string, detalleEntrega?: string) => {
+    try {
+      await inventoryService.updateDeliveryMethod(pkgId, tipoEntrega, detalleEntrega);
+      setServerPaquetes(prev => prev.map(p => p.id === pkgId ? { ...p, tipoEntrega: tipoEntrega as any, detalleEntrega } : p));
+      if (onUpdatePackage) {
+        const found = serverPaquetes.find(p => p.id === pkgId);
+        if (found) {
+          onUpdatePackage({ ...found, tipoEntrega: tipoEntrega as any, detalleEntrega });
+        }
+      }
+      toast.success('Modalidad Actualizada', `Tipo de entrega guardado: ${tipoEntrega}`);
+    } catch (err) {
+      console.error('Error actualizando modalidad:', err);
+      toast.error('Error', 'No se pudo actualizar la modalidad de entrega.');
     }
   };
 
@@ -914,6 +943,8 @@ export function useInventoryData({
     setStatusFilter,
     statusAmexFilter,
     setStatusAmexFilter,
+    deliveryTypeFilter,
+    setDeliveryTypeFilter,
     amexStatusCounts,
     dateFilter,
     setDateFilter,
@@ -1025,6 +1056,7 @@ export function useInventoryData({
     // Acciones de paquetes
     handleDeletePackage,
     handleQuickDeliver,
+    handleUpdateDeliveryMethod,
     handleQuickStatusChange,
     handleQuickStatusAmexChange,
     handleExportExcel,

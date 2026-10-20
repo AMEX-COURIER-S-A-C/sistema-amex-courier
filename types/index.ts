@@ -6,6 +6,7 @@ export type TipoEstadoTib = 'EnAlmacen' | 'Enviado' | 'Recibido' | 'Entregado' |
 export type TipoEstadoEntrega = TipoEstadoTib; // Alias de retrocompatibilidad
 export type TipoEstadoAmex = 'en_almacen' | 'listo_recojo' | 'en_ruta' | 'entregado' | string;
 export type TipoMonedaPago = 'PEN' | 'USD';
+export type TipoModalidadEntrega = 'Presencial' | 'Agencia' | 'Domicilio' | 'Motorizado' | string;
 
 export interface Cliente {
   id: string;
@@ -45,6 +46,8 @@ export interface Paquete {
   estadoTib: TipoEstadoTib;          // Estado Logístico Externo TIB (Recibido, Enviado, Entregado, EnAlmacen)
   estadoEntrega?: TipoEstadoTib;     // Alias opcional de compatibilidad
   estadoAmex: TipoEstadoAmex;        // Estado Operativo AMEX (por defecto 'en_almacen' al escanear)
+  tipoEntrega?: TipoModalidadEntrega; // Modalidad: Presencial, Agencia, Domicilio, Motorizado
+  detalleEntrega?: string;            // Detalle: Nombre de Agencia o Conductor/Placa del Motorizado
   facturaPdfUrl?: string;
   tibImagenUrl?: string;             // Foto del paquete tomada en TIB
   tibTicketPdfUrl?: string;          // Ticket PDF de recepción en TIB

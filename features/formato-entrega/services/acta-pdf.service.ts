@@ -261,9 +261,10 @@ export async function generateActaEntregaPdf(data: ActaEntregaData, filename?: s
 
   currentY += 9;
 
-  const rowRecibidoHeight = 13;
+  const rowRecibidoHeight = 11;
   const recibidoFields = [
     { label: 'Nombre:', value: sanitizeText(data.recibidoPorNombre) },
+    { label: 'DNI, CE:', value: sanitizeText(data.recibidoPorDni || '') },
     { label: 'Fecha:', value: sanitizeText(data.recibidoPorFecha) },
     { label: 'Hora:', value: sanitizeText(data.recibidoPorHora) }
   ];

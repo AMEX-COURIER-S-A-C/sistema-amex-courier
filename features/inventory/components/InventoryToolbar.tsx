@@ -44,6 +44,8 @@ export interface InventoryToolbarProps {
   setStatusFilter?: (s: string) => void;
   statusAmexFilter?: string;
   setStatusAmexFilter?: (s: string) => void;
+  deliveryTypeFilter?: string;
+  setDeliveryTypeFilter?: (s: string) => void;
   dateFilter?: DateFilterState;
   setDateFilter?: React.Dispatch<React.SetStateAction<DateFilterState>>;
   resetDateFilter?: () => void;
@@ -91,6 +93,8 @@ export default function InventoryToolbar({
   setStatusFilter,
   statusAmexFilter,
   setStatusAmexFilter,
+  deliveryTypeFilter,
+  setDeliveryTypeFilter,
   dateFilter,
   setDateFilter,
   resetDateFilter,
@@ -164,6 +168,8 @@ export default function InventoryToolbar({
         setFloorFilter={setFloorFilter}
         statusAmexFilter={statusAmexFilter}
         setStatusAmexFilter={setStatusAmexFilter}
+        deliveryTypeFilter={deliveryTypeFilter}
+        setDeliveryTypeFilter={setDeliveryTypeFilter}
         amexStatusCounts={amexStatusCounts}
         locationFilter={locationFilter}
         setLocationFilter={setLocationFilter}

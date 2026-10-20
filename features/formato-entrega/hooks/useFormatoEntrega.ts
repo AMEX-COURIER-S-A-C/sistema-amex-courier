@@ -167,7 +167,8 @@ export function useFormatoEntrega(
     setFormData(prev => ({
       ...prev,
       destinatario: fullName,
-      recibidoPorNombre: prev.recibidoPorNombre || fullName
+      recibidoPorNombre: prev.recibidoPorNombre || fullName,
+      recibidoPorDni: prev.recibidoPorDni || cliente.documentoIdentidad || ''
     }));
 
     // Buscar si el cliente tiene paquetes en almacén
@@ -326,7 +327,8 @@ export function useFormatoEntrega(
       fecha: getTodayFormatted(),
       destinatario: '',
       paquetes: [],
-      recibidoPorNombre: ''
+      recibidoPorNombre: '',
+      recibidoPorDni: ''
     });
     setRawPasteText('');
     setSinglePackageInput('');
@@ -348,6 +350,7 @@ export function useFormatoEntrega(
       paquetes: [...(item.paquetes || [])],
       cargoTexto: item.cargoTexto || DEFAULT_ACTA_DATA.cargoTexto,
       recibidoPorNombre: item.recibidoPorNombre || '',
+      recibidoPorDni: item.recibidoPorDni || '',
       recibidoPorFecha: item.recibidoPorFecha || '',
       recibidoPorHora: item.recibidoPorHora || '',
       logoStyle: item.logoStyle || 'clean'

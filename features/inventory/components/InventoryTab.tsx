@@ -58,6 +58,8 @@ export default function InventoryTab({
     setStatusFilter,
     statusAmexFilter,
     setStatusAmexFilter,
+    deliveryTypeFilter,
+    setDeliveryTypeFilter,
     amexStatusCounts,
     dateFilter,
     setDateFilter,
@@ -158,6 +160,7 @@ export default function InventoryTab({
     // Acciones
     handleDeletePackage,
     handleQuickDeliver,
+    handleUpdateDeliveryMethod,
     handleExportExcel,
     handleExportKardexExcel
   } = useInventoryData({
@@ -283,6 +286,8 @@ export default function InventoryTab({
         setStatusFilter={setStatusFilter}
         statusAmexFilter={statusAmexFilter}
         setStatusAmexFilter={setStatusAmexFilter}
+        deliveryTypeFilter={deliveryTypeFilter}
+        setDeliveryTypeFilter={setDeliveryTypeFilter}
         dateFilter={dateFilter}
         setDateFilter={setDateFilter}
         resetDateFilter={resetDateFilter}
@@ -319,6 +324,7 @@ export default function InventoryTab({
         onToggleSelect={handleToggleSelect}
         onSelectAll={handleSelectAll}
         onQuickDeliver={handleQuickDeliver}
+        onUpdateDeliveryMethod={handleUpdateDeliveryMethod}
         onOpenTransferModal={openTransferModal}
         onOpenEditModal={openEditModal}
         onSelectThermalPkg={setSelectedThermalPkg}

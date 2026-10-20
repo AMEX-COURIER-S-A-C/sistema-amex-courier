@@ -8,6 +8,7 @@ export interface ActaEntregaData {
   paquetes: string[];
   cargoTexto: string;
   recibidoPorNombre: string;
+  recibidoPorDni?: string;
   recibidoPorFecha: string;
   recibidoPorHora: string;
   logoStyle?: LogoStyle;
@@ -39,6 +40,7 @@ export const DEFAULT_ACTA_DATA: ActaEntregaData = {
   ],
   cargoTexto: 'Certifico que he recibido el(los) paquete(s) indicado(s) Anteriormente en buen estado y conforme a lo descrito.',
   recibidoPorNombre: '',
+  recibidoPorDni: '',
   recibidoPorFecha: '',
   recibidoPorHora: '',
   logoStyle: 'clean',
