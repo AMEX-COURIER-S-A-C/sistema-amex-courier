@@ -76,3 +76,6 @@ supabase/.temp/
 # Playwright runtime artifacts
 test-results/
 playwright-report/
+
+# Local backups
+backup_*.json
