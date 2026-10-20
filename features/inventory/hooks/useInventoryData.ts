@@ -12,7 +12,6 @@ import {
 } from '@/types';
 import { supabase } from '@/lib/supabase/client';
 import { matchesFuzzySearch } from '@/lib/fuzzySearch';
-import { useDebounce } from '@/lib/useDebounce';
 import { exportPaquetesToExcel, exportKardexToExcel } from '@/lib/excelExport';
 import { confirmDialog, alertDialog } from '@/lib/dialog';
 import { toast } from '@/lib/toast';
@@ -40,7 +39,6 @@ export function useInventoryData({
 
   // Filtros de Existencias (Limpios por defecto)
   const [searchTerm, setSearchTerm] = useState('');
-  const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const [locationFilter, setLocationFilter] = useState<string>('ALL');
   const [shelfFilter, setShelfFilter] = useState<string>('ALL');
   const [floorFilter, setFloorFilter] = useState<string>('ALL');
@@ -191,7 +189,7 @@ export function useInventoryData({
     try {
       const { fechaDesde, fechaHasta } = resolveDateFilterRange(dateFilter);
       const res = await inventoryService.searchPaquetesServerSide({
-        searchTerm: debouncedSearchTerm,
+        searchTerm,
         locationFilter,
         statusAmexFilter,
         shelfFilter,
@@ -223,7 +221,7 @@ export function useInventoryData({
       if (!isSilent) setIsLoadingServer(false);
     }
   }, [
-    debouncedSearchTerm,
+    searchTerm,
     locationFilter,
     statusAmexFilter,
     shelfFilter,
@@ -260,7 +258,7 @@ export function useInventoryData({
   // Resetear página al cambiar filtros
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearchTerm, locationFilter, shelfFilter, floorFilter, packageTypeFilter, statusFilter, statusAmexFilter, dateFilter, pageSize]);
+  }, [searchTerm, locationFilter, shelfFilter, floorFilter, packageTypeFilter, statusFilter, statusAmexFilter, dateFilter, pageSize]);
 
   // Total de páginas determinado por el total devuelto por Supabase PostgreSQL
   const totalPages = Math.max(1, Math.ceil((serverTotal || serverPaquetes.length || paquetes.length) / pageSize));
@@ -269,7 +267,7 @@ export function useInventoryData({
   const paginatedPaquetes = useMemo(() => {
     if (
       serverPaquetes.length > 0 ||
-      debouncedSearchTerm.trim() !== '' ||
+      searchTerm.trim() !== '' ||
       locationFilter !== 'ALL' ||
       statusAmexFilter !== 'ALL' ||
       shelfFilter !== 'ALL' ||
@@ -286,7 +284,7 @@ export function useInventoryData({
     return serverPaquetes;
   }, [
     serverPaquetes,
-    debouncedSearchTerm,
+    searchTerm,
     locationFilter,
     statusAmexFilter,
     shelfFilter,

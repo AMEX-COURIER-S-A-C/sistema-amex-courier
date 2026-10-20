@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Camera,
   Download,
@@ -21,7 +21,6 @@ import {
   Copy,
   Check,
   Tag,
-  ShieldCheck
 } from 'lucide-react';
 import { Paquete } from '@/types';
 
@@ -61,6 +60,16 @@ export default function TibImageModal({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [copiedTracking, setCopiedTracking] = useState(false);
 
+  const onImageLoadedRef = useRef(onImageLoaded);
+  useEffect(() => {
+    onImageLoadedRef.current = onImageLoaded;
+  }, [onImageLoaded]);
+
+  const paqueteRef = useRef(paquete);
+  useEffect(() => {
+    paqueteRef.current = paquete;
+  }, [paquete]);
+
   const fetchTibImage = useCallback(async (wr: string, id?: string, forceRefresh = false) => {
     setLoading(true);
     setErrorMsg(null);
@@ -82,23 +91,30 @@ export default function TibImageModal({
         if (data.tibData) {
           setTibData(data.tibData);
         }
-        if (onImageLoaded) {
-          onImageLoaded(wr, data.tibImagenUrl, data.tibTicketPdfUrl || undefined);
+        // Notificar al padre únicamente si la imagen es nueva o cambió
+        if (onImageLoadedRef.current && paqueteRef.current?.tibImagenUrl !== data.tibImagenUrl) {
+          onImageLoadedRef.current(wr, data.tibImagenUrl, data.tibTicketPdfUrl || undefined);
         }
       } else {
-        if (!imageUrl && !paquete?.tibImagenUrl) {
-          setErrorMsg(data.message || `No se encontró evidencia fotográfica en TIB para la guía ${wr}.`);
-        }
+        setImageUrl((prev) => {
+          if (!prev && !paqueteRef.current?.tibImagenUrl) {
+            setErrorMsg(data.message || `No se encontró evidencia fotográfica en TIB para la guía ${wr}.`);
+          }
+          return prev;
+        });
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al obtener la imagen de TIB';
-      if (!imageUrl && !paquete?.tibImagenUrl) {
-        setErrorMsg(msg);
-      }
+      setImageUrl((prev) => {
+        if (!prev && !paqueteRef.current?.tibImagenUrl) {
+          setErrorMsg(msg);
+        }
+        return prev;
+      });
     } finally {
       setLoading(false);
     }
-  }, [imageUrl, onImageLoaded, paquete?.tibImagenUrl]);
+  }, []);
 
   useEffect(() => {
     if (!isOpen || !paquete) {
@@ -110,6 +126,7 @@ export default function TibImageModal({
       setRotation(0);
       setIsFullscreen(false);
       setCopiedTracking(false);
+      setLoading(false);
       return;
     }
 
@@ -118,15 +135,27 @@ export default function TibImageModal({
     setIsFullscreen(false);
     setCopiedTracking(false);
 
-    // Si el paquete ya tiene la URL cargada
+    // Si el paquete ya tiene la URL cargada en BD, mostrarla directo y NO llamar a la API
     if (paquete.tibImagenUrl) {
       setImageUrl(paquete.tibImagenUrl);
       setTicketUrl(paquete.tibTicketPdfUrl || null);
+      setLoading(false);
+      setErrorMsg(null);
+      return;
     }
 
-    // Consultar o confirmar con la API
+    // Si NO tiene imagen en BD, entonces sí consultamos a TIB
+    setImageUrl(null);
+    setTicketUrl(null);
     void fetchTibImage(paquete.numeroReciboBodega, paquete.id, false);
-  }, [isOpen, paquete, fetchTibImage]);
+  }, [
+    isOpen,
+    paquete?.id,
+    paquete?.numeroReciboBodega,
+    paquete?.tibImagenUrl,
+    paquete?.tibTicketPdfUrl,
+    fetchTibImage,
+  ]);
 
   const handleDownload = async () => {
     if (!imageUrl || !paquete) return;
@@ -235,24 +264,9 @@ export default function TibImageModal({
               <Camera className="w-5 h-5" />
             </div>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 900, color: '#ffffff' }}>
-                  Ficha y Evidencia Fotográfica TIB
-                </h3>
-                <span
-                  style={{
-                    fontSize: '11px',
-                    fontWeight: 800,
-                    padding: '2px 8px',
-                    borderRadius: '6px',
-                    background: 'rgba(56, 189, 248, 0.15)',
-                    color: '#38bdf8',
-                    border: '1px solid rgba(56, 189, 248, 0.3)',
-                  }}
-                >
-                  Bodega Miami
-                </span>
-              </div>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 900, color: '#ffffff' }}>
+                Ficha y Evidencia Fotográfica TIB
+              </h3>
               <div style={{ fontSize: '12px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
                 <span style={{ fontFamily: 'monospace', fontWeight: 800, color: '#60a5fa' }}>
                   {paquete.numeroReciboBodega}
@@ -707,32 +721,6 @@ export default function TibImageModal({
                     }}
                     onClick={() => setZoomLevel((prev) => (prev === 1 ? 1.6 : 1))}
                   />
-                </div>
-
-                {/* Badge Superior Izquierdo */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: '16px',
-                    left: '16px',
-                    background: 'rgba(15, 23, 42, 0.85)',
-                    backdropFilter: 'blur(8px)',
-                    color: '#38bdf8',
-                    padding: '6px 12px',
-                    borderRadius: '8px',
-                    fontSize: '11px',
-                    fontWeight: 800,
-                    border: '1px solid rgba(56, 189, 248, 0.3)',
-                    letterSpacing: '0.5px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    pointerEvents: 'none',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-                  }}
-                >
-                  <ShieldCheck className="w-3.5 h-3.5 text-sky-400" />
-                  <span>EVIDENCIA ORIGINAL TIB (COMPLETA)</span>
                 </div>
 
                 {/* Barra de Herramientas Superior Derecha */}

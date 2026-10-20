@@ -120,16 +120,36 @@ export function useDashboardData(currentUser?: { nombre?: string; email?: string
     };
   }, [currentUser?.email]);
 
+async function fetchAllPaquetesChunks(): Promise<Record<string, unknown>[]> {
+  const PAGE_SIZE = 1000;
+  let offset = 0;
+  const allRows: Record<string, unknown>[] = [];
+  while (true) {
+    const { data, error } = await supabase
+      .from('paquetes')
+      .select('*')
+      .is('eliminado_en', null)
+      .order('creado_en', { ascending: false })
+      .range(offset, offset + PAGE_SIZE - 1);
+
+    if (error) {
+      console.warn('Error en paginación de paquetes Supabase:', error);
+      break;
+    }
+    if (!data || data.length === 0) break;
+    allRows.push(...(data as Record<string, unknown>[]));
+    if (data.length < PAGE_SIZE) break;
+    offset += PAGE_SIZE;
+  }
+  return allRows;
+}
+
   const fetchSupabaseData = useCallback(async () => {
     try {
       setIsGlobalRefreshing(true);
-      const [clientesRes, paquetesRes, entregasRes, cobrosRes] = await Promise.all([
+      const [clientesRes, paquetesRows, entregasRes, cobrosRes] = await Promise.all([
         supabase.from('clientes').select('*').order('creado_en', { ascending: false }),
-        supabase
-          .from('paquetes')
-          .select('*')
-          .is('eliminado_en', null)
-          .order('creado_en', { ascending: false }),
+        fetchAllPaquetesChunks(),
         supabase.from('entregas_ordenes').select('*').order('creado_en', { ascending: false }),
         supabase
           .from('cobros_vouchers')
@@ -138,8 +158,25 @@ export function useDashboardData(currentUser?: { nombre?: string; email?: string
           .order('creado_en', { ascending: false })
       ]);
 
-      setClientes((clientesRes.data || []).map((row) => mapCliente(row as Record<string, unknown>)));
-      setPaquetes((paquetesRes.data || []).map((row) => mapPaquete(row as Record<string, unknown>)));
+      let clientesData: Record<string, unknown>[] = [];
+      try {
+        const apiRes = await fetch('/api/clientes', { cache: 'no-store' });
+        if (apiRes.ok) {
+          const json = await apiRes.json();
+          if (Array.isArray(json.clientes) && json.clientes.length > 0) {
+            clientesData = json.clientes;
+          }
+        }
+      } catch (e) {
+        console.warn('Fallback a supabase directo para clientes:', e);
+      }
+
+      if (clientesData.length === 0 && clientesRes.data) {
+        clientesData = clientesRes.data as Record<string, unknown>[];
+      }
+
+      setClientes(clientesData.map((row) => mapCliente(row)));
+      setPaquetes(paquetesRows.map((row) => mapPaquete(row as Record<string, unknown>)));
       if (entregasRes.data) setEntregas(entregasRes.data as OrdenEntrega[]);
       if (cobrosRes.data) setCobros(cobrosRes.data as CobroVoucher[]);
     } catch (error) {

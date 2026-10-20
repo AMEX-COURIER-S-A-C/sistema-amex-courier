@@ -5,6 +5,7 @@ import readXlsxFile from 'read-excel-file/node';
 import { getR2Client, R2_BUCKET_NAME, R2_ROOT_FOLDER } from '@/lib/r2/client';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { authorizeUser } from '@/lib/auth/guards';
+import { normalizeTibWr } from '@/lib/tib/apiClient';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -141,35 +142,151 @@ async function leerIndice(client: ReturnType<typeof getR2Client>, key: string): 
   }
 }
 
-async function construirIndiceDesdeEnviado(
+async function resolverFuentesTibDiario(): Promise<Record<string, string>> {
+  const admin = getSupabaseAdmin();
+  const { data: diarios } = await admin
+    .from('inventario_tib_diario')
+    .select('tipo,r2_key,fecha,subido_en')
+    .eq('es_activo', true)
+    .order('fecha', { ascending: false })
+    .order('subido_en', { ascending: false });
+
+  const map: Record<string, string> = {};
+  for (const d of diarios || []) {
+    if (!map[d.tipo]) {
+      map[d.tipo] = d.r2_key;
+    }
+  }
+  return map;
+}
+
+async function construirIndiceMultiestado(
   client: ReturnType<typeof getR2Client>,
   enviadoKey: string
 ): Promise<Record<string, TibItem>> {
-  const res = await client.send(new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: enviadoKey }));
-  if (!res.Body) throw new Error('No se pudo descargar el archivo ENVIADO TIB desde R2.');
-  const bytes = await res.Body.transformToByteArray();
-  const buffer = Buffer.from(bytes);
+  const fuentesMap = await resolverFuentesTibDiario();
+  // Orden de precedencia: RECIBIDO primero, luego ENVIADO, luego ENTREGADO
+  const keysToLoad: string[] = [];
+  if (fuentesMap.received) keysToLoad.push(fuentesMap.received);
+  if (enviadoKey) keysToLoad.push(enviadoKey);
+  else if (fuentesMap.sent) keysToLoad.push(fuentesMap.sent);
+  if (fuentesMap.delivered) keysToLoad.push(fuentesMap.delivered);
 
-  // Columnas ENVIADO TIB: A=WR B=Tracking C=Cliente D=Tipo Paquete E=Peso
-  const sheetResult = await readXlsxFile(buffer);
-  const rows = (sheetResult[0]?.data || sheetResult) as unknown as unknown[][];
+  const uniqueKeys = Array.from(new Set(keysToLoad));
   const indice: Record<string, TibItem> = {};
 
-  for (let i = 1; i < rows.length; i++) {
-    const r = rows[i];
-    if (!r) continue;
-    const wr = limpiar(r[0]).toUpperCase();
-    if (!wr) continue;
-    if (!indice[wr]) {
-      indice[wr] = {
-        tracking: limpiar(r[1]),
-        cliente: limpiar(r[2]),
-        tipo: limpiar(r[3]),
-        peso: aNumero(r[4]),
-      };
+  for (const key of uniqueKeys) {
+    try {
+      const res = await client.send(new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key }));
+      if (!res.Body) continue;
+      const bytes = await res.Body.transformToByteArray();
+      const sheetResult = await readXlsxFile(Buffer.from(bytes));
+      const rows = (sheetResult[0]?.data || sheetResult) as unknown as unknown[][];
+
+      for (let i = 1; i < rows.length; i++) {
+        const r = rows[i];
+        if (!r) continue;
+        const raw = limpiar(r[0]);
+        if (!raw) continue;
+        const norm = normalizeTibWr(raw);
+        const item: TibItem = {
+          tracking: limpiar(r[1]),
+          cliente: limpiar(r[2]),
+          tipo: limpiar(r[3]),
+          peso: aNumero(r[4]),
+        };
+        indice[raw.toUpperCase()] = item;
+        if (norm) indice[norm] = item;
+      }
+    } catch (readErr) {
+      console.warn(`[Cruzar Planilla] Error leyendo fuente R2 ${key}:`, readErr);
     }
   }
   return indice;
+}
+
+async function enriquecerConSupabasePaquetes(
+  filasResultado: FilaResultadoCobro[]
+): Promise<FilaResultadoCobro[]> {
+  const wrsMap = new Map<string, string>();
+
+  for (const f of filasResultado) {
+    if (!f.encontrado) {
+      for (const d of f.detalles) {
+        if (!d.encontrado && d.wr) {
+          const norm = normalizeTibWr(d.wr);
+          if (norm) wrsMap.set(norm, d.wr);
+        }
+      }
+    }
+  }
+
+  if (wrsMap.size === 0) return filasResultado;
+
+  try {
+    const admin = getSupabaseAdmin();
+    const normalizedKeys = Array.from(wrsMap.keys());
+    const dbHits = new Map<string, any>();
+
+    const CHUNK_SIZE = 200;
+    for (let i = 0; i < normalizedKeys.length; i += CHUNK_SIZE) {
+      const chunk = normalizedKeys.slice(i, i + CHUNK_SIZE);
+      const { data: pkgs } = await admin
+        .from('paquetes')
+        .select('numero_recibo_bodega, tracking, nombre_consignatario, peso_kg, tipo_empaque, estado_tib')
+        .in('numero_recibo_bodega', chunk);
+
+      if (pkgs) {
+        for (const p of pkgs) {
+          if (p.numero_recibo_bodega) {
+            dbHits.set(p.numero_recibo_bodega.toUpperCase(), p);
+          }
+        }
+      }
+    }
+
+    if (dbHits.size === 0) return filasResultado;
+
+    for (const f of filasResultado) {
+      if (f.encontrado) continue;
+
+      let rowUpdated = false;
+      for (const d of f.detalles) {
+        if (!d.encontrado && d.wr) {
+          const norm = normalizeTibWr(d.wr);
+          const hit = dbHits.get(norm);
+          if (hit) {
+            d.encontrado = true;
+            d.tracking = hit.tracking || d.tracking || '';
+            d.cliente = hit.nombre_consignatario || d.cliente || '';
+            d.tipo = hit.tipo_empaque || d.tipo || 'CAJA';
+            d.peso = hit.peso_kg !== null && hit.peso_kg !== undefined ? Number(hit.peso_kg) : d.peso;
+            rowUpdated = true;
+          }
+        }
+      }
+
+      if (rowUpdated) {
+        const wrsEncontrados = f.detalles.filter(d => d.encontrado).length;
+        f.encontrado = wrsEncontrados === f.detalles.length;
+        f.matchParcial = wrsEncontrados > 0 && wrsEncontrados < f.detalles.length;
+        f.wrsEncontrados = wrsEncontrados;
+
+        const delimiter = f.delimiter || ' - ';
+        const nombresClientes = f.detalles.map(d => d.cliente || f.cliente || 'SIN CLIENTE');
+        f.cliente = f.detalles.length > 1 ? nombresClientes.join(delimiter) : (nombresClientes[0] || f.cliente);
+
+        const pesosValidos = f.detalles.filter(d => d.peso !== null).map(d => d.peso as number);
+        f.pesoTotal = pesosValidos.length > 0 ? Math.round(pesosValidos.reduce((a, b) => a + b, 0) * 100) / 100 : null;
+        f.pesoFormateado = f.detalles.map(d => (d.peso !== null ? d.peso.toFixed(2) : '?')).join(delimiter);
+        f.tracking = f.detalles.map(d => d.tracking || '').filter(Boolean).join(delimiter);
+      }
+    }
+  } catch (err) {
+    console.warn('[Cruzar Planilla] Error al enriquecer con Supabase paquetes:', err);
+  }
+
+  return filasResultado;
 }
 
 export async function POST(req: NextRequest) {
@@ -225,15 +342,26 @@ export async function POST(req: NextRequest) {
           const vpsData = await vpsRes.json();
           if (vpsData && vpsData.ok && Array.isArray(vpsData.filasCruzadas)) {
             console.log(`[Cruzar Planilla] Cruce completado en VPS Hostinger en ${vpsData.duracionMs}ms (${vpsData.coincidenciasCompletas}/${vpsData.totalFilas} filas)`);
+            let filasCruzadas = vpsData.filasCruzadas;
+
+            // Enriquecer cualquier fila sin coincidencia usando Supabase paquetes (3 estados)
+            if (filasCruzadas.some((f: any) => !f.encontrado)) {
+              filasCruzadas = await enriquecerConSupabasePaquetes(filasCruzadas);
+            }
+
+            const sinMatch = filasCruzadas.filter((f: any) => !f.encontrado).map((f: any) => f.wr);
+            const totalWrs = filasCruzadas.reduce((acc: number, f: any) => acc + (f.totalWrsFila || 1), 0);
+            const wrsEncontrados = filasCruzadas.reduce((acc: number, f: any) => acc + (f.wrsEncontrados || 0), 0);
+
             return NextResponse.json({
               vps_procesado: true,
               duracion_ms: vpsData.duracionMs,
-              fuente_usada: vpsData.fuenteUsada,
+              fuente_usada: 'multi_estado_vps_y_bd',
               total_filas: vpsData.totalFilas,
-              total_wrs: vpsData.filasCruzadas.reduce((acc: number, f: any) => acc + (f.totalWrsFila || 1), 0),
-              wrs_encontrados: vpsData.filasCruzadas.reduce((acc: number, f: any) => acc + (f.wrsEncontrados || 0), 0),
-              sin_match: vpsData.filasCruzadas.filter((f: any) => !f.encontrado).map((f: any) => f.wr),
-              filas: vpsData.filasCruzadas,
+              total_wrs: totalWrs,
+              wrs_encontrados: wrsEncontrados,
+              sin_match: sinMatch,
+              filas: filasCruzadas,
             });
           }
         } else {
@@ -268,7 +396,7 @@ export async function POST(req: NextRequest) {
 
     if (!indice) {
       indiceCacheado = false;
-      indice = await construirIndiceDesdeEnviado(client, enviadoKey);
+      indice = await construirIndiceMultiestado(client, enviadoKey);
       // Guardar caché en R2 para que los siguientes cruces sean instantáneos (< 200 ms)
       try {
         await client.send(
@@ -285,7 +413,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Cruce fila por fila manteniendo celdas multi-WR agrupadas
-    const filasResultado: FilaResultadoCobro[] = [];
+    let filasResultado: FilaResultadoCobro[] = [];
     const sinMatch: string[] = [];
     let totalWrsEncontrados = 0;
     let totalWrsBuscados = 0;
@@ -371,13 +499,20 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    if (filasResultado.some((f) => !f.encontrado)) {
+      filasResultado = await enriquecerConSupabasePaquetes(filasResultado);
+    }
+
+    const finalSinMatch = filasResultado.filter((f) => !f.encontrado).map((f) => f.wr);
+    const finalWrsEncontrados = filasResultado.reduce((acc, f) => acc + (f.wrsEncontrados || 0), 0);
+
     return NextResponse.json({
       enviado_key: enviadoKey,
       indice_cacheado: indiceCacheado,
       total_filas: filasResultado.length,
       total_wrs: totalWrsBuscados,
-      wrs_encontrados: totalWrsEncontrados,
-      sin_match: sinMatch,
+      wrs_encontrados: finalWrsEncontrados,
+      sin_match: finalSinMatch,
       filas: filasResultado,
     });
   } catch (err: unknown) {

@@ -23,6 +23,19 @@
   --shadow-md: 0 4px 12px rgba(0,0,0,0.06);
   --shadow-lg: 0 10px 25px rgba(0,0,0,0.08);
   --radius: 8px;
+  --sap-sidebar-width: 285px;
+}
+
+@media (min-width: 1400px) {
+  :root {
+    --sap-sidebar-width: 295px;
+  }
+}
+
+@media (min-width: 1920px) {
+  :root {
+    --sap-sidebar-width: 310px;
+  }
 }
 
 * {
@@ -39,6 +52,20 @@ body {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+}
+
+/* Ocultar flechitas (spinners) de inputs numéricos */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button,
+.no-spinners::-webkit-outer-spin-button,
+.no-spinners::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"],
+.no-spinners {
+  -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 /* Header Bar */
@@ -62,6 +89,87 @@ body {
   font-weight: 700;
   font-size: 18px;
   letter-spacing: 0.3px;
+}
+
+/* Header Brand Styling & Responsiveness for all PC Screen Types */
+.header-bar-container {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.header-bar-brand {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 8px;
+  min-width: 0;
+}
+
+.header-brand-content {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.header-brand-logo {
+  height: 20px;
+  width: auto;
+  object-fit: contain;
+  flex-shrink: 0;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.25));
+}
+
+.header-brand-divider {
+  display: inline-block;
+  height: 15px;
+  width: 1px;
+  background-color: rgba(255, 255, 255, 0.2);
+  margin: 0 8px;
+  flex-shrink: 0;
+}
+
+.header-brand-text {
+  font-size: 13.5px;
+  font-weight: 800;
+  letter-spacing: 0.15px;
+  color: #ffffff;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.2;
+  user-select: none;
+}
+
+/* Optimización para monitores Full HD (1080p, 1400px+) */
+@media (min-width: 1400px) {
+  .header-brand-logo {
+    height: 21px;
+  }
+  .header-brand-divider {
+    height: 16px;
+    margin: 0 9px;
+  }
+  .header-brand-text {
+    font-size: 14px;
+    letter-spacing: 0.2px;
+  }
+}
+
+/* Optimización para monitores QHD / 2K / 4K (1920px+) */
+@media (min-width: 1920px) {
+  .header-brand-logo {
+    height: 22px;
+  }
+  .header-brand-divider {
+    height: 18px;
+    margin: 0 10px;
+  }
+  .header-brand-text {
+    font-size: 14.5px;
+    letter-spacing: 0.25px;
+  }
 }
 
 .sap-logo-badge {
@@ -99,7 +207,7 @@ body {
 }
 
 .sap-sidebar {
-  width: 270px;
+  width: var(--sap-sidebar-width, 285px);
   flex-shrink: 0;
   background: var(--sap-sidebar-bg);
   display: flex;
@@ -113,7 +221,7 @@ body {
 @media (min-width: 769px) {
   .app-layout-shell {
     display: grid !important;
-    grid-template-columns: 270px 1fr !important;
+    grid-template-columns: var(--sap-sidebar-width, 285px) 1fr !important;
     grid-template-rows: 56px 1fr !important;
     grid-template-areas:
       "header main"
@@ -125,11 +233,11 @@ body {
 
   .sap-header {
     grid-area: header !important;
-    width: 270px !important;
-    min-width: 270px !important;
-    max-width: 270px !important;
+    width: var(--sap-sidebar-width, 285px) !important;
+    min-width: var(--sap-sidebar-width, 285px) !important;
+    max-width: var(--sap-sidebar-width, 285px) !important;
     height: 56px !important;
-    padding: 0 16px !important;
+    padding: 0 14px !important;
     box-shadow: none !important;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
     border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
@@ -146,9 +254,9 @@ body {
   .sap-sidebar,
   .sap-sidebar.collapsed {
     grid-area: sidebar !important;
-    width: 270px !important;
-    min-width: 270px !important;
-    max-width: 270px !important;
+    width: var(--sap-sidebar-width, 285px) !important;
+    min-width: var(--sap-sidebar-width, 285px) !important;
+    max-width: var(--sap-sidebar-width, 285px) !important;
     flex-shrink: 0 !important;
     opacity: 1 !important;
     visibility: visible !important;

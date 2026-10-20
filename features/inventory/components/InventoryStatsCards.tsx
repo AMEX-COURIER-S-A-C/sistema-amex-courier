@@ -125,6 +125,15 @@ export default function InventoryStatsCards({
       ? serverExistenciasActivas
       : paquetesActivos.length;
 
+  const countEnAlmacen = useMemo(
+    () => paquetes.filter(p => (p.estadoAmex === 'en_almacen' || p.estadoAmex === 'recibido') && p.ubicacionActual !== 'Entregado').length,
+    [paquetes]
+  );
+  const countEnRuta = useMemo(
+    () => paquetes.filter(p => p.estadoAmex === 'en_ruta').length,
+    [paquetes]
+  );
+
   // 2. PESO EN CUSTODIA (paquetes activos)
   const totalPesoRealKg =
     serverPesoTotalKg !== undefined && serverPesoTotalKg > 0
@@ -159,7 +168,7 @@ export default function InventoryStatsCards({
           transition: 'all 0.15s ease',
           userSelect: 'none'
         }}
-        title="Existencias físicas actuales en Almacén Lince"
+        title={countEnRuta > 0 ? `Existencias bajo custodia: ${countEnAlmacen || totalExistenciasReales - countEnRuta} en almacén + ${countEnRuta} en ruta (${totalExistenciasReales} total activo)` : "Existencias físicas actuales en Almacén Lince"}
       >
         {/* Aro circular con ícono */}
         <CircularProgressRing
@@ -215,8 +224,24 @@ export default function InventoryStatsCards({
               {totalExistenciasReales}
             </span>
             <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#64748b' }}>
-              bultos en almacén
+              bultos activos
             </span>
+            {countEnRuta > 0 && (
+              <span
+                style={{
+                  fontSize: '10px',
+                  fontWeight: 600,
+                  color: '#475569',
+                  background: '#f1f5f9',
+                  padding: '1px 5px',
+                  borderRadius: '4px',
+                  whiteSpace: 'nowrap'
+                }}
+                title={`${countEnAlmacen || totalExistenciasReales - countEnRuta} en almacén y ${countEnRuta} en ruta`}
+              >
+                {countEnAlmacen || totalExistenciasReales - countEnRuta} alm · {countEnRuta} ruta
+              </span>
+            )}
           </div>
         </div>
       </div>

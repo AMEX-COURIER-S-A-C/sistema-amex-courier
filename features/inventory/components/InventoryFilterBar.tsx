@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, SlidersHorizontal, X, RotateCcw, Calendar } from 'lucide-react';
 import { EstanteriaPosicion } from '@/types';
 import { DateFilterState } from '../types';
@@ -60,6 +60,29 @@ export default function InventoryFilterBar({
   totalPaquetesCount
 }: InventoryFilterBarProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [localSearch, setLocalSearch] = useState(searchTerm);
+
+  // Sincronizar estado local si searchTerm cambia externamente (ej: reset)
+  useEffect(() => {
+    setLocalSearch(searchTerm);
+  }, [searchTerm]);
+
+  const handleCommitSearch = () => {
+    const trimmed = localSearch.trim();
+    setSearchTerm(trimmed);
+  };
+
+  const handleClearSearch = () => {
+    setLocalSearch('');
+    setSearchTerm('');
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleCommitSearch();
+    }
+  };
 
   const isDateFilterActive = Boolean(dateFilter && dateFilter.type !== 'ALL');
   const currentYear = new Date().getFullYear();
@@ -81,6 +104,7 @@ export default function InventoryFilterBar({
     activeSecondaryCount > 0;
 
   const handleResetFilters = () => {
+    setLocalSearch('');
     setSearchTerm('');
     setShelfFilter('ALL');
     setFloorFilter('ALL');
@@ -113,54 +137,92 @@ export default function InventoryFilterBar({
           alignItems: 'center'
         }}
       >
-        {/* Input de Búsqueda */}
-        <div style={{ position: 'relative', flex: '1 1 280px', minWidth: '240px' }}>
-          <Search
-            style={{
-              position: 'absolute',
-              left: '11px',
-              top: '9px',
-              width: '15px',
-              height: '15px',
-              color: '#94a3b8'
-            }}
-          />
-          <input
-            type="text"
-            placeholder="Buscar por Guía WR#, Tracking o Consignatario..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '7px 32px 7px 34px',
-              borderRadius: '7px',
-              border: '1px solid #cbd5e1',
-              fontSize: '12.5px',
-              background: '#f8fafc',
-              outline: 'none',
-              transition: 'all 0.15s ease'
-            }}
-          />
-          {searchTerm && (
-            <button
-              type="button"
-              onClick={() => setSearchTerm('')}
+        {/* Input de Búsqueda y Botón Buscar (Enter o Clic) */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            flex: '1 1 340px',
+            minWidth: '280px'
+          }}
+        >
+          <div style={{ position: 'relative', flex: 1 }}>
+            <Search
               style={{
                 position: 'absolute',
-                right: '8px',
-                top: '7px',
-                background: 'none',
-                border: 'none',
+                left: '11px',
+                top: '9px',
+                width: '15px',
+                height: '15px',
                 color: '#94a3b8',
-                cursor: 'pointer',
-                padding: '2px',
-                borderRadius: '4px'
+                pointerEvents: 'none'
               }}
-              title="Borrar texto"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
+            />
+            <input
+              type="text"
+              placeholder="Buscar por Guía WR#, Tracking o Consignatario..."
+              value={localSearch}
+              onChange={e => setLocalSearch(e.target.value)}
+              onKeyDown={handleKeyDown}
+              style={{
+                width: '100%',
+                padding: '7px 32px 7px 34px',
+                borderRadius: '7px',
+                border: '1px solid #cbd5e1',
+                fontSize: '12.5px',
+                background: '#f8fafc',
+                outline: 'none',
+                transition: 'all 0.15s ease'
+              }}
+            />
+            {localSearch && (
+              <button
+                type="button"
+                onClick={handleClearSearch}
+                style={{
+                  position: 'absolute',
+                  right: '8px',
+                  top: '7px',
+                  background: 'none',
+                  border: 'none',
+                  color: '#94a3b8',
+                  cursor: 'pointer',
+                  padding: '2px',
+                  borderRadius: '4px'
+                }}
+                title="Borrar texto y restaurar lista"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={handleCommitSearch}
+            style={{
+              background: '#2563eb',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '7px',
+              padding: '7px 14px',
+              fontSize: '12px',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 1px 2px rgba(37,99,235,0.2)',
+              transition: 'background 0.15s ease',
+              whiteSpace: 'nowrap',
+              height: '33px'
+            }}
+            title="Presiona Enter o haz clic para buscar"
+          >
+            <Search className="w-3.5 h-3.5" />
+            <span>Buscar</span>
+          </button>
         </div>
 
         {/* Filtro Rápido: Ubicación */}

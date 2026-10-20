@@ -80,7 +80,8 @@ export interface TransaccionPago {
   clienteNombre: string;
   fechaPago: string;
   monedaCobrada: 'USD' | 'PEN';
-  tipoCambioKambista: number; // ej: 3.765
+  tipoCambioKambista?: number; // ej: 3.80
+  tipoCambio?: number;
   montoUsdTotal: number;
   montoPenTotal: number;
   metodoPago: MetodoPagoCobro;
@@ -92,12 +93,14 @@ export interface TransaccionPago {
   creadoEn: string;
 }
 
-export interface CotizacionKambista {
+export interface TipoCambioConfig {
   compra: number;
   venta: number;
   actualizadoEn: string;
-  origen: 'KAMBISTA_LIVE' | 'MANUAL_OPERADOR' | 'DEFAULT';
+  origen: 'KAMBISTA_LIVE' | 'MANUAL_OPERADOR' | 'DEFAULT' | 'MANUAL';
 }
+
+export type CotizacionKambista = TipoCambioConfig;
 
 export interface ResumenCliente360 {
   clienteNombre: string;

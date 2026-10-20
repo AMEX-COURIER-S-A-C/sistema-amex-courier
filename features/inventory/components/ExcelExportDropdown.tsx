@@ -19,6 +19,7 @@ import { Paquete } from '@/types';
 import { exportPaquetesToExcel } from '@/lib/excelExport';
 import { exportEnAlmacenPivotReport } from '@/lib/excelPivotReport';
 import { alertDialog } from '@/lib/dialog';
+import { inventoryService } from '../services/inventory.service';
 
 export interface ExcelExportDropdownProps {
   paquetes: Paquete[];
@@ -33,6 +34,8 @@ export default function ExcelExportDropdown({
 }: ExcelExportDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isGeneratingPivot, setIsGeneratingPivot] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportingLabel, setExportingLabel] = useState<string>('');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Contadores dinámicos
@@ -62,76 +65,119 @@ export default function ExcelExportDropdown({
 
   const handleExport = async (type: string) => {
     setIsOpen(false);
+    setIsExporting(true);
 
-    switch (type) {
-      case 'pivot_en_almacen':
-        if (enAlmacenCount === 0) {
-          alertDialog({
-            title: 'Exportación vacía',
-            message: 'No hay paquetes en estado "En Almacén" o "Recibido" para generar el reporte.',
-            variant: 'warning'
-          });
+    try {
+      switch (type) {
+        case 'pivot_en_almacen': {
+          setExportingLabel('Consultando paquetes en almacén...');
+          setIsGeneratingPivot(true);
+          let dataAlmacen: Paquete[] = [];
+          try {
+            dataAlmacen = await inventoryService.getPaquetesEnAlmacen();
+          } catch (e) {
+            console.warn('Fallback local para reporte analítico:', e);
+            dataAlmacen = paquetes.filter(p => p.estadoAmex === 'en_almacen' || p.estadoAmex === 'recibido');
+          }
+
+          if (dataAlmacen.length === 0) {
+            alertDialog({
+              title: 'Exportación vacía',
+              message: 'No hay paquetes en estado "En Almacén" o "Recibido" para generar el reporte.',
+              variant: 'warning'
+            });
+            break;
+          }
+          await exportEnAlmacenPivotReport(dataAlmacen);
           break;
         }
-        setIsGeneratingPivot(true);
-        try {
-          await exportEnAlmacenPivotReport(paquetes);
-        } catch (err: any) {
-          console.error('Error generando reporte analítico:', err);
-          alertDialog({
-            title: 'Error al exportar',
-            message: err?.message || 'Ocurrió un error inesperado al generar el archivo Excel.',
-            variant: 'danger'
-          });
-        } finally {
-          setIsGeneratingPivot(false);
+
+        case 'recibido':
+        case 'en_almacen': {
+          setExportingLabel('Descargando inventario en almacén...');
+          let dataAlmacen: Paquete[] = [];
+          try {
+            dataAlmacen = await inventoryService.getPaquetesEnAlmacen();
+          } catch (e) {
+            console.warn('Fallback local para exportación en almacén:', e);
+            dataAlmacen = paquetes.filter(p => p.estadoAmex === 'en_almacen' || p.estadoAmex === 'recibido');
+          }
+          exportPaquetesToExcel(dataAlmacen, 'Inventario_AMEX_Solo_EnAlmacen');
+          break;
         }
-        break;
-      case 'filtered':
-        exportPaquetesToExcel(filteredPaquetes, 'Inventario_Vista_Actual');
-        break;
-      case 'all':
-        exportPaquetesToExcel(paquetes, 'Inventario_Completo_AMEX');
-        break;
-      case 'activas':
-        exportPaquetesToExcel(
-          paquetes.filter(p => p.estadoAmex !== 'entregado' && p.ubicacionActual !== 'Entregado'),
-          'Inventario_AMEX_Solo_Existencias_Activas'
-        );
-        break;
-      case 'recibido':
-      case 'en_almacen':
-        exportPaquetesToExcel(
-          paquetes.filter(p => p.estadoAmex === 'en_almacen' || p.estadoAmex === 'recibido'),
-          'Inventario_AMEX_Solo_EnAlmacen'
-        );
-        break;
-      case 'listo_recojo':
-        exportPaquetesToExcel(
-          paquetes.filter(p => p.estadoAmex === 'listo_recojo'),
-          'Inventario_AMEX_Solo_ListoRecojo'
-        );
-        break;
-      case 'en_ruta':
-        exportPaquetesToExcel(
-          paquetes.filter(p => p.estadoAmex === 'en_ruta'),
-          'Inventario_AMEX_Solo_EnRuta'
-        );
-        break;
-      case 'entregado':
-        exportPaquetesToExcel(
-          paquetes.filter(p => p.estadoAmex === 'entregado'),
-          'Inventario_AMEX_Solo_Entregados'
-        );
-        break;
-      case 'selected':
-        exportPaquetesToExcel(
-          paquetes.filter(p => selectedIds.includes(p.id)),
-          'Inventario_AMEX_Seleccionados'
-        );
-        break;
-      default:
-        exportPaquetesToExcel(filteredPaquetes, 'Inventario_AMEX');
+
+        case 'activas': {
+          setExportingLabel('Descargando existencias activas...');
+          let dataActivas: Paquete[] = [];
+          try {
+            dataActivas = await inventoryService.getPaquetesActivos();
+          } catch (e) {
+            console.warn('Fallback local para existencias activas:', e);
+            dataActivas = paquetes.filter(p => p.estadoAmex !== 'entregado' && p.ubicacionActual !== 'Entregado');
+          }
+          exportPaquetesToExcel(dataActivas, 'Inventario_AMEX_Solo_Existencias_Activas');
+          break;
+        }
+
+        case 'all': {
+          setExportingLabel('Descargando inventario completo...');
+          let dataAll: Paquete[] = [];
+          try {
+            dataAll = await inventoryService.getAllPaquetes();
+          } catch (e) {
+            console.warn('Fallback local para inventario completo:', e);
+            dataAll = paquetes;
+          }
+          exportPaquetesToExcel(dataAll, 'Inventario_Completo_AMEX');
+          break;
+        }
+
+        case 'filtered':
+          exportPaquetesToExcel(filteredPaquetes, 'Inventario_Vista_Actual');
+          break;
+
+        case 'listo_recojo':
+          exportPaquetesToExcel(
+            paquetes.filter(p => p.estadoAmex === 'listo_recojo'),
+            'Inventario_AMEX_Solo_ListoRecojo'
+          );
+          break;
+
+        case 'en_ruta':
+          exportPaquetesToExcel(
+            paquetes.filter(p => p.estadoAmex === 'en_ruta'),
+            'Inventario_AMEX_Solo_EnRuta'
+          );
+          break;
+
+        case 'entregado':
+          exportPaquetesToExcel(
+            paquetes.filter(p => p.estadoAmex === 'entregado'),
+            'Inventario_AMEX_Solo_Entregados'
+          );
+          break;
+
+        case 'selected':
+          exportPaquetesToExcel(
+            paquetes.filter(p => selectedIds.includes(p.id)),
+            'Inventario_AMEX_Seleccionados'
+          );
+          break;
+
+        default:
+          exportPaquetesToExcel(filteredPaquetes, 'Inventario_AMEX');
+      }
+    } catch (err: any) {
+      console.error('Error al exportar inventario:', err);
+      alertDialog({
+        title: 'Error al exportar',
+        message: err?.message || 'Ocurrió un error inesperado al generar el archivo Excel.',
+        variant: 'danger'
+      });
+    } finally {
+      setIsExporting(false);
+      setIsGeneratingPivot(false);
+      setExportingLabel('');
     }
   };
 
@@ -159,8 +205,17 @@ export default function ExcelExportDropdown({
         }}
         title="Exportar inventario en formato Excel con filtros o agrupaciones"
       >
-        <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-        Exportar Excel (.xlsx)
+        {isExporting ? (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+            <span>{exportingLabel || 'Exportando...'}</span>
+          </>
+        ) : (
+          <>
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+            <span>Exportar Excel (.xlsx)</span>
+          </>
+        )}
         <ChevronDown
           className="w-3.5 h-3.5 text-emerald-700"
           style={{
@@ -231,6 +286,21 @@ export default function ExcelExportDropdown({
               <span style={{ fontWeight: 700, color: '#1e293b', fontSize: '12px' }}>Todo el Inventario</span>
             </div>
             <span style={badgeStyle('#f1f5f9', '#475569')}>{totalCount}</span>
+          </button>
+
+          {/* 3. Solo Existencias Activas (Custodia) */}
+          <button
+            type="button"
+            onClick={() => handleExport('activas')}
+            style={dropdownItemStyle}
+            onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Inbox className="w-4 h-4 text-emerald-600" />
+              <span style={{ fontWeight: 700, color: '#1e293b', fontSize: '12px' }}>Solo Existencias Activas</span>
+            </div>
+            <span style={badgeStyle('#ecfdf5', '#047857')}>{activasCount}</span>
           </button>
 
 

@@ -149,22 +149,15 @@ export function useCobrosOperaciones() {
     }
   }, [availableFechas, filtros.fechaLote]);
 
-  // Refrescar TC Kambista en vivo al montar
-  useEffect(() => {
-    KambistaService.fetchLiveExchangeRate().then((tc) => {
-      setCotizacionKambista(tc);
-    });
-  }, []);
-
   const updateCotizacionManual = useCallback((compra: number, venta: number) => {
     const updated = KambistaService.setCotizacionManual(compra, venta);
     setCotizacionKambista(updated);
   }, []);
 
   const refreshKambistaLive = useCallback(async () => {
-    const live = await KambistaService.fetchLiveExchangeRate();
-    setCotizacionKambista(live);
-    return live;
+    const current = KambistaService.getCotizacionActual();
+    setCotizacionKambista(current);
+    return current;
   }, []);
 
   // Lotes filtrados para la vista operativa
@@ -866,7 +859,7 @@ export function useCobrosOperaciones() {
    * Resumen analítico 360 de un cliente específico
    */
   const getResumenCliente360 = useCallback(
-    (clienteNombre: string): ResumenCliente360 | null => {
+    (clienteNombre: string, paquetes?: import('@/types').Paquete[]): ResumenCliente360 | null => {
       if (!clienteNombre) return null;
 
       const norm = clienteNombre.trim().toUpperCase();
@@ -876,7 +869,28 @@ export function useCobrosOperaciones() {
         return isClient || isSub;
       });
 
-      if (matchingLotes.length === 0) return null;
+      if (matchingLotes.length === 0) {
+        const { tarifa: tarifaPorKgUsd, personalizada: tarifaPersonalizada } = getTarifaCliente(clienteNombre);
+
+        // Directorio puramente informativo: sin facturación ficticia ni tarifas arbitrarias
+        return {
+          clienteNombre,
+          esCorporativo: false,
+          totalWrsHistoricos: 0,
+          totalFacturadoUsd: 0,
+          totalPagadoUsd: 0,
+          deudaPendienteUsd: 0,
+          totalEntregados: 0,
+          totalEnAlmacen: 0,
+          totalPesoHistoricoKg: 0,
+          tarifaPorKgUsd: tarifaPersonalizada ? tarifaPorKgUsd : 0,
+          tarifaPersonalizada,
+          lotesHistoricos: [],
+          subConsignatarios: [],
+          historialWRs: [],
+          historialPagos: []
+        };
+      }
 
       const esCorporativo = matchingLotes.some((l) => l.esCorporativo);
       let totalWrsHistoricos = 0;

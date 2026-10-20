@@ -1,33 +1,36 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   X,
   User,
   Building2,
-  DollarSign,
   Package,
-  Calendar,
-  CreditCard,
   CheckCircle2,
   AlertCircle,
-  Clock,
   Search,
-  ExternalLink,
-  Receipt,
-  Users
+  CreditCard,
+  Phone,
+  Mail,
+  MapPin,
+  Save,
+  DollarSign,
+  Users,
+  ChevronRight,
+  ExternalLink
 } from 'lucide-react';
-import { ResumenCliente360, ItemCobroWR } from '../types';
-import { KambistaService } from '../services/kambista.service';
+import { ResumenCliente360 } from '../types';
 import { smoothScrollManager } from '@/lib/smooth-scroll/manager';
+import type { Cliente } from '@/types';
 
 interface DirectorioClienteModalProps {
   isOpen: boolean;
   onClose: () => void;
   clienteResumen: ResumenCliente360 | null;
-  tcVenta: number;
+  clienteInfo?: Cliente | null;
   onNavigateToCobros?: (clienteNombre: string) => void;
   guardarTarifaCliente?: (clienteNombre: string, tarifa: number) => void;
+  onClienteGuardado?: (cliente: Cliente) => void;
 }
 
 export const DirectorioClienteModal: React.FC<DirectorioClienteModalProps> = (props) => {
@@ -38,17 +41,38 @@ export const DirectorioClienteModal: React.FC<DirectorioClienteModalProps> = (pr
 const DirectorioClienteModalContent: React.FC<DirectorioClienteModalProps & { clienteResumen: ResumenCliente360 }> = ({
   onClose,
   clienteResumen,
-  tcVenta,
+  clienteInfo,
   onNavigateToCobros,
-  guardarTarifaCliente
+  guardarTarifaCliente,
+  onClienteGuardado
 }) => {
-  const [tabInterna, setTabInterna] = useState<'wrs' | 'pagos' | 'consignatarios'>('wrs');
+  const [tabInterna, setTabInterna] = useState<'ficha' | 'wrs' | 'consignatarios'>('ficha');
   const [filtroTexto, setFiltroTexto] = useState('');
-  const [tarifaInput, setTarifaInput] = useState<string>(clienteResumen.tarifaPorKgUsd?.toString() || '7.00');
+
+  // Estado de Tarifa
+  const [tarifaInput, setTarifaInput] = useState<string>(
+    clienteResumen.tarifaPorKgUsd && clienteResumen.tarifaPorKgUsd > 0
+      ? clienteResumen.tarifaPorKgUsd.toFixed(2)
+      : ''
+  );
   const [tarifaSavedFeedback, setTarifaSavedFeedback] = useState(false);
 
-  // Bloqueo de scroll de fondo y activación de aislamiento para modales
-  React.useEffect(() => {
+  // Estado de Datos del Cliente (DNI, Teléfono, Dirección)
+  const [formData, setFormData] = useState({
+    documentoIdentidad: clienteInfo?.documentoIdentidad || '',
+    telefono: clienteInfo?.telefono || '',
+    email: clienteInfo?.email || '',
+    departamento: clienteInfo?.departamento || 'LIMA',
+    provincia: clienteInfo?.provincia || 'LIMA',
+    distrito: clienteInfo?.distrito || '',
+    direccionEntrega: clienteInfo?.direccionEntrega || ''
+  });
+  const [guardandoCliente, setGuardandoCliente] = useState(false);
+  const [clienteSavedMsg, setClienteSavedMsg] = useState<string | null>(null);
+  const [clienteErrorMsg, setClienteErrorMsg] = useState<string | null>(null);
+
+  // Bloqueo de scroll de fondo
+  useEffect(() => {
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     smoothScrollManager.pushModalLock();
@@ -67,36 +91,80 @@ const DirectorioClienteModalContent: React.FC<DirectorioClienteModalProps & { cl
     };
   }, [onClose]);
 
-  React.useEffect(() => {
-    if (clienteResumen.tarifaPorKgUsd) {
-      setTarifaInput(clienteResumen.tarifaPorKgUsd.toString());
+  // Actualizar tarifa input si cambia externamente
+  useEffect(() => {
+    if (clienteResumen.tarifaPorKgUsd && clienteResumen.tarifaPorKgUsd > 0) {
+      setTarifaInput(clienteResumen.tarifaPorKgUsd.toFixed(2));
     }
   }, [clienteResumen.tarifaPorKgUsd]);
 
+  // Actualizar formData si clienteInfo cambia
+  useEffect(() => {
+    if (clienteInfo) {
+      setFormData({
+        documentoIdentidad: clienteInfo.documentoIdentidad || '',
+        telefono: clienteInfo.telefono || '',
+        email: clienteInfo.email || '',
+        departamento: clienteInfo.departamento || 'LIMA',
+        provincia: clienteInfo.provincia || 'LIMA',
+        distrito: clienteInfo.distrito || '',
+        direccionEntrega: clienteInfo.direccionEntrega || ''
+      });
+    }
+  }, [clienteInfo]);
+
+  // Guardar Tarifa
   const handleSaveTarifa = (tarifaNum: number) => {
-    if (tarifaNum <= 0 || isNaN(tarifaNum)) return;
-    setTarifaInput(tarifaNum.toFixed(2));
+    if (isNaN(tarifaNum) || tarifaNum < 0) return;
+    setTarifaInput(tarifaNum > 0 ? tarifaNum.toFixed(2) : '');
     if (guardarTarifaCliente) {
       guardarTarifaCliente(clienteResumen.clienteNombre, tarifaNum);
       setTarifaSavedFeedback(true);
-      setTimeout(() => setTarifaSavedFeedback(false), 2000);
+      setTimeout(() => setTarifaSavedFeedback(false), 2500);
     }
   };
 
-  // Conversiones a Soles
-  const totalFacturadoPen = useMemo(
-    () => KambistaService.convertUsdToPen(clienteResumen.totalFacturadoUsd, tcVenta),
-    [clienteResumen.totalFacturadoUsd, tcVenta]
-  );
-  const totalPagadoPen = useMemo(
-    () => KambistaService.convertUsdToPen(clienteResumen.totalPagadoUsd, tcVenta),
-    [clienteResumen.totalPagadoUsd, tcVenta]
-  );
-  const deudaPendientePen = useMemo(
-    () => KambistaService.convertUsdToPen(clienteResumen.deudaPendienteUsd, tcVenta),
-    [clienteResumen.deudaPendienteUsd, tcVenta]
-  );
+  // Guardar datos del cliente a Supabase
+  const handleGuardarDatosCliente = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setGuardandoCliente(true);
+      setClienteSavedMsg(null);
+      setClienteErrorMsg(null);
 
+      const res = await fetch('/api/clientes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nombre: clienteResumen.clienteNombre,
+          documento_identidad: formData.documentoIdentidad,
+          telefono: formData.telefono,
+          email: formData.email,
+          departamento: formData.departamento,
+          provincia: formData.provincia,
+          distrito: formData.distrito,
+          direccion_entrega: formData.direccionEntrega
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'No se pudo guardar la información del cliente.');
+      }
+
+      setClienteSavedMsg('¡Datos actualizados correctamente!');
+      if (onClienteGuardado && data.cliente) {
+        onClienteGuardado(data.cliente);
+      }
+      setTimeout(() => setClienteSavedMsg(null), 3000);
+    } catch (err: unknown) {
+      setClienteErrorMsg(err instanceof Error ? err.message : 'Error al guardar');
+    } finally {
+      setGuardandoCliente(false);
+    }
+  };
+
+  // Filtrado de paquetes WR
   const wrsFiltrados = useMemo(() => {
     if (!filtroTexto.trim()) return clienteResumen.historialWRs;
     const q = filtroTexto.trim().toUpperCase();
@@ -104,454 +172,934 @@ const DirectorioClienteModalContent: React.FC<DirectorioClienteModalProps & { cl
       (w) =>
         w.wr.toUpperCase().includes(q) ||
         w.tracking?.toUpperCase().includes(q) ||
-        w.consignatarioNombre?.toUpperCase().includes(q) ||
-        w.notas?.toUpperCase().includes(q)
+        w.consignatarioNombre?.toUpperCase().includes(q)
     );
   }, [clienteResumen.historialWRs, filtroTexto]);
 
+  const DEPARTAMENTOS = [
+    'LIMA',
+    'CALLAO',
+    'AREQUIPA',
+    'LA LIBERTAD',
+    'PIURA',
+    'CUSCO',
+    'LAMBAYEQUE',
+    'JUNIN',
+    'HUANUCO',
+    'SAN MARTIN',
+    'ANCASH',
+    'ICA',
+    'LORETO',
+    'PUNO',
+    'TACNA',
+    'UCAYALI'
+  ];
+
   return (
-    <div
-      className="modal-backdrop fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn"
-      data-lenis-prevent=""
-      onWheel={(e) => e.stopPropagation()}
-      style={{ overflowY: 'auto', overscrollBehavior: 'contain' }}
-    >
+    <div className="modal-backdrop" style={{ zIndex: 99999 }}>
       <div
-        className="relative w-full max-w-4xl bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden flex flex-col max-h-[92vh]"
-        data-lenis-prevent=""
-        onWheel={(e) => e.stopPropagation()}
-        style={{ minHeight: 0 }}
+        className="modal-dialog"
+        style={{
+          maxWidth: '760px',
+          width: '95%',
+          maxHeight: '92vh',
+          display: 'flex',
+          flexDirection: 'column',
+          borderRadius: '16px',
+          border: '1px solid #e2e8f0',
+          boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.25), 0 0 0 1px rgba(15, 23, 42, 0.06)',
+          overflow: 'hidden',
+          background: '#ffffff'
+        }}
       >
-        {/* HEADER */}
-        <div className="px-6 py-5 border-b border-gray-200 dark:border-gray-800 bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-900 text-white flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur-md flex items-center justify-center text-white border border-white/20">
+        {/* HEADER MODERNO BLANCO CON ACABADO ERP */}
+        <div
+          style={{
+            padding: '18px 24px',
+            borderBottom: '1px solid #e2e8f0',
+            background: '#ffffff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexShrink: 0
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div
+              style={{
+                width: '44px',
+                height: '44px',
+                borderRadius: '12px',
+                background: clienteResumen.esCorporativo ? '#fef3c7' : '#eff6ff',
+                border: clienteResumen.esCorporativo ? '1px solid #fde68a' : '1px solid #bfdbfe',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: clienteResumen.esCorporativo ? '#b45309' : '#2563eb'
+              }}
+            >
               {clienteResumen.esCorporativo ? (
-                <Building2 className="w-6 h-6 text-amber-300" />
+                <Building2 style={{ width: '22px', height: '22px' }} />
               ) : (
-                <User className="w-6 h-6 text-blue-300" />
+                <User style={{ width: '22px', height: '22px' }} />
               )}
             </div>
+
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-xl font-black tracking-tight text-white">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <h2
+                  style={{
+                    fontSize: '17px',
+                    fontWeight: 900,
+                    color: '#0f172a',
+                    margin: 0,
+                    letterSpacing: '-0.3px'
+                  }}
+                >
                   {clienteResumen.clienteNombre}
                 </h2>
                 {clienteResumen.esCorporativo ? (
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-400 text-gray-950 flex items-center gap-1">
-                    <Building2 className="w-3 h-3" /> CUENTA CORPORATIVA
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      fontSize: '10px',
+                      fontWeight: 800,
+                      background: '#fef3c7',
+                      color: '#92400e',
+                      border: '1px solid #fde68a'
+                    }}
+                  >
+                    <Building2 style={{ width: '10px', height: '10px' }} />
+                    CORPORATIVO
                   </span>
                 ) : (
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-500/30 text-blue-200 border border-blue-400/40">
-                    CLIENTE PARTICULAR
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      background: '#f1f5f9',
+                      color: '#475569',
+                      border: '1px solid #e2e8f0'
+                    }}
+                  >
+                    Particular
                   </span>
                 )}
               </div>
-              <p className="text-xs text-blue-200/80 mt-0.5">
-                Expediente y Estado de Cuenta &bull; TC Kambista Referencial: S/ {tcVenta.toFixed(3)}
+              <p style={{ fontSize: '12px', color: '#64748b', margin: '3px 0 0 0', fontWeight: 500 }}>
+                Ficha Oficial del Cliente en Directorio AMEX Courier
               </p>
             </div>
           </div>
+
           <button
+            type="button"
             onClick={onClose}
-            className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-white/20 text-white transition-colors"
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              border: 'none',
+              background: 'transparent',
+              color: '#94a3b8',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+            className="hover:bg-slate-100 hover:text-slate-700"
           >
-            <X className="w-5 h-5" />
+            <X style={{ width: '18px', height: '18px' }} />
           </button>
         </div>
 
-        {/* METRICS ROW */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-6 bg-gray-50/80 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-800">
-          {/* Total Facturado */}
-          <div className="p-3.5 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
-              Total Facturado
-            </span>
-            <div className="text-lg font-black font-mono text-gray-900 dark:text-white mt-0.5">
-              ${clienteResumen.totalFacturadoUsd.toFixed(2)}
-            </div>
-            <div className="text-[11px] font-mono text-gray-500">
-              S/ {totalFacturadoPen.toFixed(2)}
-            </div>
-          </div>
-
-          {/* Total Cobrado */}
-          <div className="p-3.5 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-              Total Cobrado (Pagado)
-            </span>
-            <div className="text-lg font-black font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">
-              ${clienteResumen.totalPagadoUsd.toFixed(2)}
-            </div>
-            <div className="text-[11px] font-mono text-emerald-700/80 dark:text-emerald-300">
-              S/ {totalPagadoPen.toFixed(2)}
-            </div>
-          </div>
-
-          {/* Deuda Pendiente */}
-          <div className={`p-3.5 rounded-xl border shadow-sm ${
-            clienteResumen.deudaPendienteUsd > 0
-              ? 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-900'
-              : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
-          }`}>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400">
-              Deuda Pendiente
-            </span>
-            <div className="text-lg font-black font-mono text-red-600 dark:text-red-400 mt-0.5">
-              ${clienteResumen.deudaPendienteUsd.toFixed(2)}
-            </div>
-            <div className="text-[11px] font-mono text-red-700/80 dark:text-red-300">
-              S/ {deudaPendientePen.toFixed(2)}
-            </div>
-          </div>
-
-          {/* Paquetes Entregados / Almacén */}
-          <div className="p-3.5 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
-              Despachos & Almacén
-            </span>
-            <div className="text-sm font-bold text-gray-900 dark:text-white mt-1 flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 text-xs font-mono font-bold">
-                {clienteResumen.totalEntregados} Entregados
-              </span>
-              <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 text-xs font-mono font-bold">
-                {clienteResumen.totalEnAlmacen} En Almacén
-              </span>
-            </div>
-            <div className="text-[10px] text-gray-500 mt-1">
-              Total {clienteResumen.totalWrsHistoricos} paquetes registrados &bull; {clienteResumen.totalPesoHistoricoKg?.toFixed(1) || 0} kg
-            </div>
-          </div>
-        </div>
-
-        {/* CONFIGURACIÓN DE TARIFA POR KILO ($/KG) */}
-        <div className="mx-6 my-2 p-3.5 bg-gradient-to-r from-blue-50/70 via-indigo-50/40 to-slate-50 border border-blue-200/80 rounded-xl flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-blue-600 text-white flex items-center justify-center font-black text-xs shadow-sm">
-              $/KG
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-black text-slate-800 uppercase tracking-wide">
-                  Tarifa de Cobro por Kilo
-                </span>
-                {clienteResumen.tarifaPersonalizada ? (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-200">
-                    PERSONALIZADA
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                    CALCULADA / BASE
-                  </span>
-                )}
-              </div>
-              <p className="text-[11.5px] text-slate-500 mt-0.5">
-                Tarifa activa: <strong className="text-blue-700 font-mono">${(parseFloat(tarifaInput) || clienteResumen.tarifaPorKgUsd || 7).toFixed(2)} USD / kg</strong> &bull; &asymp; S/ {KambistaService.convertUsdToPen(parseFloat(tarifaInput) || clienteResumen.tarifaPorKgUsd || 7, tcVenta).toFixed(2)} PEN / kg
-              </p>
-            </div>
-          </div>
-
-          {/* SELECTOR RÁPIDO: PRESETS $6, $7, $8 Y CAMPO EDITABLE */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[11px] font-bold text-slate-500">Ajustar tarifa:</span>
-            {[6.0, 7.0, 8.0, 8.5].map((preset) => (
-              <button
-                key={preset}
-                type="button"
-                onClick={() => handleSaveTarifa(preset)}
-                className={`px-2.5 py-1 text-xs font-mono font-bold rounded-lg border transition-all cursor-pointer ${
-                  parseFloat(tarifaInput) === preset
-                    ? 'bg-blue-600 text-white border-blue-700 shadow-sm'
-                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-                }`}
-              >
-                ${preset.toFixed(2)}
-              </button>
-            ))}
-
-            <div className="flex items-center gap-1.5 ml-1">
-              <div className="relative">
-                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">$</span>
-                <input
-                  type="number"
-                  step="0.5"
-                  min="1"
-                  max="50"
-                  value={tarifaInput}
-                  onChange={(e) => setTarifaInput(e.target.value)}
-                  className="w-20 pl-5 pr-2 py-1 text-xs font-mono font-bold bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="0.00"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => handleSaveTarifa(parseFloat(tarifaInput))}
-                className="px-3 py-1 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
-              >
-                Guardar
-              </button>
-            </div>
-
-            {tarifaSavedFeedback && (
-              <span className="text-xs font-bold text-emerald-600 flex items-center gap-1 animate-fadeIn">
-                <CheckCircle2 className="w-3.5 h-3.5" /> ¡Guardado!
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* TABS NAVEGACIÓN DENTRO DEL EXPEDIENTE */}
-        <div className="px-6 pt-3 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
-          <div className="flex gap-4">
-            <button
-              onClick={() => setTabInterna('wrs')}
-              className={`pb-3 text-xs font-bold transition-all border-b-2 flex items-center gap-1.5 ${
-                tabInterna === 'wrs'
-                  ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'
-              }`}
-            >
-              <Package className="w-4 h-4" />
-              Historial de Paquetes WR ({clienteResumen.historialWRs.length})
-            </button>
-
-            <button
-              onClick={() => setTabInterna('pagos')}
-              className={`pb-3 text-xs font-bold transition-all border-b-2 flex items-center gap-1.5 ${
-                tabInterna === 'pagos'
-                  ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'
-              }`}
-            >
-              <Receipt className="w-4 h-4" />
-              Comprobantes de Pago ({clienteResumen.historialPagos.length})
-            </button>
-
-            {clienteResumen.esCorporativo && clienteResumen.subConsignatarios && (
-              <button
-                onClick={() => setTabInterna('consignatarios')}
-                className={`pb-3 text-xs font-bold transition-all border-b-2 flex items-center gap-1.5 ${
-                  tabInterna === 'consignatarios'
-                    ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                    : 'border-transparent text-gray-500 hover:text-gray-900 dark:hover:text-white'
-                }`}
-              >
-                <Users className="w-4 h-4" />
-                Sub-Destinatarios ({clienteResumen.subConsignatarios.length})
-              </button>
-            )}
-          </div>
-
-          {tabInterna === 'wrs' && (
-            <div className="relative mb-2">
-              <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Filtrar por WR, tracking..."
-                value={filtroTexto}
-                onChange={(e) => setFiltroTexto(e.target.value)}
-                className="pl-8 pr-3 py-1 text-xs bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            </div>
-          )}
-        </div>
-
-        {/* CONTENIDO TAB */}
+        {/* BARRA DE PESTAÑAS (SEGMENTED CONTROL MODERNO) */}
         <div
-          className="flex-1 overflow-y-auto p-6"
+          style={{
+            padding: '10px 24px',
+            background: '#f8fafc',
+            borderBottom: '1px solid #e2e8f0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexShrink: 0
+          }}
+        >
+          <div
+            style={{
+              display: 'inline-flex',
+              background: '#e2e8f0',
+              padding: '3px',
+              borderRadius: '10px',
+              gap: '2px'
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setTabInterna('ficha')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                fontSize: '12px',
+                fontWeight: tabInterna === 'ficha' ? 800 : 600,
+                color: tabInterna === 'ficha' ? '#0f172a' : '#64748b',
+                background: tabInterna === 'ficha' ? '#ffffff' : 'transparent',
+                border: 'none',
+                borderRadius: '8px',
+                boxShadow: tabInterna === 'ficha' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <User style={{ width: '13px', height: '13px' }} />
+              <span>Ficha y Datos Oficiales</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setTabInterna('wrs')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                fontSize: '12px',
+                fontWeight: tabInterna === 'wrs' ? 800 : 600,
+                color: tabInterna === 'wrs' ? '#0f172a' : '#64748b',
+                background: tabInterna === 'wrs' ? '#ffffff' : 'transparent',
+                border: 'none',
+                borderRadius: '8px',
+                boxShadow: tabInterna === 'wrs' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <Package style={{ width: '13px', height: '13px' }} />
+              <span>Historial de Paquetes ({clienteResumen.historialWRs.length})</span>
+            </button>
+
+            {clienteResumen.esCorporativo && (clienteResumen.subConsignatarios?.length || 0) > 0 && (
+              <button
+                type="button"
+                onClick={() => setTabInterna('consignatarios')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 14px',
+                  fontSize: '12px',
+                  fontWeight: tabInterna === 'consignatarios' ? 800 : 600,
+                  color: tabInterna === 'consignatarios' ? '#0f172a' : '#64748b',
+                  background: tabInterna === 'consignatarios' ? '#ffffff' : 'transparent',
+                  border: 'none',
+                  borderRadius: '8px',
+                  boxShadow: tabInterna === 'consignatarios' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <Users style={{ width: '13px', height: '13px' }} />
+                <span>Sub-Destinatarios ({clienteResumen.subConsignatarios!.length})</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* CUERPO PRINCIPAL DEL MODAL */}
+        <div
+          style={{
+            padding: '24px',
+            overflowY: 'auto',
+            flex: '1 1 auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '20px'
+          }}
           data-lenis-prevent=""
           onWheel={(e) => e.stopPropagation()}
-          style={{ overscrollBehavior: 'contain', minHeight: 0 }}
         >
+          {/* TAB 1: FICHA Y DATOS OFICIALES */}
+          {tabInterna === 'ficha' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+              {/* TARJETA 1: CONFIGURACIÓN DE TARIFA PARA COBROS */}
+              <div
+                style={{
+                  background: '#f0fdf4',
+                  border: '1px solid #bbf7d0',
+                  borderRadius: '12px',
+                  padding: '16px 18px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div
+                      style={{
+                        width: '28px',
+                        height: '28px',
+                        borderRadius: '8px',
+                        background: '#16a34a',
+                        color: '#ffffff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '11px',
+                        fontWeight: 900
+                      }}
+                    >
+                      $
+                    </div>
+                    <div>
+                      <h3 style={{ fontSize: '12px', fontWeight: 800, color: '#166534', margin: 0, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                        Tarifa Asignada para Planilla de Cobros
+                      </h3>
+                      <p style={{ fontSize: '11px', color: '#15803d', margin: '2px 0 0 0' }}>
+                        Esta tarifa se cruzará automáticamente en el Módulo 4 (Armar Planilla de Cobros) para calcular el PRECIO $.
+                      </p>
+                    </div>
+                  </div>
+
+                  {tarifaSavedFeedback && (
+                    <span
+                      style={{
+                        fontSize: '11.5px',
+                        fontWeight: 800,
+                        color: '#15803d',
+                        background: '#dcfce7',
+                        border: '1px solid #86efac',
+                        padding: '3px 9px',
+                        borderRadius: '6px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                    >
+                      <CheckCircle2 style={{ width: '13px', height: '13px' }} />
+                      ¡Tarifa guardada!
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 800, color: '#166534', textTransform: 'uppercase' }}>
+                    Presets rápidos:
+                  </span>
+                  {[6.0, 6.5, 7.0, 7.5, 8.0, 8.5].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => handleSaveTarifa(preset)}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '11.5px',
+                        fontWeight: 800,
+                        fontFamily: 'monospace',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        border: parseFloat(tarifaInput) === preset ? '1px solid #16a34a' : '1px solid #cbd5e1',
+                        background: parseFloat(tarifaInput) === preset ? '#16a34a' : '#ffffff',
+                        color: parseFloat(tarifaInput) === preset ? '#ffffff' : '#334155',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      ${preset.toFixed(2)}
+                    </button>
+                  ))}
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '6px' }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        background: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '6px',
+                        padding: '3px 8px'
+                      }}
+                    >
+                      <span style={{ fontSize: '12px', fontWeight: 800, color: '#64748b', marginRight: '3px' }}>$</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={tarifaInput}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/,/g, '.');
+                          if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                            setTarifaInput(val);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleSaveTarifa(parseFloat(tarifaInput));
+                          }
+                        }}
+                        style={{
+                          width: '54px',
+                          border: 'none',
+                          outline: 'none',
+                          fontSize: '12px',
+                          fontWeight: 800,
+                          fontFamily: 'monospace',
+                          textAlign: 'right',
+                          color: '#0f172a'
+                        }}
+                        placeholder="0.00"
+                        className="no-spinners"
+                      />
+                      <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600, marginLeft: '3px' }}>/kg</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSaveTarifa(parseFloat(tarifaInput))}
+                      style={{
+                        padding: '5px 12px',
+                        borderRadius: '6px',
+                        border: 'none',
+                        background: '#0f172a',
+                        color: '#ffffff',
+                        fontSize: '11.5px',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                      className="hover:bg-slate-800"
+                    >
+                      Guardar
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* TARJETA 2: DATOS OFICIALES Y DE CONTACTO */}
+              <form
+                onSubmit={handleGuardarDatosCliente}
+                style={{
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '12px',
+                  padding: '20px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '16px',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <CreditCard style={{ width: '16px', height: '16px', color: '#2563eb' }} />
+                    <h3 style={{ fontSize: '13px', fontWeight: 900, color: '#0f172a', margin: 0, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                      Datos de Identidad y Contacto
+                    </h3>
+                  </div>
+                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                    Información oficial de la base de clientes
+                  </span>
+                </div>
+
+                {clienteSavedMsg && (
+                  <div
+                    style={{
+                      padding: '10px 14px',
+                      borderRadius: '8px',
+                      background: '#ecfdf5',
+                      border: '1px solid #a7f3d0',
+                      color: '#065f46',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                  >
+                    <CheckCircle2 style={{ width: '15px', height: '15px', color: '#059669' }} />
+                    <span>{clienteSavedMsg}</span>
+                  </div>
+                )}
+
+                {clienteErrorMsg && (
+                  <div
+                    style={{
+                      padding: '10px 14px',
+                      borderRadius: '8px',
+                      background: '#fef2f2',
+                      border: '1px solid #fecaca',
+                      color: '#991b1b',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                  >
+                    <AlertCircle style={{ width: '15px', height: '15px', color: '#dc2626' }} />
+                    <span>{clienteErrorMsg}</span>
+                  </div>
+                )}
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+                  {/* Documento Fiscal (DNI / RUC) */}
+                  <div>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        textTransform: 'uppercase',
+                        color: '#475569',
+                        marginBottom: '5px'
+                      }}
+                    >
+                      Documento Fiscal (DNI / RUC)
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.documentoIdentidad}
+                      onChange={(e) => setFormData({ ...formData, documentoIdentidad: e.target.value })}
+                      placeholder="DNI (8 dígitos) o RUC (11 dígitos)"
+                      style={{
+                        width: '100%',
+                        padding: '9px 12px',
+                        fontSize: '12.5px',
+                        fontFamily: 'monospace',
+                        fontWeight: 700,
+                        background: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '8px',
+                        color: '#0f172a',
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+
+                  {/* Teléfono / WhatsApp */}
+                  <div>
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        textTransform: 'uppercase',
+                        color: '#475569',
+                        marginBottom: '5px'
+                      }}
+                    >
+                      <Phone style={{ width: '12px', height: '12px', color: '#64748b' }} />
+                      Teléfono / WhatsApp
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.telefono}
+                      onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
+                      placeholder="Ej: +51 987 654 321"
+                      style={{
+                        width: '100%',
+                        padding: '9px 12px',
+                        fontSize: '12.5px',
+                        fontWeight: 600,
+                        background: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '8px',
+                        color: '#0f172a',
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+
+                  {/* Correo Electrónico */}
+                  <div>
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        textTransform: 'uppercase',
+                        color: '#475569',
+                        marginBottom: '5px'
+                      }}
+                    >
+                      <Mail style={{ width: '12px', height: '12px', color: '#64748b' }} />
+                      Correo Electrónico
+                    </label>
+                    <input
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      placeholder="Ej: cliente@correo.com"
+                      style={{
+                        width: '100%',
+                        padding: '9px 12px',
+                        fontSize: '12.5px',
+                        fontWeight: 600,
+                        background: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '8px',
+                        color: '#0f172a',
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+
+                  {/* Departamento */}
+                  <div>
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        textTransform: 'uppercase',
+                        color: '#475569',
+                        marginBottom: '5px'
+                      }}
+                    >
+                      <MapPin style={{ width: '12px', height: '12px', color: '#64748b' }} />
+                      Departamento
+                    </label>
+                    <select
+                      value={formData.departamento}
+                      onChange={(e) => setFormData({ ...formData, departamento: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '9px 12px',
+                        fontSize: '12.5px',
+                        fontWeight: 700,
+                        background: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '8px',
+                        color: '#0f172a',
+                        outline: 'none',
+                        boxSizing: 'border-box',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {DEPARTAMENTOS.map((dep) => (
+                        <option key={dep} value={dep}>{dep}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Provincia */}
+                  <div>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        textTransform: 'uppercase',
+                        color: '#475569',
+                        marginBottom: '5px'
+                      }}
+                    >
+                      Provincia
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.provincia}
+                      onChange={(e) => setFormData({ ...formData, provincia: e.target.value })}
+                      placeholder="Ej: LIMA"
+                      style={{
+                        width: '100%',
+                        padding: '9px 12px',
+                        fontSize: '12.5px',
+                        fontWeight: 600,
+                        background: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '8px',
+                        color: '#0f172a',
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+
+                  {/* Distrito */}
+                  <div>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        textTransform: 'uppercase',
+                        color: '#475569',
+                        marginBottom: '5px'
+                      }}
+                    >
+                      Distrito
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.distrito}
+                      onChange={(e) => setFormData({ ...formData, distrito: e.target.value })}
+                      placeholder="Ej: LINCE / MIRAFLORES / SAN ISIDRO"
+                      style={{
+                        width: '100%',
+                        padding: '9px 12px',
+                        fontSize: '12.5px',
+                        fontWeight: 600,
+                        background: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '8px',
+                        color: '#0f172a',
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+
+                  {/* Dirección de Entrega */}
+                  <div style={{ gridColumn: 'span 2' }}>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                        textTransform: 'uppercase',
+                        color: '#475569',
+                        marginBottom: '5px'
+                      }}
+                    >
+                      Dirección de Entrega
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.direccionEntrega}
+                      onChange={(e) => setFormData({ ...formData, direccionEntrega: e.target.value })}
+                      placeholder="Ej: Sede Principal Lince / Av. Arequipa 2450 Dpto 402"
+                      style={{
+                        width: '100%',
+                        padding: '9px 12px',
+                        fontSize: '12.5px',
+                        fontWeight: 600,
+                        background: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '8px',
+                        color: '#0f172a',
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '4px' }}>
+                  <button
+                    type="submit"
+                    disabled={guardandoCliente}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '9px 18px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: '#2563eb',
+                      color: '#ffffff',
+                      fontSize: '12.5px',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      boxShadow: '0 1px 3px rgba(37,99,235,0.3)',
+                      transition: 'all 0.15s ease'
+                    }}
+                    className="hover:opacity-95 disabled:opacity-50"
+                  >
+                    <Save style={{ width: '14px', height: '14px' }} />
+                    <span>{guardandoCliente ? 'Guardando...' : 'Guardar Cambios de Cliente'}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* TAB 2: HISTORIAL DE PAQUETES (WRs) */}
           {tabInterna === 'wrs' && (
-            <div className="border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden bg-white dark:bg-gray-900">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-gray-100 dark:bg-gray-800/80 text-gray-600 dark:text-gray-300 uppercase font-bold text-[10px]">
-                  <tr>
-                    <th className="px-3 py-2.5">WR / Tracking</th>
-                    {clienteResumen.esCorporativo && <th className="px-3 py-2.5">Consignatario</th>}
-                    <th className="px-3 py-2.5">Peso</th>
-                    <th className="px-3 py-2.5">Precio USD</th>
-                    <th className="px-3 py-2.5">Precio PEN (TC S/{tcVenta})</th>
-                    <th className="px-3 py-2.5">Estado Pago</th>
-                    <th className="px-3 py-2.5">Estado Entrega</th>
-                    <th className="px-3 py-2.5">Notas / Despacho</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                  {wrsFiltrados.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
-                        No se encontraron paquetes registrados.
-                      </td>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <Search style={{ width: '14px', height: '14px', position: 'absolute', left: '10px', top: '10px', color: '#94a3b8' }} />
+                  <input
+                    type="text"
+                    placeholder="Filtrar por código WR o tracking..."
+                    value={filtroTexto}
+                    onChange={(e) => setFiltroTexto(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '7px 10px 7px 32px',
+                      fontSize: '12px',
+                      background: '#f8fafc',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '8px',
+                      outline: 'none',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+                <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 700 }}>
+                  {wrsFiltrados.length} paquetes
+                </span>
+              </div>
+
+              <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', color: '#64748b', borderBottom: '1px solid #e2e8f0', textTransform: 'uppercase', fontSize: '10.5px' }}>
+                      <th style={{ padding: '10px 12px', fontWeight: 800 }}>WR</th>
+                      <th style={{ padding: '10px 12px', fontWeight: 800 }}>TRACKING</th>
+                      {clienteResumen.esCorporativo && <th style={{ padding: '10px 12px', fontWeight: 800 }}>CONSIGNATARIO</th>}
+                      <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'center' }}>PESO</th>
+                      <th style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'center' }}>ESTADO</th>
+                      <th style={{ padding: '10px 12px', fontWeight: 800 }}>NOTAS</th>
                     </tr>
-                  ) : (
-                    wrsFiltrados.map((item, idx) => {
-                      const itemPen = KambistaService.convertUsdToPen(item.precioUsd, tcVenta);
-                      return (
-                        <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                          <td className="px-3 py-2 font-mono font-bold text-gray-900 dark:text-white">
+                  </thead>
+                  <tbody>
+                    {wrsFiltrados.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} style={{ padding: '36px 16px', textAlign: 'center', color: '#94a3b8' }}>
+                          <Package style={{ width: '28px', height: '28px', margin: '0 auto 6px auto', opacity: 0.4 }} />
+                          <p style={{ margin: 0, fontWeight: 600, fontSize: '12px' }}>No hay paquetes registrados para este cliente.</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      wrsFiltrados.map((item, idx) => (
+                        <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }} className="hover:bg-slate-50">
+                          <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontWeight: 800, color: '#0f172a' }}>
                             {item.wr}
-                            {item.cajaNumero && (
-                              <span className="block text-[10px] text-gray-500 font-sans">
-                                Caja: {item.cajaNumero}
-                              </span>
-                            )}
+                          </td>
+                          <td style={{ padding: '10px 12px', fontFamily: 'monospace', color: '#475569' }}>
+                            {item.tracking || '—'}
                           </td>
                           {clienteResumen.esCorporativo && (
-                            <td className="px-3 py-2 text-indigo-600 dark:text-indigo-400 font-medium">
-                              {item.consignatarioNombre || '-'}
+                            <td style={{ padding: '10px 12px', color: '#4338ca', fontWeight: 700 }}>
+                              {item.consignatarioNombre || '—'}
                             </td>
                           )}
-                          <td className="px-3 py-2 font-mono">{item.pesoKg.toFixed(2)} kg</td>
-                          <td className="px-3 py-2 font-mono font-bold text-gray-900 dark:text-white">
-                            ${item.precioUsd.toFixed(2)}
+                          <td style={{ padding: '10px 12px', textAlign: 'center', fontFamily: 'monospace', fontWeight: 800, color: '#059669' }}>
+                            {item.pesoKg > 0 ? `${item.pesoKg.toFixed(2)} kg` : '—'}
                           </td>
-                          <td className="px-3 py-2 font-mono text-emerald-600 dark:text-emerald-400 font-medium">
-                            S/ {itemPen.toFixed(2)}
-                          </td>
-                          <td className="px-3 py-2">
-                            {item.estadoPago === 'PAGADO' ? (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300">
-                                PAGADO
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-300">
-                                FALTA
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2">
+                          <td style={{ padding: '10px 12px', textAlign: 'center' }}>
                             {item.estadoEntrega === 'ENTREGADO' || item.estadoEntrega === 'RECOGIDO' ? (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 dark:bg-purple-900/60 dark:text-purple-300">
+                              <span style={{ padding: '2px 8px', borderRadius: '12px', fontSize: '10px', fontWeight: 800, background: '#f3e8ff', color: '#7e22ce' }}>
                                 ENTREGADO
                               </span>
                             ) : (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+                              <span style={{ padding: '2px 8px', borderRadius: '12px', fontSize: '10px', fontWeight: 800, background: '#fef3c7', color: '#b45309' }}>
                                 EN ALMACÉN
                               </span>
                             )}
                           </td>
-                          <td className="px-3 py-2 text-gray-500 text-[11px] max-w-xs truncate">
-                            {item.entregaInfo
-                              ? `${item.entregaInfo.tipoRetirante}: ${item.entregaInfo.nombreRetirante} (${item.entregaInfo.fechaHoraEntrega})`
-                              : item.notas || '-'}
+                          <td style={{ padding: '10px 12px', color: '#64748b', fontSize: '11px' }}>
+                            {item.cajaNumero ? `Caja: ${item.cajaNumero}` : (item.notas || '—')}
                           </td>
                         </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
-          {tabInterna === 'pagos' && (
-            <div className="space-y-3">
-              {clienteResumen.historialPagos.length === 0 ? (
-                <div className="p-8 text-center text-gray-500 bg-gray-50 dark:bg-gray-800/40 rounded-xl border border-dashed border-gray-300 dark:border-gray-700">
-                  <Receipt className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm font-medium">No hay comprobantes de pago registrados aún en esta sesión.</p>
-                  <p className="text-xs text-gray-400 mt-1">Los pagos confirmados desde la hoja diaria se auditan aquí automáticamente.</p>
-                </div>
-              ) : (
-                clienteResumen.historialPagos.map((pago) => (
-                  <div
-                    key={pago.id}
-                    className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center justify-between shadow-sm"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-sm text-gray-900 dark:text-white">
-                          {pago.codigoPago}
-                        </span>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                          {pago.metodoPago}
-                        </span>
-                        {pago.numeroOperacion && (
-                          <span className="text-xs text-gray-500 font-mono">
-                            Op: {pago.numeroOperacion}
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        Fecha: {pago.fechaPago} &bull; Registrado por: {pago.registradoPor}
-                      </div>
-                      <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                        WRs liquidados: <span className="font-mono font-semibold">{pago.wrsLiquidados.join(', ')}</span>
-                      </div>
-                    </div>
-
-                    <div className="text-right">
-                      <div className="font-mono font-black text-emerald-600 dark:text-emerald-400 text-base">
-                        {pago.monedaCobrada === 'USD' ? `$${pago.montoUsdTotal.toFixed(2)}` : `S/ ${pago.montoPenTotal.toFixed(2)}`}
-                      </div>
-                      <div className="text-[11px] font-mono text-gray-500">
-                        TC Kambista: S/ {pago.tipoCambioKambista.toFixed(3)}
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-
+          {/* TAB 3: SUB-DESTINATARIOS CORPORATIVOS */}
           {tabInterna === 'consignatarios' && clienteResumen.subConsignatarios && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {clienteResumen.subConsignatarios.map((sub, idx) => {
-                const subWrs = clienteResumen.historialWRs.filter(
-                  (w) => w.consignatarioNombre?.toUpperCase() === sub.toUpperCase()
-                );
-                let subTotalUsd = 0;
-                let subPagadoUsd = 0;
-                subWrs.forEach((w) => {
-                  subTotalUsd += w.precioUsd;
-                  if (w.estadoPago === 'PAGADO') subPagadoUsd += w.precioUsd;
-                });
-                const subDeuda = subTotalUsd - subPagadoUsd;
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>
+                Destinatarios individuales asociados que consolidan bajo la cuenta de <strong style={{ color: '#0f172a' }}>{clienteResumen.clienteNombre}</strong>:
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                {clienteResumen.subConsignatarios.map((sub, idx) => {
+                  const subWrs = clienteResumen.historialWRs.filter(
+                    (w) => w.consignatarioNombre?.toUpperCase() === sub.toUpperCase()
+                  );
 
-                return (
-                  <div
-                    key={idx}
-                    className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm flex items-center justify-between"
-                  >
-                    <div>
-                      <h4 className="text-xs font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
-                        <User className="w-3.5 h-3.5 text-indigo-500" />
-                        {sub}
-                      </h4>
-                      <p className="text-[11px] text-gray-500 mt-0.5">
-                        {subWrs.length} paquetes registrados
-                      </p>
-                    </div>
-
-                    <div className="text-right">
-                      <span className="font-mono font-bold text-xs text-gray-900 dark:text-white">
-                        ${subTotalUsd.toFixed(2)} USD
-                      </span>
-                      {subDeuda > 0 ? (
-                        <div className="text-[11px] font-semibold text-red-600">
-                          Debe: ${subDeuda.toFixed(2)}
+                  return (
+                    <div
+                      key={idx}
+                      style={{
+                        padding: '12px 14px',
+                        borderRadius: '10px',
+                        border: '1px solid #e2e8f0',
+                        background: '#ffffff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div
+                          style={{
+                            width: '28px',
+                            height: '28px',
+                            borderRadius: '8px',
+                            background: '#e0e7ff',
+                            border: '1px solid #c7d2fe',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: '#4338ca'
+                          }}
+                        >
+                          <User style={{ width: '14px', height: '14px' }} />
                         </div>
-                      ) : (
-                        <div className="text-[11px] font-semibold text-emerald-600">
-                          Al día
+                        <div>
+                          <h4 style={{ fontSize: '12px', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                            {sub}
+                          </h4>
+                          <span style={{ fontSize: '10.5px', color: '#94a3b8' }}>
+                            {subWrs.length} paquetes vinculados
+                          </span>
                         </div>
-                      )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
 
-        {/* FOOTER */}
-        <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/80 flex items-center justify-between gap-3">
-          <div className="text-xs text-gray-500 truncate">
-            Hojas donde figura: <span className="font-semibold text-gray-700 dark:text-gray-300">{clienteResumen.lotesHistoricos.join(', ')}</span>
+        {/* FOOTER MODERNO */}
+        <div
+          style={{
+            padding: '14px 24px',
+            borderTop: '1px solid #e2e8f0',
+            background: '#f8fafc',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '10px',
+            flexShrink: 0
+          }}
+        >
+          <div style={{ fontSize: '11.5px', color: '#64748b', fontWeight: 500 }}>
+            AMEX Courier &bull; Directorio de Clientes
           </div>
-          <div className="flex items-center gap-2">
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {onNavigateToCobros && (
               <button
                 type="button"
@@ -559,18 +1107,45 @@ const DirectorioClienteModalContent: React.FC<DirectorioClienteModalProps & { cl
                   onClose();
                   onNavigateToCobros(clienteResumen.clienteNombre);
                 }}
-                className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors shadow-sm flex items-center gap-1.5 cursor-pointer"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '7px 14px',
+                  fontSize: '12px',
+                  fontWeight: 800,
+                  color: '#047857',
+                  background: '#ecfdf5',
+                  border: '1px solid #a7f3d0',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+                className="hover:bg-emerald-100"
               >
-                <DollarSign className="w-3.5 h-3.5" />
-                {clienteResumen.deudaPendienteUsd > 0 ? 'Cobrar en Módulo de Cobros' : 'Ver en Módulo de Cobros'}
+                <DollarSign style={{ width: '13px', height: '13px' }} />
+                <span>Ir a Módulo de Cobros</span>
               </button>
             )}
+
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2 text-xs font-bold text-white bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 rounded-xl transition-colors shadow-sm cursor-pointer"
+              style={{
+                padding: '7px 16px',
+                fontSize: '12px',
+                fontWeight: 700,
+                color: '#334155',
+                background: '#ffffff',
+                border: '1px solid #cbd5e1',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                transition: 'all 0.15s ease'
+              }}
+              className="hover:bg-slate-100"
             >
-              Cerrar Expediente
+              Cerrar Ficha
             </button>
           </div>
         </div>

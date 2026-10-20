@@ -610,6 +610,110 @@ export const inventoryService = {
     await supabase.from('estanterias_posiciones').delete().eq('id', id);
   },
 
+  // Consulta Server-Side de Paquetes en Almacén bajo demanda (sin límites de 1,000)
+  async getPaquetesEnAlmacen(): Promise<Paquete[]> {
+    const CHUNK_SIZE = 1000;
+    let offset = 0;
+    const allRows: Record<string, unknown>[] = [];
+    while (true) {
+      const { data, error } = await supabase
+        .from('paquetes')
+        .select('*')
+        .is('eliminado_en', null)
+        .or('estado_amex.eq.en_almacen,estado_amex.eq.recibido')
+        .order('creado_en', { ascending: false })
+        .range(offset, offset + CHUNK_SIZE - 1);
+
+      if (error) {
+        console.error('Error fetching paquetes en almacén:', error);
+        break;
+      }
+      if (!data || data.length === 0) break;
+      allRows.push(...data);
+      if (data.length < CHUNK_SIZE) break;
+      offset += CHUNK_SIZE;
+    }
+    return allRows.map(mapPaqueteDbRow);
+  },
+
+  // Consulta Server-Side de Paquetes Activos bajo custodia (en almacén + en ruta, no entregados)
+  async getPaquetesActivos(): Promise<Paquete[]> {
+    const CHUNK_SIZE = 1000;
+    let offset = 0;
+    const allRows: Record<string, unknown>[] = [];
+    while (true) {
+      const { data, error } = await supabase
+        .from('paquetes')
+        .select('*')
+        .is('eliminado_en', null)
+        .neq('estado_amex', 'entregado')
+        .neq('ubicacion_actual', 'Entregado')
+        .order('creado_en', { ascending: false })
+        .range(offset, offset + CHUNK_SIZE - 1);
+
+      if (error) {
+        console.error('Error fetching paquetes activos:', error);
+        break;
+      }
+      if (!data || data.length === 0) break;
+      allRows.push(...data);
+      if (data.length < CHUNK_SIZE) break;
+      offset += CHUNK_SIZE;
+    }
+    return allRows.map(mapPaqueteDbRow);
+  },
+
+  // Consulta Server-Side de Paquetes filtrados por estado AMEX exacto
+  async getPaquetesByEstado(estadoAmex: string): Promise<Paquete[]> {
+    const CHUNK_SIZE = 1000;
+    let offset = 0;
+    const allRows: Record<string, unknown>[] = [];
+    while (true) {
+      const { data, error } = await supabase
+        .from('paquetes')
+        .select('*')
+        .is('eliminado_en', null)
+        .eq('estado_amex', estadoAmex)
+        .order('creado_en', { ascending: false })
+        .range(offset, offset + CHUNK_SIZE - 1);
+
+      if (error) {
+        console.error(`Error fetching paquetes con estado ${estadoAmex}:`, error);
+        break;
+      }
+      if (!data || data.length === 0) break;
+      allRows.push(...data);
+      if (data.length < CHUNK_SIZE) break;
+      offset += CHUNK_SIZE;
+    }
+    return allRows.map(mapPaqueteDbRow);
+  },
+
+  // Consulta Server-Side de Todo el Inventario (paginado en lotes hasta el 100%)
+  async getAllPaquetes(): Promise<Paquete[]> {
+    const CHUNK_SIZE = 1000;
+    let offset = 0;
+    const allRows: Record<string, unknown>[] = [];
+    while (true) {
+      const { data, error } = await supabase
+        .from('paquetes')
+        .select('*')
+        .is('eliminado_en', null)
+        .order('creado_en', { ascending: false })
+        .range(offset, offset + CHUNK_SIZE - 1);
+
+      if (error) {
+        console.error('Error fetching all paquetes:', error);
+        break;
+      }
+      if (!data || data.length === 0) break;
+      allRows.push(...data);
+      if (data.length < CHUNK_SIZE) break;
+      offset += CHUNK_SIZE;
+    }
+    return allRows.map(mapPaqueteDbRow);
+  },
+
   // Búsqueda y Paginación Server-Side (RPC en PostgreSQL)
   async searchPaquetesServerSide(
     params: SearchPaquetesServerSideParams = {}

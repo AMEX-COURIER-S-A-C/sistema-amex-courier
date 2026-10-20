@@ -293,12 +293,26 @@ export function generarHojasPlanillaCobros(
       },
     ]);
 
+    // Tarifa personalizada asignada al cliente desde el Directorio
+    const tarifaInfo = opciones?.getTarifaCliente ? opciones.getTarifaCliente(clienteNombre) : null;
+    const tieneTarifa = Boolean(tarifaInfo && tarifaInfo.personalizada && tarifaInfo.tarifa > 0);
+    const tarifaPorKg = tieneTarifa ? tarifaInfo!.tarifa : null;
+    let sumaPrecioTotal = 0;
+
     // Filas de datos para cada WR individual
     for (let i = 0; i < n; i++) {
       const it = items[i];
       const pesoNum = typeof it.pesoTotal === 'number' && it.pesoTotal > 0
         ? it.pesoTotal
         : (parseFloat(it.pesoFormateado || '0') || 0);
+
+      const precioFila = tieneTarifa && pesoNum > 0
+        ? Math.round(pesoNum * tarifaPorKg! * 100) / 100
+        : null;
+
+      if (precioFila !== null) {
+        sumaPrecioTotal += precioFila;
+      }
 
       dataCobros.push([
         null, // Columna A libre
@@ -324,11 +338,21 @@ export function generarHojasPlanillaCobros(
           borderColor: '#000000',
           borderStyle: 'thin' as const,
         },
-        // PRECIO $: Vacío sin cálculo para que el operador lo llene manualmente
-        {
-          borderColor: '#000000',
-          borderStyle: 'thin' as const,
-        },
+        // PRECIO $: Calculado con la tarifa cruzada o vacío para llenado manual si no tiene tarifa
+        precioFila !== null
+          ? {
+              value: precioFila,
+              type: Number,
+              format: '$#,##0.00',
+              align: 'center' as const,
+              alignVertical: 'center' as const,
+              borderColor: '#000000',
+              borderStyle: 'thin' as const,
+            }
+          : {
+              borderColor: '#000000',
+              borderStyle: 'thin' as const,
+            },
         {
           value: it.wr || '',
           type: String,
@@ -348,7 +372,7 @@ export function generarHojasPlanillaCobros(
       ]);
     }
 
-    // Fila TOTAL del cliente (Columna PRECIO $ vacía para que el operador la sume/llene manualmente)
+    // Fila TOTAL del cliente (PRECIO $ total calculado si tiene tarifa asignada; vacío si es manual)
     dataCobros.push([
       null, // Columna A libre
       {
@@ -363,10 +387,21 @@ export function generarHojasPlanillaCobros(
         borderColor: '#000000',
         borderStyle: 'thin' as const,
       },
-      {
-        borderColor: '#000000',
-        borderStyle: 'thin' as const,
-      },
+      tieneTarifa && sumaPrecioTotal > 0
+        ? {
+            value: Math.round(sumaPrecioTotal * 100) / 100,
+            type: Number,
+            format: '$#,##0.00',
+            fontWeight: 'bold' as const,
+            align: 'center' as const,
+            alignVertical: 'center' as const,
+            borderColor: '#000000',
+            borderStyle: 'thin' as const,
+          }
+        : {
+            borderColor: '#000000',
+            borderStyle: 'thin' as const,
+          },
       null, // Col E (wr)
       null, // Col F (TRACKING)
     ]);

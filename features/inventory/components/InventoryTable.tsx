@@ -55,8 +55,92 @@ export default function InventoryTable({
   setPageSize,
   totalPages
 }: InventoryTableProps) {
+  const total = totalCount !== undefined ? totalCount : filteredPaquetes.length;
+
+  const renderPagination = (position: 'top' | 'bottom') => {
+    if (filteredPaquetes.length === 0) return null;
+
+    return (
+      <div
+        style={{
+          padding: '10px 16px',
+          background: '#f8fafc',
+          borderBottom: position === 'top' ? '1px solid #e2e8f0' : undefined,
+          borderTop: position === 'bottom' ? '1px solid #e2e8f0' : undefined,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '10px',
+          fontSize: '12px'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b' }}>
+          <span>
+            Mostrando <b>{total > 0 ? (currentPage - 1) * pageSize + 1 : 0}</b> -{' '}
+            <b>{Math.min(currentPage * pageSize, total)}</b> de{' '}
+            <b>{total}</b> paquetes
+          </span>
+
+          <span style={{ color: '#cbd5e1' }}>•</span>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span>Por página:</span>
+            <select
+              value={pageSize}
+              onChange={e => {
+                setPageSize(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              style={{
+                padding: '2px 6px',
+                borderRadius: '4px',
+                border: '1px solid #cbd5e1',
+                background: '#ffffff',
+                fontSize: '12px',
+                fontWeight: 700
+              }}
+            >
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={200}>200</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            disabled={currentPage <= 1}
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            className="px-3 py-1 rounded-md border text-xs font-bold transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed bg-white text-slate-800 hover:bg-slate-50 border-slate-300 cursor-pointer"
+          >
+            Anterior
+          </button>
+
+          <span className="px-2.5 py-1 font-extrabold text-blue-600 text-xs">
+            {currentPage} / {totalPages}
+          </span>
+
+          <button
+            type="button"
+            disabled={currentPage >= totalPages}
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            className="px-3 py-1 rounded-md border text-xs font-bold transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed bg-white text-slate-800 hover:bg-slate-50 border-slate-300 cursor-pointer"
+          >
+            Siguiente
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="w-full bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+      {/* Paginación Superior */}
+      {renderPagination('top')}
+
       <div className="overflow-x-auto" data-lenis-prevent-horizontal>
         <table className="w-full border-collapse text-xs text-left">
           <thead className="sticky top-0 bg-slate-50 z-10 shadow-xs">
@@ -360,87 +444,8 @@ export default function InventoryTable({
         </table>
       </div>
 
-      {/* Paginación */}
-      {filteredPaquetes.length > 0 && (
-        <div
-          style={{
-            padding: '10px 16px',
-            background: '#f8fafc',
-            borderTop: '1px solid #e2e8f0',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '10px',
-            fontSize: '12px'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b' }}>
-            <span>
-              {(() => {
-                const total = totalCount !== undefined ? totalCount : filteredPaquetes.length;
-                return (
-                  <>
-                    Mostrando <b>{total > 0 ? (currentPage - 1) * pageSize + 1 : 0}</b> -{' '}
-                    <b>{Math.min(currentPage * pageSize, total)}</b> de{' '}
-                    <b>{total}</b> paquetes
-                  </>
-                );
-              })()}
-            </span>
-
-            <span style={{ color: '#cbd5e1' }}>•</span>
-
-            <label style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span>Por página:</span>
-              <select
-                value={pageSize}
-                onChange={e => {
-                  setPageSize(Number(e.target.value));
-                  setCurrentPage(1);
-                }}
-                style={{
-                  padding: '2px 6px',
-                  borderRadius: '4px',
-                  border: '1px solid #cbd5e1',
-                  background: '#ffffff',
-                  fontSize: '12px',
-                  fontWeight: 700
-                }}
-              >
-                <option value={25}>25</option>
-                <option value={50}>50</option>
-                <option value={100}>100</option>
-                <option value={200}>200</option>
-              </select>
-            </label>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              disabled={currentPage <= 1}
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              className="px-3 py-1 rounded-md border text-xs font-bold transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed bg-white text-slate-800 hover:bg-slate-50 border-slate-300 cursor-pointer"
-            >
-              Anterior
-            </button>
-
-            <span className="px-2.5 py-1 font-extrabold text-blue-600 text-xs">
-              {currentPage} / {totalPages}
-            </span>
-
-            <button
-              type="button"
-              disabled={currentPage >= totalPages}
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              className="px-3 py-1 rounded-md border text-xs font-bold transition-colors disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed bg-white text-slate-800 hover:bg-slate-50 border-slate-300 cursor-pointer"
-            >
-              Siguiente
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Paginación Inferior */}
+      {renderPagination('bottom')}
     </div>
   );
 }

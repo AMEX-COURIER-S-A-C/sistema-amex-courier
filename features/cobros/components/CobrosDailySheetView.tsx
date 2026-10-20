@@ -1272,7 +1272,6 @@ export const CobrosDailySheetView: React.FC<CobrosDailySheetViewProps> = ({
         isOpen={Boolean(selectedCliente360)}
         onClose={() => setSelectedCliente360(null)}
         clienteResumen={selectedCliente360}
-        tcVenta={cotizacionKambista.venta}
       />
 
       {/* MODAL INTERNO VISOR DE VOUCHER (SI NO SE PASA ONOPEN DESDE PARENT) */}

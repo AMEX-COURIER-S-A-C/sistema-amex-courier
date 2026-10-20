@@ -28,7 +28,6 @@ export default function DirectorioClientesTab({
 }: DirectorioClientesTabProps) {
   const {
     lotes,
-    cotizacionKambista,
     getResumenCliente360,
     guardarTarifaCliente,
     statsActivas
@@ -204,10 +203,11 @@ export default function DirectorioClientesTab({
       <DirectorioClientesView
         getResumenCliente360={getResumenCliente360}
         allClientNames={allClientNames}
-        cotizacionKambista={cotizacionKambista}
+        paquetes={paquetes}
         onNavigateToCobros={onNavigateToCobros}
         guardarTarifaCliente={guardarTarifaCliente}
         initialClientName={initialClientName}
+        clientes={clientes}
       />
     </div>
   );

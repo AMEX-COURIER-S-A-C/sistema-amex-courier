@@ -151,29 +151,18 @@ export async function POST(req: NextRequest) {
 
     const { data: currentPkg } = await query.maybeSingle();
 
-    // 2. Si no se fuerza refresco, verificar si ya cuenta con todos los campos solicitados
-    if (!forceRefresh && currentPkg) {
-      const needsImage = syncImages && !currentPkg.tib_imagen_url;
-      const needsTracking = syncTracking && (!currentPkg.tracking || currentPkg.tracking === '-' || currentPkg.tracking.trim() === '');
-      const needsPeso = syncPeso && (!currentPkg.peso_kg || Number(currentPkg.peso_kg) <= 0);
-      const needsCliente = syncCliente && (!currentPkg.nombre_consignatario || currentPkg.nombre_consignatario.trim() === '' || currentPkg.nombre_consignatario.toUpperCase().includes('CLIENTE AMEX'));
-      const needsEmpaque = syncEmpaque && (!currentPkg.tipo_empaque || currentPkg.tipo_empaque.trim() === '');
-      const needsEstadoTib = syncEstadoTib && (!currentPkg.estado_tib || currentPkg.estado_tib.trim() === '');
-
-      const needsSync = needsImage || needsTracking || needsPeso || needsCliente || needsEmpaque || needsEstadoTib;
-
-      if (!needsSync) {
-        return NextResponse.json({
-          ok: true,
-          found: Boolean(currentPkg.tib_imagen_url),
-          cached: true,
-          updatedFields: [],
-          tibImagenUrl: currentPkg.tib_imagen_url,
-          tibTicketPdfUrl: currentPkg.tib_ticket_pdf_url,
-          updatedData: currentPkg,
-          wr: currentPkg.numero_recibo_bodega,
-        });
-      }
+    // 2. Si no se fuerza refresco y ya cuenta con la imagen de TIB en BD, responder al instante
+    if (!forceRefresh && currentPkg?.tib_imagen_url) {
+      return NextResponse.json({
+        ok: true,
+        found: true,
+        cached: true,
+        updatedFields: [],
+        tibImagenUrl: currentPkg.tib_imagen_url,
+        tibTicketPdfUrl: currentPkg.tib_ticket_pdf_url,
+        updatedData: currentPkg,
+        wr: currentPkg.numero_recibo_bodega,
+      });
     }
 
     // 3. Extraer dígitos significativos del WR (WR000475750 -> 475750)
@@ -183,24 +172,32 @@ export async function POST(req: NextRequest) {
     }
 
     // 4. Consultar la API backend de TIBCARGO
-    const tibResponse = await fetch(TIB_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-      },
-      body: JSON.stringify({ warehouse: cleanNumericWr }),
-      signal: AbortSignal.timeout(10000),
-    });
+    let tibData: any = null;
+    try {
+      const tibResponse = await fetch(TIB_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        },
+        body: JSON.stringify({ warehouse: cleanNumericWr }),
+        signal: AbortSignal.timeout(8000),
+      });
 
-    if (!tibResponse.ok) {
+      if (!tibResponse.ok) {
+        return NextResponse.json(
+          { error: `Error del servidor TIB (HTTP ${tibResponse.status})` },
+          { status: 502 }
+        );
+      }
+
+      tibData = await tibResponse.json();
+    } catch (netErr: any) {
       return NextResponse.json(
-        { error: `Error del servidor TIB (HTTP ${tibResponse.status})` },
-        { status: 502 }
+        { error: `Tiempo de espera agotado o error de conexión con TIB: ${netErr?.message || 'Error de red'}` },
+        { status: 504 }
       );
     }
-
-    const tibData = await tibResponse.json();
 
     if (!Array.isArray(tibData) || tibData.length === 0) {
       return NextResponse.json({
