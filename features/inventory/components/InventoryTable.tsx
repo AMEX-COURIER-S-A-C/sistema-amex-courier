@@ -497,65 +497,7 @@ export default function InventoryTable({
                           </button>
                         </div>
                       ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                          <select
-                            value={pkg.tipoEntrega || 'Presencial'}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              if (val === 'Agencia' || val === 'Motorizado') {
-                                setDeliveryModalPkg({ ...pkg, tipoEntrega: val as any });
-                              } else {
-                                onUpdateDeliveryMethod?.(pkg.id, val);
-                              }
-                            }}
-                            style={{
-                              padding: '3px 6px',
-                              borderRadius: '6px',
-                              border: '1px solid #cbd5e1',
-                              background: '#ffffff',
-                              color: '#334155',
-                              fontSize: '11px',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                              maxWidth: '135px'
-                            }}
-                          >
-                            <option value="Presencial">🏢 Presencial</option>
-                            <option value="Agencia">📦 Agencia</option>
-                            <option value="Domicilio">🚐 Domicilio</option>
-                            <option value="Motorizado">🛵 Motorizado</option>
-                          </select>
-                          {pkg.tipoEntrega === 'Agencia' && pkg.detalleEntrega && (
-                            <span
-                              style={{
-                                fontSize: '10px',
-                                color: '#b45309',
-                                fontWeight: 700,
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                maxWidth: '135px'
-                              }}
-                              title={pkg.detalleEntrega}
-                            >
-                              {pkg.detalleEntrega}
-                            </span>
-                          )}
-                          {pkg.tipoEntrega === 'Motorizado' && pkg.detalleEntrega && (
-                            <span
-                              style={{
-                                fontSize: '10px',
-                                color: '#7e22ce',
-                                fontWeight: 700,
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                maxWidth: '135px'
-                              }}
-                              title={pkg.detalleEntrega}
-                            >
-                              {pkg.detalleEntrega}
-                            </span>
-                          )}
-                        </div>
+                        <span style={{ color: '#94a3b8', fontSize: '13px', fontWeight: 600 }}>—</span>
                       )}
                     </td>
 

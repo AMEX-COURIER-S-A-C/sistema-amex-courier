@@ -164,6 +164,41 @@ export default function EditPackageModal({
             </div>
           </div>
 
+          {/* Modalidad de Entrega (solo visible cuando Estado AMEX es entregado) */}
+          {editFormData.estadoAmex === 'entregado' && (
+            <div className="wms-modal-grid-2" style={{ background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '10px 12px' }}>
+              <div className="form-group">
+                <label style={{ fontSize: '12px', fontWeight: 800, color: '#0369a1' }}>Modalidad de Entrega</label>
+                <select
+                  value={editFormData.tipoEntrega || 'Presencial'}
+                  onChange={e => setEditFormData({ ...editFormData, tipoEntrega: e.target.value as any })}
+                  className="form-control"
+                  style={{ fontWeight: 700 }}
+                >
+                  <option value="Presencial">🏢 Presencial (Mostrador Lince)</option>
+                  <option value="Agencia">📦 Agencia (Shalom/Olva/etc)</option>
+                  <option value="Domicilio">🚐 A Domicilio</option>
+                  <option value="Motorizado">🛵 Motorizado (Cliente)</option>
+                </select>
+              </div>
+
+              {(editFormData.tipoEntrega === 'Agencia' || editFormData.tipoEntrega === 'Motorizado') && (
+                <div className="form-group">
+                  <label style={{ fontSize: '12px', fontWeight: 800, color: '#0369a1' }}>
+                    {editFormData.tipoEntrega === 'Agencia' ? 'Agencia / Destino' : 'Detalles Motorizado'}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={editFormData.tipoEntrega === 'Agencia' ? 'Ej: Shalom, Olva...' : 'Ej: Rappi, placa 1234-AB'}
+                    value={editFormData.detalleEntrega || ''}
+                    onChange={e => setEditFormData({ ...editFormData, detalleEntrega: e.target.value })}
+                    className="form-control"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '10px' }}>
             <button
               type="button"

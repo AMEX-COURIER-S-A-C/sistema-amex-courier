@@ -173,6 +173,8 @@ export const inventoryService = {
         posicion_estante: updated.posicionEstante,
         estado_tib: updated.estadoTib || updated.estadoEntrega || 'EnAlmacen',
         estado_amex: updated.estadoAmex === 'recibido' ? 'en_almacen' : (updated.estadoAmex || 'en_almacen'),
+        tipo_entrega: updated.tipoEntrega || null,
+        detalle_entrega: updated.detalleEntrega || null,
         actualizado_en: nowIso
       })
       .eq('id', updated.id);
@@ -355,7 +357,9 @@ export const inventoryService = {
     arg2: Paquete[] | TipoEstadoEntrega,
     arg3: TipoEstadoAmex | Paquete[],
     arg4?: TipoEstadoAmex | TipoEstadoEntrega,
-    skipDelivered: boolean = true
+    skipDelivered: boolean = true,
+    tipoEntrega?: string,
+    detalleEntrega?: string
   ): Promise<BatchStatusChangeResult> {
     let paquetesList: Paquete[] = [];
     let targetStatusAmex: TipoEstadoAmex = 'en_almacen';
@@ -467,6 +471,12 @@ export const inventoryService = {
       estado_amex: targetStatusAmex,
       actualizado_en: nowIso
     };
+    if (targetStatusAmex === 'entregado') {
+      updatePayload.tipo_entrega = tipoEntrega || 'Presencial';
+      if (detalleEntrega) {
+        updatePayload.detalle_entrega = detalleEntrega;
+      }
+    }
     if (targetStatusTib) {
       updatePayload.estado_tib = targetStatusTib;
     }
@@ -483,6 +493,7 @@ export const inventoryService = {
           ...pkg,
           estadoAmex: targetStatusAmex,
           actualizadoEn: nowIso,
+          ...(targetStatusAmex === 'entregado' ? { tipoEntrega: (tipoEntrega || 'Presencial') as any, detalleEntrega } : {}),
           ...(targetStatusTib ? { estadoTib: targetStatusTib, estadoEntrega: targetStatusTib } : {})
         };
         updatedList.push(updated);

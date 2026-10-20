@@ -12,7 +12,7 @@ export interface BatchStatusModalProps {
   setBatchTargetStatus: React.Dispatch<React.SetStateAction<TipoEstadoEntrega>>;
   batchTargetStatusAmex?: TipoEstadoAmex;
   setBatchTargetStatusAmex?: React.Dispatch<React.SetStateAction<TipoEstadoAmex>>;
-  onConfirm: (skipDelivered?: boolean) => Promise<void> | void;
+  onConfirm: (skipDelivered?: boolean, tipoEntrega?: string, detalleEntrega?: string) => Promise<void> | void;
   paquetes?: Paquete[];
   selectedIds?: string[];
 }
@@ -32,6 +32,10 @@ export default function BatchStatusModal({
   const [status, setStatus] = useState<'idle' | 'loading' | 'success'>('idle');
   const [isClosing, setIsClosing] = useState(false);
   const [skipDelivered, setSkipDelivered] = useState(true);
+  const [modalidadEntrega, setModalidadEntrega] = useState<string>('Presencial');
+  const [agenciaSeleccionada, setAgenciaSeleccionada] = useState<string>('Shalom');
+  const [otraAgenciaTexto, setOtraAgenciaTexto] = useState<string>('');
+  const [motorizadoDetalle, setMotorizadoDetalle] = useState<string>('');
 
   useEffect(() => {
     if (isOpen) {
@@ -64,7 +68,15 @@ export default function BatchStatusModal({
     if (status !== 'idle') return;
     try {
       setStatus('loading');
-      await onConfirm(skipDelivered);
+      let detalle: string | undefined = undefined;
+      if (batchTargetStatusAmex === 'entregado') {
+        if (modalidadEntrega === 'Agencia') {
+          detalle = agenciaSeleccionada === 'Otra Agencia' ? (otraAgenciaTexto.trim() || 'Agencia') : agenciaSeleccionada;
+        } else if (modalidadEntrega === 'Motorizado') {
+          detalle = motorizadoDetalle.trim() || undefined;
+        }
+      }
+      await onConfirm(skipDelivered, modalidadEntrega, detalle);
       setStatus('success');
       // Mantener estado de éxito por 400ms para feedback visual
       setTimeout(() => {
@@ -153,6 +165,100 @@ export default function BatchStatusModal({
               <option value="entregado">✅ Entregado al Cliente Final</option>
             </select>
           </div>
+
+          {/* Modalidad de Entrega (solo visible cuando se selecciona Entregado) */}
+          {batchTargetStatusAmex === 'entregado' && (
+            <div
+              style={{
+                background: '#f8fafc',
+                border: '1px solid #cbd5e1',
+                borderRadius: '8px',
+                padding: '12px 14px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px'
+              }}
+            >
+              <label
+                style={{
+                  fontSize: '12px',
+                  fontWeight: 800,
+                  color: '#0f172a',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                🚚 Modalidad de Entrega <span style={{ color: '#ef4444' }}>*</span>
+              </label>
+
+              <select
+                value={modalidadEntrega}
+                disabled={status !== 'idle'}
+                onChange={e => setModalidadEntrega(e.target.value)}
+                className="form-control"
+                style={{
+                  fontWeight: 700,
+                  fontSize: '12.5px',
+                  padding: '7px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid #94a3b8',
+                  background: '#ffffff'
+                }}
+              >
+                <option value="Presencial">🏢 Presencial (Retiro Mostrador Lince)</option>
+                <option value="Agencia">📦 Agencia (Shalom / Olva / Provincias)</option>
+                <option value="Domicilio">🚐 A Domicilio (Móvil / Carro AMEX)</option>
+                <option value="Motorizado">🛵 Motorizado (Contratado por Cliente)</option>
+              </select>
+
+              {modalidadEntrega === 'Agencia' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '2px' }}>
+                  <select
+                    value={agenciaSeleccionada}
+                    disabled={status !== 'idle'}
+                    onChange={e => setAgenciaSeleccionada(e.target.value)}
+                    className="form-control"
+                    style={{ fontSize: '12px', fontWeight: 600, padding: '6px 8px' }}
+                  >
+                    <option value="Shalom">Shalom (Agencia Oficial)</option>
+                    <option value="Olva Courier">Olva Courier</option>
+                    <option value="Marvisur">Marvisur</option>
+                    <option value="Flores Hermanos">Flores Hermanos</option>
+                    <option value="Cavassa">Cavassa</option>
+                    <option value="Otra Agencia">Otra Agencia (Escribir nombre)</option>
+                  </select>
+                  {agenciaSeleccionada === 'Otra Agencia' && (
+                    <input
+                      type="text"
+                      placeholder="Nombre de la agencia..."
+                      value={otraAgenciaTexto}
+                      onChange={e => setOtraAgenciaTexto(e.target.value)}
+                      required
+                      className="form-control"
+                      style={{ fontSize: '12px', padding: '6px 8px' }}
+                    />
+                  )}
+                </div>
+              )}
+
+              {modalidadEntrega === 'Motorizado' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '2px' }}>
+                  <div style={{ fontSize: '11px', color: '#6b21a8', fontWeight: 700 }}>
+                    ℹ️ Servicio contratado y pagado por el cliente (no por AMEX).
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Detalles del motorizado (opcional: Rappi, placa, etc.)"
+                    value={motorizadoDetalle}
+                    onChange={e => setMotorizadoDetalle(e.target.value)}
+                    className="form-control"
+                    style={{ fontSize: '12px', padding: '6px 8px' }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Banner de protección si hay paquetes ya entregados */}
           {hasDeliveredConflict && (

@@ -736,7 +736,11 @@ export function useInventoryData({
   };
 
   // Cambio de estado masivo en lote (por selección en tabla)
-  const handleBatchStatusChange = async (skipDelivered = true) => {
+  const handleBatchStatusChange = async (
+    skipDelivered = true,
+    tipoEntrega?: string,
+    detalleEntrega?: string
+  ) => {
     if (selectedIds.length === 0) return;
     const currentSelected = [...selectedIds];
     try {
@@ -748,7 +752,9 @@ export function useInventoryData({
         paquetes,
         batchTargetStatusAmex,
         undefined,
-        skipDelivered
+        skipDelivered,
+        tipoEntrega,
+        detalleEntrega
       );
       if (onUpdatePackage) {
         updatedList.forEach(p => onUpdatePackage(p));
