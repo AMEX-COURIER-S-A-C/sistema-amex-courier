@@ -250,6 +250,20 @@ export async function POST(req: NextRequest) {
     ]);
 
     if (dbPackages.length === 0) {
+      if (syncCloudFiles) {
+        const slots: TibSlotType[] = ['delivered', 'sent', 'received'];
+        await Promise.all(
+          slots.map(async (slot) => {
+            const statusKey = SLOT_TO_TIB_STATUS[slot];
+            const items = tibData.byStatus[statusKey] || [];
+            const xlsxBuf = generateTibXlsxBuffer(items);
+            await syncSingleSlotToCloudAndWorker(slot, xlsxBuf, userNombre, todayLima);
+          })
+        ).catch((e) => {
+          console.warn('[sync-inventario] Aviso actualizando archivos TIB en R2:', e);
+        });
+      }
+
       return NextResponse.json({
         ok: true,
         totalEvaluados: 0,

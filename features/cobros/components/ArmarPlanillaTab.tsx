@@ -56,14 +56,18 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
       const res = await fetch('/api/tib/sync-inventario', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ only_cloud_files: false }),
+        body: JSON.stringify({ only_cloud_files: true }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
         throw new Error(data.error || 'Error al sincronizar con la API de TIB.');
       }
+      const counts = data.countsBySlot || {};
+      const enviadas = counts.sent ?? 0;
+      const recibidas = counts.received ?? 0;
+      const entregadas = counts.delivered ?? 0;
       setSyncSuccessMsg(
-        `✓ TIB Sincronizado en vivo: Se descargaron y actualizaron los 3 estados oficiales (RECIBIDO, ENVIADO, ENTREGADO). Cruce listo.`
+        `✓ TIB Sincronizado en vivo en VPS Hostinger: ${enviadas.toLocaleString()} Enviados, ${recibidas.toLocaleString()} Recibidos, ${entregadas.toLocaleString()} Entregados. Cruce 100% actualizado.`
       );
       await cargarFuentes();
     } catch (err: unknown) {

@@ -289,6 +289,91 @@ async function enriquecerConSupabasePaquetes(
   return filasResultado;
 }
 
+/**
+ * Consulta en vivo la API oficial de TIB para cualquier WR que no haya hecho match en la caché
+ * ni en Supabase (ej: paquetes registrados hoy o hace minutos en TIB Miami).
+ */
+async function enriquecerConTibApiEnVivo(
+  filasResultado: FilaResultadoCobro[]
+): Promise<FilaResultadoCobro[]> {
+  const missingWrs = new Set<string>();
+  for (const f of filasResultado) {
+    if (!f.encontrado) {
+      for (const d of f.detalles) {
+        if (!d.encontrado && d.wr) {
+          const norm = normalizeTibWr(d.wr);
+          if (norm) missingWrs.add(norm);
+        }
+      }
+    }
+  }
+
+  if (missingWrs.size === 0) return filasResultado;
+
+  try {
+    const { fetchTibWarehouseByStatus } = await import('@/lib/tib/apiClient');
+    // Consultar estados en vivo (ENVIADO y RECIBIDO son los más comunes para embarques recientes)
+    const [resSent, resRec] = await Promise.all([
+      fetchTibWarehouseByStatus('ENVIADO', 12000).catch(() => null),
+      fetchTibWarehouseByStatus('RECIBIDO', 12000).catch(() => null),
+    ]);
+
+    const liveHits = new Map<string, any>();
+    if (resSent?.items) {
+      for (const item of resSent.items) {
+        if (missingWrs.has(item.wr)) liveHits.set(item.wr, item);
+      }
+    }
+    if (resRec?.items) {
+      for (const item of resRec.items) {
+        if (missingWrs.has(item.wr) && !liveHits.has(item.wr)) liveHits.set(item.wr, item);
+      }
+    }
+
+    if (liveHits.size === 0) return filasResultado;
+
+    for (const f of filasResultado) {
+      if (f.encontrado) continue;
+
+      let rowUpdated = false;
+      for (const d of f.detalles) {
+        if (!d.encontrado && d.wr) {
+          const norm = normalizeTibWr(d.wr);
+          const hit = liveHits.get(norm);
+          if (hit) {
+            d.encontrado = true;
+            d.tracking = hit.tracking || d.tracking || '';
+            d.cliente = hit.cliente || d.cliente || '';
+            d.tipo = hit.tipoEmpaque || d.tipo || 'CAJA';
+            d.peso = hit.peso !== null && hit.peso !== undefined ? Number(hit.peso) : d.peso;
+            rowUpdated = true;
+          }
+        }
+      }
+
+      if (rowUpdated) {
+        const wrsEncontrados = f.detalles.filter((d) => d.encontrado).length;
+        f.encontrado = wrsEncontrados === f.detalles.length;
+        f.matchParcial = wrsEncontrados > 0 && wrsEncontrados < f.detalles.length;
+        f.wrsEncontrados = wrsEncontrados;
+
+        const delimiter = f.delimiter || ' - ';
+        const nombresClientes = f.detalles.map((d) => d.cliente || f.cliente || 'SIN CLIENTE');
+        f.cliente = f.detalles.length > 1 ? nombresClientes.join(delimiter) : (nombresClientes[0] || f.cliente);
+
+        const pesosValidos = f.detalles.filter((d) => d.peso !== null).map((d) => d.peso as number);
+        f.pesoTotal = pesosValidos.length > 0 ? Math.round(pesosValidos.reduce((a, b) => a + b, 0) * 100) / 100 : null;
+        f.pesoFormateado = f.detalles.map((d) => (d.peso !== null ? d.peso.toFixed(2) : '?')).join(delimiter);
+        f.tracking = f.detalles.map((d) => d.tracking || '').filter(Boolean).join(delimiter);
+      }
+    }
+  } catch (err) {
+    console.warn('[Cruzar Planilla] Error al consultar API TIB en vivo:', err);
+  }
+
+  return filasResultado;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const auth = await authorizeUser();
@@ -347,6 +432,11 @@ export async function POST(req: NextRequest) {
             // Enriquecer cualquier fila sin coincidencia usando Supabase paquetes (3 estados)
             if (filasCruzadas.some((f: any) => !f.encontrado)) {
               filasCruzadas = await enriquecerConSupabasePaquetes(filasCruzadas);
+            }
+
+            // Si todavía quedan filas sin coincidencia, consultar en vivo la API oficial de TIB
+            if (filasCruzadas.some((f: any) => !f.encontrado)) {
+              filasCruzadas = await enriquecerConTibApiEnVivo(filasCruzadas);
             }
 
             const sinMatch = filasCruzadas.filter((f: any) => !f.encontrado).map((f: any) => f.wr);
@@ -501,6 +591,10 @@ export async function POST(req: NextRequest) {
 
     if (filasResultado.some((f) => !f.encontrado)) {
       filasResultado = await enriquecerConSupabasePaquetes(filasResultado);
+    }
+
+    if (filasResultado.some((f) => !f.encontrado)) {
+      filasResultado = await enriquecerConTibApiEnVivo(filasResultado);
     }
 
     const finalSinMatch = filasResultado.filter((f) => !f.encontrado).map((f) => f.wr);
