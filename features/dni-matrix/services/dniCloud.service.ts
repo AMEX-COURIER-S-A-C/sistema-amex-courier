@@ -90,11 +90,28 @@ export const DniCloudService = {
   }): Promise<boolean> {
     if (!params.userEmail) return false;
     try {
+      // Proteger contra límites de payload de PostgREST / Supabase (máx 3.5 MB)
+      let slotsToSave = params.slots;
+      const rawJson = JSON.stringify(slotsToSave);
+
+      if (rawJson.length > 3_500_000) {
+        console.warn(`[DniCloudService] Lote grande detectado (${Math.round(rawJson.length / 1024)} KB). Minimizando para nube...`);
+        // Preservar metadatos completos y mantener imágenes de los cupos más recientes
+        slotsToSave = slotsToSave.map((slot, index) => {
+          if (index < 12) return slot;
+          return {
+            ...slot,
+            anverso: (slot.anverso && slot.anverso.length > 200_000) ? slot.anverso.slice(0, 500) + '...[local_only]' : slot.anverso,
+            reverso: (slot.reverso && slot.reverso.length > 200_000) ? slot.reverso.slice(0, 500) + '...[local_only]' : slot.reverso
+          };
+        });
+      }
+
       const { error } = await supabase.from('dni_matrix_borradores').upsert(
         {
           usuario_id: params.userId || null,
           usuario_email: params.userEmail.toLowerCase().trim(),
-          slots_data: params.slots,
+          slots_data: slotsToSave,
           settings: params.settings || {},
           total_slots: params.totalSlots,
           actualizado_en: new Date().toISOString()

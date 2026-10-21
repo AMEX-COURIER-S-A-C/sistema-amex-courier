@@ -39,6 +39,18 @@ export function useDniExport({ slotsData, printSize, showToast, playSound }: Use
   const [pdfSuccessDone, setPdfSuccessDone] = useState<boolean>(false);
   const [pdfConvertedInfo, setPdfConvertedInfo] = useState<{ total: number; dest: string } | null>(null);
 
+  // Sincronizar estado de exportación global para blindar sesiones en segundo plano
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__AMEX_EXPORT_ACTIVE__ = isExporting || pdfConverting;
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        (window as any).__AMEX_EXPORT_ACTIVE__ = false;
+      }
+    };
+  }, [isExporting, pdfConverting]);
+
   const toggleExportMenu = useCallback(() => {
     setShowExportMenu((prev) => {
       const next = !prev;

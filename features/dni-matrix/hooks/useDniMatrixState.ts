@@ -103,91 +103,101 @@ export function useDniMatrixState(currentUser?: { nombre?: string; email?: strin
     [soundEnabled]
   );
 
-  // Carga inicial (Prioridad: Supabase Nube -> Fallback: IndexedDB local)
+  // Carga inicial (Prioridad: IndexedDB local primero -> Sincronización y Merge con Supabase Nube)
   useEffect(() => {
     let isMounted = true;
     async function initData() {
-      // 1. Intentar cargar desde la nube si hay usuario logueado
-      if (currentUser?.email) {
-        setCloudSyncStatus('saving');
-        const cloudDraft = await DniCloudService.loadDraftFromCloud(currentUser.email);
-        if (isMounted && cloudDraft && Array.isArray(cloudDraft.slots) && cloudDraft.slots.length > 0) {
-          const map: Record<number, DniSlotData> = {};
-          cloudDraft.slots.forEach((s) => {
-            map[s.id] = s;
-            // Sincronizar hacia IndexedDB local como caché rápido
-            dniDb.saveSlot(s).catch(() => {});
-          });
-          setSlotsData(map);
+      // 1. Cargar SIEMPRE primero desde IndexedDB local (Inmediato, offline-first, seguro contra pérdidas)
+      const savedSlots = await dniDb.loadAllSlots();
+      const localMap: Record<number, DniSlotData> = {};
+      savedSlots.forEach((s) => {
+        localMap[s.id] = s;
+      });
 
-          if (cloudDraft.totalSlots) {
-            setTotalSlots(cloudDraft.totalSlots);
-            dniDb.saveSetting('totalSlots', cloudDraft.totalSlots).catch(() => {});
-          }
-          if (cloudDraft.settings?.soundEnabled !== undefined) {
-            setSoundEnabled(cloudDraft.settings.soundEnabled);
-            dniDb.saveSetting('soundEnabled', cloudDraft.settings.soundEnabled).catch(() => {});
-          }
-          if (cloudDraft.settings?.printSize) {
-            const effPrintSize = cloudDraft.settings.printSize === 'large' ? 'xlarge' : cloudDraft.settings.printSize;
-            setPrintSize(effPrintSize);
-            dniDb.saveSetting('dniPrintSize', effPrintSize).catch(() => {});
-          } else {
-            setPrintSize('xlarge');
-            dniDb.saveSetting('dniPrintSize', 'xlarge').catch(() => {});
-          }
-          if (cloudDraft.settings?.activeSlotId) {
-            setActiveSlotIdState(cloudDraft.settings.activeSlotId);
-            dniDb.saveSetting('activeSlotId', cloudDraft.settings.activeSlotId).catch(() => {});
-          }
-
-          const savedZoom = await dniDb.getSetting<number>('previewZoom', 1.2);
-          if (savedZoom && savedZoom !== 1.78 && savedZoom !== 1.14) {
-            setPreviewZoomState(savedZoom);
-          } else {
-            setPreviewZoomState(1.2);
-            dniDb.saveSetting('previewZoom', 1.2).catch(() => {});
-          }
-
-          setCloudSyncStatus('synced');
-          isHydratedRef.current = true;
-          return;
-        }
+      if (isMounted && Object.keys(localMap).length > 0) {
+        setSlotsData(localMap);
       }
 
-      // 2. Fallback de contingencia: IndexedDB local
-      const savedSlots = await dniDb.loadAllSlots();
+      // Cargar configuraciones de IndexedDB
+      const savedTotal = await dniDb.getSetting<number>('totalSlots', 100);
+      if (isMounted) setTotalSlots(savedTotal);
+
+      const savedSound = await dniDb.getSetting<boolean>('soundEnabled', true);
+      if (isMounted) setSoundEnabled(savedSound);
+
+      const savedPrintSize = await dniDb.getSetting<DniPrintSize>('dniPrintSize', 'xlarge');
+      const effectivePrintSize = (!savedPrintSize || savedPrintSize === 'large') ? 'xlarge' : savedPrintSize;
       if (isMounted) {
-        const map: Record<number, DniSlotData> = {};
-        savedSlots.forEach((s) => {
-          map[s.id] = s;
-        });
-        setSlotsData(map);
-
-        const savedTotal = await dniDb.getSetting<number>('totalSlots', 100);
-        setTotalSlots(savedTotal);
-
-        const savedSound = await dniDb.getSetting<boolean>('soundEnabled', true);
-        setSoundEnabled(savedSound);
-
-        const savedPrintSize = await dniDb.getSetting<DniPrintSize>('dniPrintSize', 'xlarge');
-        const effectivePrintSize = (!savedPrintSize || savedPrintSize === 'large') ? 'xlarge' : savedPrintSize;
         setPrintSize(effectivePrintSize);
         dniDb.saveSetting('dniPrintSize', effectivePrintSize).catch(() => {});
+      }
 
-        const savedZoom = await dniDb.getSetting<number>('previewZoom', 1.2);
+      const savedZoom = await dniDb.getSetting<number>('previewZoom', 1.2);
+      if (isMounted) {
         if (savedZoom && savedZoom !== 1.78 && savedZoom !== 1.14) {
           setPreviewZoomState(savedZoom);
         } else {
           setPreviewZoomState(1.2);
           dniDb.saveSetting('previewZoom', 1.2).catch(() => {});
         }
+      }
 
-        const savedActiveSlot = await dniDb.getSetting<number>('activeSlotId', 1);
-        if (savedActiveSlot && savedActiveSlot >= 1 && savedActiveSlot <= (savedTotal || 100)) {
-          setActiveSlotIdState(savedActiveSlot);
+      const savedActiveSlot = await dniDb.getSetting<number>('activeSlotId', 1);
+      if (isMounted && savedActiveSlot && savedActiveSlot >= 1 && savedActiveSlot <= (savedTotal || 100)) {
+        setActiveSlotIdState(savedActiveSlot);
+      }
+
+      // 2. Si hay usuario logueado, sincronizar/enriquecer con la nube (MERGE INTELIGENTE, NUNCA destructivo)
+      if (currentUser?.email) {
+        setCloudSyncStatus('saving');
+        try {
+          const cloudDraft = await DniCloudService.loadDraftFromCloud(currentUser.email);
+          if (isMounted && cloudDraft && Array.isArray(cloudDraft.slots) && cloudDraft.slots.length > 0) {
+            // MERGE: Para cada slot, si local existe y tiene imágenes/datos, PRESERVAR local!
+            const mergedMap: Record<number, DniSlotData> = { ...localMap };
+
+            cloudDraft.slots.forEach((cs) => {
+              const ls = localMap[cs.id];
+              if (!ls) {
+                // Cupo nuevo de la nube que no estaba en local
+                mergedMap[cs.id] = cs;
+                dniDb.saveSlot(cs).catch(() => {});
+              } else {
+                // Fusionar inteligentemente sin sobreescribir imágenes locales si la nube no las tiene o están recortadas
+                const hasLocalAnverso = Boolean(ls.anverso && !ls.anverso.includes('[local_only]'));
+                const hasCloudAnverso = Boolean(cs.anverso && !cs.anverso.includes('[local_only]'));
+                const hasLocalReverso = Boolean(ls.reverso && !ls.reverso.includes('[local_only]'));
+                const hasCloudReverso = Boolean(cs.reverso && !cs.reverso.includes('[local_only]'));
+
+                const merged: DniSlotData = {
+                  ...cs,
+                  ...ls,
+                  label: ls.label || cs.label || '',
+                  dni: ls.dni || cs.dni || '',
+                  anverso: hasLocalAnverso ? ls.anverso : (hasCloudAnverso ? cs.anverso : ls.anverso),
+                  reverso: hasLocalReverso ? ls.reverso : (hasCloudReverso ? cs.reverso : ls.reverso),
+                  anversoRotation: ls.anversoRotation ?? cs.anversoRotation ?? 0,
+                  reversoRotation: ls.reversoRotation ?? cs.reversoRotation ?? 0,
+                  updatedAt: Math.max(ls.updatedAt || 0, cs.updatedAt || 0)
+                };
+                mergedMap[cs.id] = merged;
+                dniDb.saveSlot(merged).catch(() => {});
+              }
+            });
+
+            setSlotsData(mergedMap);
+
+            if (cloudDraft.totalSlots && cloudDraft.totalSlots > savedTotal) {
+              setTotalSlots(cloudDraft.totalSlots);
+              dniDb.saveSetting('totalSlots', cloudDraft.totalSlots).catch(() => {});
+            }
+          }
+        } catch (err) {
+          console.warn('[DNI Matrix] Error sincronizando con borrador remoto en initData:', err);
         }
+      }
 
+      if (isMounted) {
         setCloudSyncStatus('synced');
         isHydratedRef.current = true;
       }
@@ -303,21 +313,39 @@ export function useDniMatrixState(currentUser?: { nombre?: string; email?: strin
       return;
     }
 
+    // Señalizar al sistema que hay una extracción de IA en curso para pausar el monitor de sesión
+    if (typeof window !== 'undefined') {
+      (window as any).__AMEX_AI_EXTRACTION_ACTIVE__ = true;
+    }
+
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(() => {
+      abortController.abort();
+    }, 25000); // 25s timeout para salvaguardar la UI
+
     try {
       setIsExtractingName(true);
       playSound('click');
       showToast('🤖 AMEXito está leyendo el DNI...', 'info');
 
-      // Optimización de nitidez y rotación: Reducir a 1024px para encajar en 2 tiles de OpenAI Vision y acelerar transferencia
-      const optimizedImage = await compressImageForAi(slot.anverso, 1024, 0.82, slot.anversoRotation || 0);
+      // Optimización de nitidez y rotación: Reducir a 1024px para transferencia ultra-rápida a OpenAI Vision
+      const optimizedImage = await compressImageForAi(slot.anverso, 1024, 0.80, slot.anversoRotation || 0);
 
       const res = await fetch('/api/ai/extract-dni-name', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: optimizedImage })
+        body: JSON.stringify({ imageBase64: optimizedImage }),
+        signal: abortController.signal
       });
 
-      const data = await res.json();
+      clearTimeout(timeoutId);
+
+      if (res.status === 401) {
+        showToast('⚠️ Sesión ocupada. Por favor reintenta la extracción.', 'error');
+        return;
+      }
+
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok || !data.success || (!data.nombre_completo && !data.dni)) {
         throw new Error(data.error || 'AMEXito no detectó nombres ni DNI legibles en la imagen.');
@@ -339,10 +367,20 @@ export function useDniMatrixState(currentUser?: { nombre?: string; email?: strin
 
       showToast(`🤖 AMEXito extrajo: ${toastDetails.join(' • ')}`, 'success');
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al conectar con AMEXito IA.';
+      clearTimeout(timeoutId);
+      const isAbort = err instanceof Error && err.name === 'AbortError';
+      const msg = isAbort
+        ? 'AMEXito tardó más de lo esperado. Por favor reintenta o ingresa el nombre manualmente.'
+        : err instanceof Error
+        ? err.message
+        : 'Error al conectar con AMEXito IA.';
       playSound('error');
       showToast(`❌ ${msg}`, 'error');
     } finally {
+      clearTimeout(timeoutId);
+      if (typeof window !== 'undefined') {
+        (window as any).__AMEX_AI_EXTRACTION_ACTIVE__ = false;
+      }
       setIsExtractingName(false);
     }
   };
@@ -411,10 +449,20 @@ export function useDniMatrixState(currentUser?: { nombre?: string; email?: strin
         }
       }
 
+      let finalBase64 = base64Data;
+      try {
+        // Optimizar imágenes hiperpesadas (> 1.2 MB base64) para preservar memoria y agilidad sin perder nitidez de impresión A4
+        if (base64Data && base64Data.length > 1_200_000) {
+          finalBase64 = await compressImageForAi(base64Data, 1600, 0.90, 0);
+        }
+      } catch {
+        finalBase64 = base64Data;
+      }
+
       const rotKey = sideToAssign === 'anverso' ? 'anversoRotation' : 'reversoRotation';
       const updatedSlot: DniSlotData = {
         ...currentSlot,
-        [sideToAssign]: base64Data,
+        [sideToAssign]: finalBase64,
         [rotKey]: 0
       };
 

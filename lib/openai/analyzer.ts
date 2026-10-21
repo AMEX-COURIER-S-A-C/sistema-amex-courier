@@ -316,26 +316,32 @@ Reglas estrictas:
   let responseRaw = '';
 
   const client = getOpenAiClient();
-  const response = await client.chat.completions.create({
-    model: DEFAULT_OPENAI_MODEL,
-    response_format: { type: 'json_schema', json_schema: DNI_JSON_SCHEMA },
-    ...getOpenAiModelOptions(120),
-    messages: [
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: prompt },
-          {
-            type: 'image_url',
-            image_url: {
-              url: `data:${mimeType};base64,${base64}`,
-              detail: 'high'
+  const modelToUse = FAST_TEXT_MODEL || 'gpt-4o-mini';
+  const response = await client.chat.completions.create(
+    {
+      model: modelToUse,
+      response_format: { type: 'json_schema', json_schema: DNI_JSON_SCHEMA },
+      ...getOpenAiModelOptions(120, modelToUse),
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:${mimeType};base64,${base64}`,
+                detail: 'high'
+              }
             }
-          }
-        ]
-      }
-    ]
-  });
+          ]
+        }
+      ]
+    },
+    {
+      timeout: 20000 // 20s límite para evitar cuelgues de red o proxy
+    }
+  );
   responseRaw = response.choices[0]?.message?.content || '{}';
 
   try {

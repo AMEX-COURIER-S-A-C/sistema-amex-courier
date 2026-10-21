@@ -753,14 +753,172 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
                       ? Math.round(pesoNum * tarifaVal! * 100) / 100
                       : null;
 
+                    // Si es una fila con múltiples WRs agrupados, renderizar el recuadro visual completo
+                    if (f.esMultiWr) {
+                      const cantPaquetes = (f.detalles && f.detalles.length > 0)
+                        ? f.detalles.length
+                        : (f.wrs?.length || f.totalWrsFila || 1);
+                      const detallesList = (f.detalles && f.detalles.length > 0)
+                        ? f.detalles
+                        : (f.wrs || [f.wr]).map((w, i) => ({
+                            wr: w,
+                            tracking: f.tracking ? f.tracking.split(/[-/]/)[i]?.trim() || '' : '',
+                            cliente: f.cliente ? f.cliente.split(/[-/]/)[i]?.trim() || f.cliente : 'SIN NOMBRE',
+                            tipo: f.tipo || 'CAJA',
+                            peso: null,
+                            encontrado: f.encontrado,
+                          }));
+
+                      return (
+                        <React.Fragment key={f.wr}>
+                          {/* Fila 1: Encabezado del Recuadro de Grupo */}
+                          <tr
+                            style={{
+                              background: 'linear-gradient(90deg, #fef3c7 0%, #fffbeb 100%)',
+                              borderTop: '2px solid #d97706',
+                              borderLeft: '2px solid #d97706',
+                              borderRight: '2px solid #d97706',
+                            }}
+                          >
+                            <td colSpan={9} style={{ padding: '8px 12px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                  <span
+                                    style={{
+                                      background: '#d97706',
+                                      color: '#ffffff',
+                                      padding: '2px 8px',
+                                      borderRadius: '6px',
+                                      fontSize: '11px',
+                                      fontWeight: 800,
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                    }}
+                                  >
+                                    <Layers style={{ width: '12px', height: '12px' }} />
+                                    GRUPO — FILA INSTRUCTIVO {f.filaOriginal ?? (idx + 1)}
+                                  </span>
+                                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#92400E', fontFamily: 'monospace' }}>
+                                    Celda Original: {f.wr}
+                                  </span>
+                                  <span
+                                    style={{
+                                      background: '#fde68a',
+                                      color: '#78350f',
+                                      border: '1px solid #fcd34d',
+                                      borderRadius: '12px',
+                                      padding: '1px 8px',
+                                      fontSize: '11px',
+                                      fontWeight: 700,
+                                    }}
+                                  >
+                                    {cantPaquetes} paquetes agrupados
+                                  </span>
+                                </div>
+                                <div>
+                                  {f.encontrado ? (
+                                    <span style={{ fontSize: '11.5px', color: '#15803d', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                      <CheckCircle2 style={{ width: '13px', height: '13px' }} /> Todos los paquetes cruzados en TIB
+                                    </span>
+                                  ) : (
+                                    <span style={{ fontSize: '11.5px', color: '#b45309', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                      <AlertTriangle style={{ width: '13px', height: '13px' }} /> Verificación parcial
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+
+                          {/* Filas Hijas: Desglose individual de cada WR */}
+                          {detallesList.map((d, dIdx) => {
+                            const dTarifaInfo = getTarifaCliente ? getTarifaCliente(d.cliente) : null;
+                            const dTieneTarifa = Boolean(dTarifaInfo && dTarifaInfo.personalizada && dTarifaInfo.tarifa > 0);
+                            const dTarifaVal = dTieneTarifa ? dTarifaInfo!.tarifa : null;
+                            const dPesoNum = typeof d.peso === 'number' && d.peso > 0 ? d.peso : null;
+                            const dPrecio = dTieneTarifa && dPesoNum !== null ? Math.round(dPesoNum * dTarifaVal! * 100) / 100 : null;
+
+                            return (
+                              <tr
+                                key={`${f.wr}-${d.wr}-${dIdx}`}
+                                style={{
+                                  background: '#fffdf5',
+                                  borderLeft: '2px solid #d97706',
+                                  borderRight: '2px solid #d97706',
+                                  borderBottom: '1px dashed #fde68a',
+                                }}
+                              >
+                                <td style={{ padding: '6px 10px', color: '#b45309', fontSize: '11px', textAlign: 'center', fontWeight: 700 }}>
+                                  {idx + 1}.{dIdx + 1}
+                                </td>
+                                <td style={{ padding: '6px 10px', fontWeight: 700, color: '#0f172a' }}>
+                                  {d.cliente || 'SIN NOMBRE'}
+                                </td>
+                                <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontWeight: 700, color: '#047857' }}>
+                                  {dPesoNum !== null ? `${dPesoNum.toFixed(2)} lb` : '—'}
+                                </td>
+                                <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontWeight: 800, color: '#1e293b' }}>
+                                  <span style={{ background: '#fef3c7', padding: '2px 6px', borderRadius: '4px', border: '1px solid #fde68a' }}>
+                                    {d.wr}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontSize: '11.5px', color: '#334155' }}>
+                                  {d.tracking || '—'}
+                                </td>
+                                <td style={{ padding: '6px 10px', textAlign: 'center' }}>
+                                  {dTieneTarifa ? (
+                                    <span style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '1px 6px', fontWeight: 700, fontSize: '11px' }}>
+                                      ${dTarifaVal!.toFixed(2)}
+                                    </span>
+                                  ) : (
+                                    <span style={{ color: '#94a3b8', fontSize: '11px' }}>—</span>
+                                  )}
+                                </td>
+                                <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: dPrecio !== null ? '#047857' : '#94a3b8' }}>
+                                  {dPrecio !== null ? `$${dPrecio.toFixed(2)}` : '—'}
+                                </td>
+                                <td style={{ padding: '6px 10px' }}>
+                                  <span style={{ fontSize: '11px', fontWeight: 600, color: '#475569', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px' }}>
+                                    {d.tipo || 'CAJA'}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '6px 10px', fontSize: '11px', color: '#64748b' }}>
+                                  {f.observaciones || '—'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+
+                          {/* Fila Subtotal de Cierre del Recuadro */}
+                          <tr
+                            style={{
+                              background: '#fef3c7',
+                              borderBottom: '2px solid #d97706',
+                              borderLeft: '2px solid #d97706',
+                              borderRight: '2px solid #d97706',
+                            }}
+                          >
+                            <td colSpan={2} style={{ padding: '6px 12px', textAlign: 'right', fontWeight: 800, fontSize: '11.5px', color: '#92400E' }}>
+                              SUBTOTAL GRUPO ({cantPaquetes} PAQUETES):
+                            </td>
+                            <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontWeight: 800, fontSize: '12.5px', color: '#047857' }}>
+                              {f.pesoTotal !== null ? `${f.pesoTotal.toFixed(2)} lb` : (f.pesoFormateado || '—')}
+                            </td>
+                            <td colSpan={6} style={{ padding: '6px 10px', fontSize: '11px', color: '#78350f', fontWeight: 600 }}>
+                              Guías cruzadas individualmente. En el Excel descargado aparecerán en filas separadas con su recuadro y subtotal.
+                            </td>
+                          </tr>
+                        </React.Fragment>
+                      );
+                    }
+
                     return (
                       <tr
                         key={f.wr}
                         style={{
                           background: f.encontrado
-                            ? f.esMultiWr
-                              ? '#fffbeb'
-                              : idx % 2 === 0
+                            ? idx % 2 === 0
                               ? '#ffffff'
                               : '#f8fafc'
                             : '#fef2f2',
@@ -793,13 +951,7 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
                               const val = e.target.value;
                               actualizarFila(f.wr, {
                                 pesoFormateado: val,
-                                pesoTotal: f.esMultiWr
-                                  ? val
-                                      .split(/[\/\-,]+/)
-                                      .map((p) => parseFloat(p.trim()))
-                                      .filter((n) => !isNaN(n))
-                                      .reduce((a, b) => a + b, 0)
-                                  : parseFloat(val) || null,
+                                pesoTotal: parseFloat(val) || null,
                               });
                             }}
                             style={{
@@ -815,21 +967,6 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
                         <td style={{ padding: '8px 10px', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span style={{ fontWeight: 800, color: '#1e293b' }}>{f.wr}</span>
-                            {f.esMultiWr && (
-                              <span
-                                style={{
-                                  background: '#fef3c7',
-                                  color: '#b45309',
-                                  border: '1px solid #fde68a',
-                                  borderRadius: '4px',
-                                  padding: '1px 6px',
-                                  fontSize: '10.5px',
-                                  fontWeight: 800,
-                                }}
-                              >
-                                {f.totalWrsFila} WRs
-                              </span>
-                            )}
                           </div>
                         </td>
 

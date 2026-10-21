@@ -48,6 +48,6 @@ export async function POST(req: NextRequest) {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Error al procesar el documento con IA';
     console.error('[API DNI Extraction Error]:', err);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: message, success: false }, { status: 500 });
   }
 }

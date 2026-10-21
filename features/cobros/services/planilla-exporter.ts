@@ -159,36 +159,208 @@ export function generarHojasPlanillaCobros(
     dataCruce.push([]);
 
     dataCruce.push([
-      { value: 'WRS AGRUPADOS (PAQUETES CON GUÍAS COMBINADAS)', fontWeight: 'bold' as const, fontSize: 11 },
+      {
+        value: `WRS AGRUPADOS (${filasAgrupadas.length} GRUPOS DE GUÍAS COMBINADAS EN EL INSTRUCTIVO — SEPARADOS POR FILAS CON SU RECUADRO)`,
+        fontWeight: 'bold' as const,
+        fontSize: 11,
+      },
     ]);
     dataCruce.push(headerRowCruce);
 
+    let grupoIndex = 0;
     for (const it of filasAgrupadas) {
-      const delimiter = it.delimiter || (it.wr.includes('/') ? ' / ' : ' - ');
+      grupoIndex++;
 
-      let nombreCliente = '';
-      if (Array.isArray(it.detalles) && it.detalles.length > 0) {
-        nombreCliente = it.detalles
-          .map((d) => String(d.cliente || it.cliente || 'SIN NOMBRE').trim().toUpperCase())
-          .join(delimiter);
-      } else if (it.cliente && it.cliente.includes(delimiter.trim())) {
-        nombreCliente = it.cliente.toUpperCase();
-      } else {
-        const cant = it.wrs && it.wrs.length > 0 ? it.wrs.length : 1;
-        nombreCliente = Array(cant)
-          .fill(String(it.cliente || 'SIN NOMBRE').trim().toUpperCase())
-          .join(delimiter);
+      // Obtener la lista de detalles individuales de cada paquete dentro del grupo
+      const detallesList: Array<{
+        wr: string;
+        tracking: string;
+        cliente: string;
+        tipo: string;
+        peso: number | null;
+        encontrado: boolean;
+      }> = Array.isArray(it.detalles) && it.detalles.length > 0
+        ? it.detalles
+        : (it.wrs && it.wrs.length > 0 ? it.wrs : [it.wr]).map((w, idx) => ({
+            wr: w,
+            tracking: it.tracking ? it.tracking.split(/[-/]/)[idx]?.trim() || '' : '',
+            cliente: it.cliente ? it.cliente.split(/[-/]/)[idx]?.trim() || it.cliente : 'SIN NOMBRE',
+            tipo: it.tipo || 'CAJA',
+            peso: null,
+            encontrado: it.encontrado,
+          }));
+
+      const cantPaquetes = detallesList.length;
+      const filaOriginalStr = it.filaOriginal ? `FILA INSTRUCTIVO ${it.filaOriginal}` : `GRUPO ${grupoIndex}`;
+
+      // Fila vacía de separación antes de cada recuadro para que respire visualmente
+      dataCruce.push([]);
+
+      // 1. Fila de Encabezado del Recuadro de Grupo (span 6 columnas)
+      dataCruce.push([
+        {
+          value: `📦 GRUPO ${grupoIndex} — ${filaOriginalStr} | ${cantPaquetes} PAQUETES DETECTADOS EN LA MISMA CELDA ("${it.wr}")`,
+          columnSpan: 6,
+          fontWeight: 'bold' as const,
+          fontSize: 10.5,
+          textColor: '#92400E',
+          backgroundColor: '#FEF3C7',
+          align: 'left' as const,
+          alignVertical: 'center' as const,
+          height: 22,
+          borderColor: '#D97706',
+          borderStyle: 'thin' as const,
+          topBorderStyle: 'medium' as const,
+          leftBorderStyle: 'medium' as const,
+          rightBorderStyle: 'medium' as const,
+        },
+        null,
+        null,
+        null,
+        null,
+        null,
+      ]);
+
+      // 2. Filas individuales de cada WR dentro del recuadro
+      let sumaPesosGrupo = 0;
+      let tienePesos = false;
+
+      for (let i = 0; i < detallesList.length; i++) {
+        const d = detallesList[i];
+        const nombreCliente = String(d.cliente || it.cliente || 'SIN NOMBRE').trim().toUpperCase();
+
+        let pesoVal: { value: number | string; type: typeof Number | typeof String; format?: string };
+        if (typeof d.peso === 'number' && d.peso > 0) {
+          pesoVal = { value: d.peso, type: Number, format: '#,##0.00' };
+          sumaPesosGrupo += d.peso;
+          tienePesos = true;
+        } else {
+          pesoVal = { value: '—', type: String };
+        }
+
+        const baseStyle = {
+          backgroundColor: '#FFFBEB',
+          borderColor: '#D97706',
+          borderStyle: 'thin' as const,
+          alignVertical: 'center' as const,
+          height: 20,
+        };
+
+        dataCruce.push([
+          // Col 0: NOMBRE (Borde izquierdo medium para cerrar el recuadro por la izquierda)
+          {
+            ...baseStyle,
+            value: nombreCliente,
+            type: String,
+            leftBorderStyle: 'medium' as const,
+          },
+          // Col 1: PESO
+          {
+            ...baseStyle,
+            ...pesoVal,
+            align: 'center' as const,
+            fontWeight: 'bold' as const,
+            textColor: '#047857',
+          },
+          // Col 2: CODIGO WAREHOUSE
+          {
+            ...baseStyle,
+            value: d.wr || '',
+            type: String,
+            align: 'center' as const,
+            fontWeight: 'bold' as const,
+          },
+          // Col 3: TRACKING
+          {
+            ...baseStyle,
+            value: d.tracking || '—',
+            type: String,
+            align: 'center' as const,
+          },
+          // Col 4: TIPO DE PAQUETE
+          {
+            ...baseStyle,
+            value: d.tipo || it.tipo || 'CAJA',
+            type: String,
+            align: 'center' as const,
+          },
+          // Col 5: OBSERVACIONES (Borde derecho medium para cerrar el recuadro por la derecha)
+          {
+            ...baseStyle,
+            value: it.observaciones || '',
+            type: String,
+            rightBorderStyle: 'medium' as const,
+          },
+        ]);
       }
 
-      const pesoFormateado = it.pesoFormateado || '—';
+      // 3. Fila de Subtotal de Peso del Grupo (Cierre inferior del recuadro)
+      const pesoTotalGrupo = tienePesos
+        ? Math.round(sumaPesosGrupo * 100) / 100
+        : (it.pesoTotal || 0);
+
+      const subtotalStyle = {
+        backgroundColor: '#FEF3C7',
+        borderColor: '#D97706',
+        borderStyle: 'thin' as const,
+        bottomBorderStyle: 'medium' as const,
+        alignVertical: 'center' as const,
+        height: 21,
+      };
 
       dataCruce.push([
-        { value: nombreCliente, type: String },
-        { value: pesoFormateado, type: String },
-        { value: it.wr || '', type: String },
-        it.tracking ? { value: it.tracking, type: String } : null,
-        it.tipo ? { value: it.tipo, type: String } : null,
-        it.observaciones ? { value: it.observaciones, type: String } : null,
+        // Col 0: Etiqueta Subtotal
+        {
+          ...subtotalStyle,
+          value: `SUBTOTAL GRUPO ${grupoIndex} (${cantPaquetes} PAQUETES):`,
+          type: String,
+          align: 'right' as const,
+          fontWeight: 'bold' as const,
+          fontSize: 9.5,
+          textColor: '#92400E',
+          leftBorderStyle: 'medium' as const,
+        },
+        // Col 1: Peso Total del Grupo
+        {
+          ...subtotalStyle,
+          value: pesoTotalGrupo > 0 ? pesoTotalGrupo : (it.pesoFormateado || '—'),
+          type: pesoTotalGrupo > 0 ? Number : String,
+          format: pesoTotalGrupo > 0 ? '#,##0.00' : undefined,
+          align: 'center' as const,
+          fontWeight: 'bold' as const,
+          textColor: '#047857',
+        },
+        // Col 2: Estado general del grupo
+        {
+          ...subtotalStyle,
+          value: it.encontrado ? '✓ TODOS ENCONTRADOS' : '⚠ MATCH PARCIAL O PENDIENTE',
+          type: String,
+          align: 'center' as const,
+          fontWeight: 'bold' as const,
+          fontSize: 9,
+          textColor: it.encontrado ? '#15803d' : '#b45309',
+        },
+        // Col 3: Celda original
+        {
+          ...subtotalStyle,
+          value: `Original: ${it.wr}`,
+          type: String,
+          fontSize: 8.5,
+          textColor: '#64748b',
+        },
+        // Col 4: Tipo
+        {
+          ...subtotalStyle,
+          value: '',
+          type: String,
+        },
+        // Col 5: Borde derecho
+        {
+          ...subtotalStyle,
+          value: '',
+          type: String,
+          rightBorderStyle: 'medium' as const,
+        },
       ]);
     }
   }

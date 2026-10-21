@@ -72,7 +72,8 @@ describe('Server-Side Search Unit Tests (PostgreSQL RPC & GIN Trigram)', () => {
       p_fecha_desde: null,
       p_fecha_hasta: null,
       p_page: 1,
-      p_page_size: 50
+      p_page_size: 50,
+      p_tipo_entrega: 'ALL'
     });
 
     expect(result.total).toBe(100);
