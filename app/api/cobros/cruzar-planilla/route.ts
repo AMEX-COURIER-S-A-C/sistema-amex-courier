@@ -4,7 +4,8 @@ import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import readXlsxFile from 'read-excel-file/node';
 import { getR2Client, R2_BUCKET_NAME, R2_ROOT_FOLDER } from '@/lib/r2/client';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { authorizeUser } from '@/lib/auth/guards';
+import { z } from 'zod';
+import { withApi } from '@/lib/api/withApi';
 import { normalizeTibWr } from '@/lib/tib/apiClient';
 
 export const dynamic = 'force-dynamic';
@@ -374,21 +375,29 @@ async function enriquecerConTibApiEnVivo(
   return filasResultado;
 }
 
-export async function POST(req: NextRequest) {
-  try {
-    const auth = await authorizeUser();
-    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+const CruzarPlanillaSchema = z.object({
+  filas: z.array(z.any()).optional(),
+  wrs: z.array(z.string()).optional(),
+  forzar_local: z.boolean().optional(),
+  fuente: z.string().optional(),
+  enviado_key: z.string().optional(),
+}).refine(data => (data.filas && data.filas.length > 0) || (data.wrs && data.wrs.length > 0), {
+  message: 'Envía las filas del instructivo (filas) o la lista de WRs (wrs).'
+});
 
-    const body = await req.json().catch(() => ({}));
+export const POST = withApi(
+  {
+    auth: true,
+    rateLimit: {
+      limit: 30,
+      windowMs: 60_000,
+      prefix: 'cobros-cruzar-planilla',
+    },
+    bodySchema: CruzarPlanillaSchema,
+  },
+  async ({ body }) => {
     const rawFilas: FilaCruzarInput[] = Array.isArray(body.filas) ? body.filas : [];
     const rawWrs: string[] = Array.isArray(body.wrs) ? body.wrs : [];
-
-    if (rawFilas.length === 0 && rawWrs.length === 0) {
-      return NextResponse.json(
-        { error: 'Envía las filas del instructivo (filas) o la lista de WRs (wrs).' },
-        { status: 400 }
-      );
-    }
 
     if (rawFilas.length > MAX_FILAS || rawWrs.length > MAX_FILAS) {
       return NextResponse.json({ error: `Máximo ${MAX_FILAS} registros por cruce.` }, { status: 400 });
@@ -609,9 +618,5 @@ export async function POST(req: NextRequest) {
       sin_match: finalSinMatch,
       filas: filasResultado,
     });
-  } catch (err: unknown) {
-    console.error('[Cruzar Planilla]', err);
-    const message = err instanceof Error ? err.message : 'Error al cruzar la planilla.';
-    return NextResponse.json({ error: message }, { status: 500 });
   }
-}
+);

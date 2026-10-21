@@ -1,33 +1,49 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
+import { withApi } from '@/lib/api/withApi';
 import { extractDniNameFromImage } from '@/lib/openai/analyzer';
-import { authorizeUser } from '@/lib/auth/guards';
+import { recordAiUsage } from '@/lib/ai/cost-tracker';
 
-export async function POST(req: NextRequest) {
-  try {
-    const auth = await authorizeUser();
-    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+const ExtractDniSchema = z.object({
+  imageBase64: z
+    .string()
+    .min(1, 'Se requiere la imagen del anverso en formato base64.')
+    .max(15_000_000, 'La imagen supera el límite permitido.'),
+});
 
-    const body = await req.json();
+export const POST = withApi(
+  {
+    auth: true,
+    rateLimit: {
+      limit: 120, // 120 peticiones por minuto por IP/usuario
+      windowMs: 60_000,
+      prefix: 'ai-dni-extraction',
+    },
+    bodySchema: ExtractDniSchema,
+  },
+  async ({ body, user }) => {
     const { imageBase64 } = body;
-
-    if (!imageBase64 || typeof imageBase64 !== 'string') {
-      return NextResponse.json(
-        { error: 'Se requiere la imagen del anverso en formato base64.' },
-        { status: 400 }
-      );
-    }
-    if (imageBase64.length > 14_000_000) {
-      return NextResponse.json({ error: 'La imagen supera el límite permitido.' }, { status: 413 });
-    }
-
     const result = await extractDniNameFromImage(imageBase64);
+
+    // Registrar telemetría de costos en segundo plano
+    if (result.usage) {
+      recordAiUsage({
+        feature: 'dni-extraction',
+        model: result.usage.model,
+        promptTokens: result.usage.prompt_tokens,
+        completionTokens: result.usage.completion_tokens,
+        totalTokens: result.usage.total_tokens,
+        usuarioId: user?.id,
+        usuarioEmail: user?.email,
+      }).catch((e) => console.warn('[AI Usage Logging Warning]:', e));
+    }
 
     if (!result.nombre_completo && !result.dni) {
       console.warn('[API DNI Extraction Warning]: No se detectaron nombres ni DNI en la imagen.');
       return NextResponse.json(
         {
           success: false,
-          error: 'La IA no pudo detectar nombres ni número de DNI legibles en la imagen proporcionada.'
+          error: 'La IA no pudo detectar nombres ni número de DNI legibles en la imagen proporcionada.',
         },
         { status: 422 }
       );
@@ -35,7 +51,7 @@ export async function POST(req: NextRequest) {
 
     console.log('[API DNI Extraction Success]:', {
       nombre: result.nombre_completo,
-      dni: result.dni
+      dni: result.dni,
     });
 
     return NextResponse.json({
@@ -43,11 +59,7 @@ export async function POST(req: NextRequest) {
       nombre_completo: result.nombre_completo || '',
       dni: result.dni || '',
       nombres: result.nombres || '',
-      apellidos: result.apellidos || ''
+      apellidos: result.apellidos || '',
     });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Error al procesar el documento con IA';
-    console.error('[API DNI Extraction Error]:', err);
-    return NextResponse.json({ error: message, success: false }, { status: 500 });
   }
-}
+);

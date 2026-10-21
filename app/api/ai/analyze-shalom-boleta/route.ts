@@ -1,35 +1,44 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
+import { withApi } from '@/lib/api/withApi';
 import { analyzeShalomBoletaPdf, SHALOM_AI_MODEL } from '@/lib/openai/analyzer';
-import { authorizeUser } from '@/lib/auth/guards';
+import { recordAiUsage } from '@/lib/ai/cost-tracker';
 
-export async function POST(req: NextRequest) {
-  try {
-    const auth = await authorizeUser();
-    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+const AnalyzeShalomSchema = z.object({
+  pdfBase64: z
+    .string()
+    .min(1, 'Se requiere el archivo PDF o imagen en formato base64.')
+    .max(15_000_000, 'El archivo supera el límite de 10 MB.'),
+});
 
-    const body = await req.json();
+export const POST = withApi(
+  {
+    auth: true,
+    rateLimit: {
+      limit: 60,
+      windowMs: 60_000,
+      prefix: 'ai-shalom-boleta',
+    },
+    bodySchema: AnalyzeShalomSchema,
+  },
+  async ({ body, user }) => {
     const { pdfBase64 } = body;
-
-    if (!pdfBase64 || typeof pdfBase64 !== 'string') {
-      return NextResponse.json(
-        { error: 'Se requiere el archivo PDF o imagen en formato base64.' },
-        { status: 400 }
-      );
-    }
-    if (pdfBase64.length > 14_000_000) {
-      return NextResponse.json({ error: 'El archivo supera el límite de 10 MB.' }, { status: 413 });
-    }
-
     const extracted = await analyzeShalomBoletaPdf(pdfBase64);
+
+    // Registro de consumo de IA
+    recordAiUsage({
+      feature: 'shalom-boleta',
+      model: SHALOM_AI_MODEL,
+      promptTokens: 800, // Estimado de visión para boleta
+      completionTokens: 250,
+      usuarioId: user?.id,
+      usuarioEmail: user?.email,
+    }).catch((e) => console.warn('[AI Usage Logging Warning]:', e));
 
     return NextResponse.json({
       success: true,
       data: extracted,
-      model: SHALOM_AI_MODEL
+      model: SHALOM_AI_MODEL,
     });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Error al analizar la boleta con IA';
-    console.error('[API OpenAI Shalom Boleta OCR Error]:', err);
-    return NextResponse.json({ error: message }, { status: 500 });
   }
-}
+);

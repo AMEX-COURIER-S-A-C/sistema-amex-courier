@@ -1,40 +1,46 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { parseRotuloWithAi } from '@/lib/openai/analyzer';
-import { authorizeUser } from '@/lib/auth/guards';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
+import { withApi } from '@/lib/api/withApi';
+import { parseRotuloWithAi, FAST_TEXT_MODEL } from '@/lib/openai/analyzer';
+import { recordAiUsage } from '@/lib/ai/cost-tracker';
 
-export async function POST(req: NextRequest) {
-  try {
-    const auth = await authorizeUser();
-    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+const ParseRotuloSchema = z
+  .object({
+    text: z.string().max(20_000, 'El texto supera el límite permitido.').optional(),
+    imageBase64: z.string().max(15_000_000, 'La imagen supera el límite permitido.').optional(),
+  })
+  .refine((data) => data.text || data.imageBase64, {
+    message: 'Debes proporcionar un texto del pedido o una captura de pantalla en formato base64.',
+  });
 
-    const body = await req.json();
-    const { text, imageBase64 } = body;
-
-    if (!text && !imageBase64) {
-      return NextResponse.json(
-        { error: 'Debes proporcionar un texto del pedido o una captura de pantalla en formato base64.' },
-        { status: 400 }
-      );
-    }
-    if (typeof text === 'string' && text.length > 20_000) {
-      return NextResponse.json({ error: 'El texto supera el límite permitido.' }, { status: 413 });
-    }
-    if (typeof imageBase64 === 'string' && imageBase64.length > 14_000_000) {
-      return NextResponse.json({ error: 'La imagen supera el límite permitido.' }, { status: 413 });
-    }
-
+export const POST = withApi(
+  {
+    auth: true,
+    rateLimit: {
+      limit: 60,
+      windowMs: 60_000,
+      prefix: 'ai-parse-rotulo',
+    },
+    bodySchema: ParseRotuloSchema,
+  },
+  async ({ body, user }) => {
     const data = await parseRotuloWithAi({
-      text: typeof text === 'string' ? text : undefined,
-      imageBase64: typeof imageBase64 === 'string' ? imageBase64 : undefined
+      text: body.text,
+      imageBase64: body.imageBase64,
     });
+
+    recordAiUsage({
+      feature: 'rotulo-parsing',
+      model: FAST_TEXT_MODEL,
+      promptTokens: 400,
+      completionTokens: 200,
+      usuarioId: user?.id,
+      usuarioEmail: user?.email,
+    }).catch((e) => console.warn('[AI Usage Logging Warning]:', e));
 
     return NextResponse.json({
       success: true,
-      data
+      data,
     });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Error al interpretar el rótulo con AMEXito IA';
-    console.error('[API OpenAI Parse Rotulo Error]:', err);
-    return NextResponse.json({ error: message }, { status: 500 });
   }
-}
+);

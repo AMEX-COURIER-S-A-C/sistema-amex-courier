@@ -261,12 +261,20 @@ Devuelve exclusivamente un objeto JSON válido con los campos solicitados.`;
 /**
  * Analiza la imagen del anverso del DNI para extraer nombres, apellidos y número de DNI automáticamente
  */
-export async function extractDniNameFromImage(imageInput: string): Promise<{
+export interface ExtractedDniResult {
   nombre_completo: string;
   dni?: string;
   nombres?: string;
   apellidos?: string;
-}> {
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens?: number;
+    model: string;
+  };
+}
+
+export async function extractDniNameFromImage(imageInput: string): Promise<ExtractedDniResult> {
   const { mimeType, base64 } = parseBase64Data(imageInput);
 
   const prompt = `Analiza con máxima precisión la imagen de este Documento de Identidad del Perú (DNI 1.0 clásico azul/amarillo, DNIe 2.0/3.0 electrónico blanco, o Carnet de Extranjería CE).
@@ -364,7 +372,13 @@ Reglas estrictas:
       nombre_completo: nombreCompleto,
       dni: rawDni,
       nombres: (parsed.nombres || '').trim().toUpperCase(),
-      apellidos: (parsed.apellidos || '').trim().toUpperCase()
+      apellidos: (parsed.apellidos || '').trim().toUpperCase(),
+      usage: response.usage ? {
+        prompt_tokens: response.usage.prompt_tokens,
+        completion_tokens: response.usage.completion_tokens,
+        total_tokens: response.usage.total_tokens,
+        model: modelToUse
+      } : undefined
     };
   } catch (err) {
     console.error('Error al parsear respuesta JSON de IA para DNI:', responseRaw, err);

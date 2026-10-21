@@ -44,6 +44,12 @@ export async function proxy(request: NextRequest) {
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
   const pathname = request.nextUrl.pathname;
+
+  // Permitir t�nel de monitoreo de Sentry sin interferencia de auth
+  if (pathname.startsWith('/monitoring') || pathname === '/sentry-example-page' || pathname === '/api/sentry-test') {
+    return response;
+  }
+
   const isLoginPage = pathname.startsWith('/login');
   const isApiRoute = pathname.startsWith('/api');
   const isPublicAuthRoute =
