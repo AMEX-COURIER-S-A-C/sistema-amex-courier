@@ -22,7 +22,7 @@ import {
 import { Paquete } from '@/types';
 import * as XLSX from 'xlsx';
 import { alertDialog } from '@/lib/dialog';
-import { isValidWr, cleanWr, WR_LENGTH, WR_PREFIX } from '@/lib/validations/wr';
+import { isValidWr, cleanWr, normalizeWr, WR_LENGTH, WR_PREFIX } from '@/lib/validations/wr';
 
 export interface ScannerBulkLocationViewProps {
   paquetes?: Paquete[];
@@ -83,7 +83,7 @@ export default function ScannerBulkLocationView({
       .map((item) => item.replace(/["'()[\]{}]/g, '').trim())
       .filter(Boolean);
 
-    const clean = Array.from(new Set(items.map((c) => c.toUpperCase())));
+    const clean = Array.from(new Set(items.map((c) => normalizeWr(c))));
     return { rawCodes: items, uniqueCodes: clean };
   }, [rawText]);
 

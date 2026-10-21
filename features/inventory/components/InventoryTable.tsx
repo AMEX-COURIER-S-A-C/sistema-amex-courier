@@ -160,7 +160,7 @@ export default function InventoryTable({
               <th className="py-2.5 px-3.5">Guía WR</th>
               <th className="py-2.5 px-3.5">Tracking</th>
               <th className="py-2.5 px-3.5">Cliente</th>
-              <th className="py-2.5 px-3.5">Tipo Paquete</th>
+              <th className="py-2.5 px-3.5 whitespace-nowrap">Tipo de Caja</th>
               <th className="py-2.5 px-3.5">Peso</th>
               <th className="py-2.5 px-3.5">Ubicación</th>
               <th className="py-2.5 px-3.5">Estado AMEX</th>
@@ -270,18 +270,58 @@ export default function InventoryTable({
                         {pkg.nombreConsignatario || ''}
                       </div>
                     </td>
-                    <td style={{ padding: '10px 14px' }}>
-                      <div
-                        style={{
-                          fontWeight: 700,
-                          color: '#1e293b',
-                          fontSize: '12px',
-                          textTransform: 'uppercase'
-                        }}
-                        title={pkg.descripcion || undefined}
-                      >
-                        {pkg.tipoEmpaque || ''}
-                      </div>
+                    <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                      {(() => {
+                        const rawTipo = (pkg.tipoEmpaque || 'CAJA').trim().toUpperCase();
+                        let bg = '#eff6ff';
+                        let text = '#1d4ed8';
+                        let border = '#bfdbfe';
+                        let icon = '📦';
+
+                        if (rawTipo.includes('CAJA')) {
+                          bg = '#fef3c7';
+                          text = '#92400e';
+                          border = '#fde68a';
+                          icon = '📦';
+                        } else if (rawTipo.includes('SOBRE')) {
+                          bg = '#e0e7ff';
+                          text = '#3730a3';
+                          border = '#c7d2fe';
+                          icon = '✉️';
+                        } else if (rawTipo.includes('BOLSA')) {
+                          bg = '#ecfdf5';
+                          text = '#065f46';
+                          border = '#a7f3d0';
+                          icon = '🛍️';
+                        } else if (rawTipo.includes('SACA')) {
+                          bg = '#f3e8ff';
+                          text = '#6b21a8';
+                          border = '#e9d5ff';
+                          icon = '👜';
+                        }
+
+                        return (
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '2px 8px',
+                              borderRadius: '6px',
+                              fontSize: '11px',
+                              fontWeight: 800,
+                              background: bg,
+                              color: text,
+                              border: `1px solid ${border}`,
+                              textTransform: 'uppercase'
+                            }}
+                            title={pkg.descripcion || `Tipo de empaque: ${rawTipo}`}
+                          >
+                            <span>{icon}</span>
+                            <span>{rawTipo}</span>
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
                       <div style={{ fontWeight: 800, color: '#0f172a' }}>

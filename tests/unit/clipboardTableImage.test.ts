@@ -94,7 +94,7 @@ describe('clipboardTableImage utility', () => {
       const canvas = renderPackagesTableCanvas(mockPackages);
       expect(canvas).not.toBeNull();
       // Width is 1040 * 3 = 3120 (Ultra-HD 3x)
-      expect((canvas as unknown as typeof mockCanvas).width).toBe(3120);
+      expect((canvas as unknown as typeof mockCanvas).width).toBe(3420);
     } finally {
       // Cleanup global document
       delete (globalThis as unknown as { document?: unknown }).document;

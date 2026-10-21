@@ -22,6 +22,8 @@ const MODEL_PRICING_PER_MILLION: Record<string, { prompt: number; completion: nu
   'o1': { prompt: 15.00, completion: 60.00 },
   'o1-mini': { prompt: 3.00, completion: 12.00 },
   'o3-mini': { prompt: 1.10, completion: 4.40 },
+  'gpt-6-luna': { prompt: 2.00, completion: 8.00 },
+  'gpt-6.1-sol': { prompt: 2.50, completion: 10.00 },
 };
 
 export function estimateAiCost(model: string, promptTokens: number, completionTokens: number): number {

@@ -60,13 +60,39 @@ export function getWrValidationError(value: unknown): string | null {
 }
 
 /**
- * Helper inteligente para autocompletar el prefijo WR si el usuario o pistola
- * ingresa solo los 9 dígitos numéricos (ej. '000474478' -> 'WR000474478').
+ * Helper inteligente para autocompletar el prefijo WR y normalizar la cantidad de ceros
+ * si el usuario o pistola ingresa solo los dígitos numéricos o códigos con ceros faltantes.
+ * Ejemplos:
+ *  - '000474478' -> 'WR000474478'
+ *  - '482504'    -> 'WR000482504'
+ *  - 'WR00482504' -> 'WR000482504' (rellena los ceros faltantes a 11 caracteres)
  */
-export function smartFormatWr(input: string): string {
-  const clean = cleanWr(input);
-  if (/^[A-Z0-9]{9}$/.test(clean) && !clean.startsWith(WR_PREFIX)) {
-    return `WR${clean}`;
+export function normalizeWr(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  const str = String(value).trim().replace(/\s+/g, '').toUpperCase();
+  if (!str) return '';
+
+  // Si ya es un WR canónico válido de 11 caracteres (WR + 9 dígitos alfanuméricos)
+  if (WR_REGEX.test(str)) {
+    return str;
   }
-  return clean;
+
+  // Extraer sólo los dígitos numéricos
+  const digits = str.replace(/\D/g, '');
+  if (digits.length > 0 && digits.length <= 9) {
+    return `WR${digits.padStart(9, '0')}`;
+  }
+
+  if (str.startsWith(WR_PREFIX)) {
+    const after = str.slice(2);
+    if (after.length > 0 && after.length < 9 && /^\d+$/.test(after)) {
+      return `WR${after.padStart(9, '0')}`;
+    }
+  }
+
+  return str;
+}
+
+export function smartFormatWr(input: string): string {
+  return normalizeWr(input);
 }

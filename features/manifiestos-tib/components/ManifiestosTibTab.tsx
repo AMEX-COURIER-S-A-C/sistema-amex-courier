@@ -23,6 +23,7 @@ import * as XLSX from 'xlsx';
 import ManifiestosTibHistorial from './ManifiestosTibHistorial';
 import TibMiamiRadarView from './TibMiamiRadarView';
 import { alertDialog } from '@/lib/dialog';
+import { normalizeWr } from '@/lib/validations/wr';
 
 interface HeaderData {
   fecha_vuelo: string;
@@ -170,7 +171,7 @@ export default function ManifiestosTibTab({ onRefreshData }: { onRefreshData?: (
 
     const dataToExport: any[] = [];
     filas.forEach((f, idx) => {
-      const wrsString = (f.wrs || []).join(' / ');
+      const wrsString = (f.wrs || []).map((w: string) => normalizeWr(w)).join(' / ');
       dataToExport.push({
         '# Item': idx + 1,
         'Guía AMX': f.guia,

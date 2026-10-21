@@ -104,9 +104,10 @@ export function formatWhatsAppSummary(packages: Paquete[]): string {
     const peso = Number(p.pesoKg || 0).toFixed(2);
     const estado = (p.estadoAmex || 'en_almacen').replace('_', ' ').toUpperCase();
     const tracking = p.tracking ? ` | 🔎 Trk: ${p.tracking}` : '';
+    const tipo = (p.tipoEmpaque || 'CAJA').trim().toUpperCase();
 
     lines.push(`👤 *${client}*`);
-    lines.push(`   └ 🏷️ WR: \`${wr}\` | 📍 *${ubic}* | ⚖️ ${peso} kg | 📦 ${estado}${tracking}`);
+    lines.push(`   └ 🏷️ WR: \`${wr}\` | 📦 *${tipo}* | 📍 *${ubic}* | ⚖️ ${peso} kg | ${estado}${tracking}`);
   });
 
   lines.push(`━━━━━━━━━━━━━━━━━━━━`);
@@ -123,7 +124,7 @@ export function formatFullTableTsv(packages: Paquete[]): string {
     'Guía WR',
     'Tracking',
     'Cliente / Consignatario',
-    'Tipo Paquete',
+    'Tipo de Caja',
     'Peso (Kg)',
     'Ubicación',
     'Estado AMEX',

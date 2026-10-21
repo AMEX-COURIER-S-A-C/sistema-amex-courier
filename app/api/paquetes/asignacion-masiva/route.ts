@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { authorizeUser, getUserDisplayName } from '@/lib/auth/guards';
 import { parseWarehouseLocation } from '@/lib/validations/locations';
-import { isValidWr } from '@/lib/validations/wr';
+import { isValidWr, normalizeWr } from '@/lib/validations/wr';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
       new Set(
         cleaned
           .split(/\s+/)
-          .map((c) => c.replace(/["'()[\]{}]/g, '').trim().toUpperCase())
+          .map((c) => normalizeWr(c.replace(/["'()[\]{}]/g, '').trim().toUpperCase()))
           .filter(Boolean)
       )
     );
@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
             cleaned = cleaned.replace(/(?<=[0-9a-zA-Z])-(?=[a-zA-Z])/g, '\n');
             return cleaned.split(/\s+/);
           })
-          .map((c: string) => c.replace(/["'()[\]{}]/g, '').trim().toUpperCase())
+          .map((c: string) => normalizeWr(c.replace(/["'()[\]{}]/g, '').trim().toUpperCase()))
           .filter(Boolean)
       )
     );

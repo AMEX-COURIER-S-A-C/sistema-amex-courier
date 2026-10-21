@@ -4,6 +4,8 @@ import OpenAI from 'openai';
 import sharp from 'sharp';
 import { uploadFileToR2 } from '@/lib/r2/client';
 import { getDateSegments, sanitizeFileName } from '@/lib/r2/datePartitionedUpload';
+import { normalizeTibWr } from '@/lib/tib/apiClient';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
 export const maxDuration = 120; // 2 minutos para procesamiento de documentos multipágina
 
@@ -165,7 +167,7 @@ export async function POST(req: NextRequest) {
       }
 
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-      const model = process.env.OPENAI_MODEL || 'gpt-4o';
+      const model = process.env.OPENAI_MANIFEST_MODEL || 'gpt-6.1-sol';
 
       let encabezadoExtraid: any = {
         fecha_vuelo: '',
@@ -199,7 +201,10 @@ Debes extraer con total precisión:
    - "guias_declaradas": El número en '# GUIAS' (ej: 159).
    - "paquetes_declarados": El número en '# PAQUETES EMBARCADOS' (ej: 196).
 2. "filas": Todas las filas de la tabla presentes en esta página 1:
-   INSTRUCCIONES CRÍTICAS DE ALINEACIÓN DE CUADRÍCULA:
+   INSTRUCCIONES CRÍTICAS DE FORMATO Y OCR:
+   - FORMATO CANÓNICO DE CÓDIGO WR: Todo recibo de bodega TIB tiene EXACTAMENTE 11 caracteres: "WR" + TRES CEROS INICIALES ("000") + 6 DÍGITOS CORRELATIVOS (ejemplo: "WR000481141"). NUNCA omitas el tercer cero aunque la tinta del margen izquierdo esté desgastada o cortada. Si ves "WR00482...", el código real impreso es "WR000482...".
+   - ALERTA TIPOGRÁFICA DE MATRIZ DE PUNTOS (1 vs 4): Estos manifiestos se imprimen con impresoras de matriz de puntos (dot-matrix). En esta tipografía el dígito "1" es un trazo vertical fino que con frecuencia se confunde con un "4". Por ejemplo: "WR000481141" tiene "1141" al final, NO "4141". Verifica detenidamente cada dígito y no confundas 1 con 4.
+   - FORMATO DE GUÍA AMX: Siempre inicia con "AMX" seguido de dígitos correlativos (ej: "AMX000010658").
    - ALINEACIÓN POR LÍNEA HORIZONTAL: Cada fila está estrictamente delimitada por las líneas horizontales negras continuas de la tabla. Sigue la cuadrícula fila por fila de arriba a abajo. Cada código AMX de la columna izquierda se corresponde ÚNICA Y EXCLUSIVAMENTE con el código WR que está dentro de sus MISMAS líneas divisorias horizontales.
    - FILAS CON MÚLTIPLES PAQUETES: Si una fila tiene 2 o más códigos WR dentro de la misma celda (por ejemplo separados por '/' o '-', o en varios renglones dentro de la misma casilla), agrúpalos TODOS en el arreglo "wrs" de ESA misma guía. NUNCA desplaces códigos WR a las filas contiguas.
    - NUNCA DESPLACES FILAS: Si una celda WR estuviese vacía, asigna "wrs": []. NUNCA le asignes a una fila el WR de otra fila.
@@ -207,7 +212,9 @@ Debes extraer con total precisión:
           : `Esta es la Página ${pageNum} del manifiesto físico de entrega de TIB Courier a AMEX.
 La tabla contiene 3 columnas: "GUIA", "OBSERVACION" y "WR".
 
-INSTRUCCIONES CRÍTICAS DE ALINEACIÓN DE CUADRÍCULA:
+INSTRUCCIONES CRÍTICAS DE FORMATO Y OCR:
+- FORMATO CANÓNICO DE CÓDIGO WR: Todo recibo de bodega TIB tiene EXACTAMENTE 11 caracteres: "WR" + TRES CEROS INICIALES ("000") + 6 DÍGITOS CORRELATIVOS (ejemplo: "WR000481141"). Si la tinta del borde izquierdo está tenue o cortada y ves "WR00...", debes saber que siempre son 3 ceros: "WR000...".
+- ALERTA TIPOGRÁFICA DE MATRIZ DE PUNTOS (1 vs 4): En la tipografía física de matriz de puntos, el dígito "1" es un trazo fino que el OCR suele confundir con "4". Asegúrate de no leer "4141" o "4841" cuando es "1141" o "4811" (ej: "WR000481141").
 - ALINEACIÓN POR LÍNEA HORIZONTAL: Cada fila está estrictamente delimitada por las líneas horizontales negras continuas de la tabla. Sigue la cuadrícula fila por fila de arriba a abajo. Cada código AMX de la columna izquierda se corresponde ÚNICA Y EXCLUSIVAMENTE con el código WR que está dentro de sus MISMAS líneas divisorias horizontales.
 - FILAS CON MÚLTIPLES PAQUETES: Si una fila tiene 2 o más códigos WR dentro de la misma celda (por ejemplo separados por '/' o '-', o en varios renglones dentro de la misma casilla), agrúpalos TODOS en el arreglo "wrs" de ESA misma guía. NUNCA desplaces códigos WR hacia arriba o hacia abajo.
 - NUNCA DESPLACES FILAS: Si una celda WR estuviese en blanco, asigna "wrs": []. NUNCA le asignes a una fila el WR de otra fila.
@@ -299,11 +306,78 @@ INSTRUCCIONES CRÍTICAS DE ALINEACIÓN DE CUADRÍCULA:
           encabezadoExtraid = parsedContent.encabezado;
         }
 
-        const pageRows = (parsedContent.filas || []).map((r: any) => ({
-          ...r,
-          pagina: pageNum,
-        }));
+        const pageRows = (parsedContent.filas || []).map((r: any) => {
+          const rawWrs = Array.isArray(r.wrs) ? r.wrs : [];
+          const normalizedWrs = rawWrs
+            .map((w: unknown) => normalizeTibWr(w))
+            .filter((w: string) => Boolean(w));
+
+          return {
+            guia: String(r.guia || '').trim().toUpperCase(),
+            wrs: normalizedWrs,
+            observacion: String(r.observacion || '').trim(),
+            pagina: pageNum,
+          };
+        });
         todasLasFilas.push(...pageRows);
+      }
+
+      // Validación y Autocorrección Contextual contra Paquetes Registrados en Supabase
+      try {
+        const admin = getSupabaseAdmin();
+        const { data: dbPackages } = await admin
+          .from('paquetes')
+          .select('id, numero_recibo_bodega, tracking')
+          .not('numero_recibo_bodega', 'is', null)
+          .order('creado_en', { ascending: false })
+          .limit(1000);
+
+        if (dbPackages && dbPackages.length > 0) {
+          const knownWrSet = new Set(
+            dbPackages
+              .map((p) => p.numero_recibo_bodega?.toUpperCase().trim())
+              .filter(Boolean) as string[]
+          );
+
+          for (const f of todasLasFilas) {
+            f.wrs = f.wrs.map((wr: string) => {
+              if (knownWrSet.has(wr)) return wr;
+
+              // Buscar si existe un WR en BD con distancia 1 (típica confusión matriz de puntos)
+              for (const known of knownWrSet) {
+                if (known.length === wr.length && known.startsWith('WR000')) {
+                  let diffCount = 0;
+                  let diffIdx = -1;
+                  for (let i = 0; i < wr.length; i++) {
+                    if (wr[i] !== known[i]) {
+                      diffCount++;
+                      diffIdx = i;
+                    }
+                  }
+                  if (diffCount === 1) {
+                    const charWr = wr[diffIdx];
+                    const charKnown = known[diffIdx];
+                    const isCommonConfusion =
+                      (charWr === '4' && charKnown === '1') ||
+                      (charWr === '1' && charKnown === '4') ||
+                      (charWr === '0' && charKnown === '8') ||
+                      (charWr === '8' && charKnown === '0') ||
+                      (charWr === '7' && charKnown === '1') ||
+                      (charWr === '1' && charKnown === '7');
+
+                    if (isCommonConfusion) {
+                      console.log(`[OCR Auto-Correction]: Replaced ${wr} with ${known} (matched known DB package with 1-char difference)`);
+                      return known;
+                    }
+                  }
+                }
+              }
+              return wr;
+            });
+          }
+        }
+      } catch (dbErr) {
+        console.warn('[OCR Reconcile Warning]: Error checking known packages in DB:', dbErr);
       }
 
       // Reconciliación Matemática de Cuadre

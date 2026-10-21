@@ -735,9 +735,9 @@ export default function InventoryFilterBar({
               </select>
             </div>
 
-            {/* Empaque */}
+            {/* Tipo de Caja */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <span style={{ fontWeight: 700, color: '#64748b' }}>Empaque:</span>
+              <span style={{ fontWeight: 700, color: '#64748b' }}>Tipo de Caja:</span>
               <select
                 value={packageTypeFilter}
                 onChange={e => setPackageTypeFilter(e.target.value)}
@@ -749,9 +749,10 @@ export default function InventoryFilterBar({
                   background: '#ffffff'
                 }}
               >
-                <option value="ALL">Todos los Empaques</option>
+                <option value="ALL">Todos los Tipos</option>
                 <option value="CAJA">CAJA</option>
                 <option value="SOBRE">SOBRE</option>
+                <option value="BOLSA">BOLSA</option>
                 <option value="SACA">SACA</option>
               </select>
             </div>

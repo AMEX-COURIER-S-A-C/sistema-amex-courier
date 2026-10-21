@@ -9,7 +9,7 @@ export function renderPackagesTableCanvas(packages: Paquete[]): HTMLCanvasElemen
   const canvas = document.createElement('canvas');
   const dpr = 3; // Factor de resolución 3x Ultra-HD para nitidez cristalina en WhatsApp al hacer zoom
 
-  const width = 1040;
+  const width = 1140;
   const headerHeight = 90;
   const columnHeaderHeight = 40;
   const rowHeight = 44;
@@ -99,19 +99,21 @@ export function renderPackagesTableCanvas(packages: Paquete[]): HTMLCanvasElemen
   ctx.fillStyle = '#334155';
   ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
 
-  // Coordenadas de columnas optimizadas para ancho 1040px:
+  // Coordenadas de columnas optimizadas para ancho 1140px:
   const colX = {
     cliente: 24,
-    wr: 310,
-    tracking: 460,
-    peso: 650,
-    ubicacion: 745,
-    estado: 880
+    wr: 290,
+    tracking: 430,
+    tipoCaja: 580,
+    peso: 710,
+    ubicacion: 805,
+    estado: 940
   };
 
   ctx.fillText('CLIENTE / CONSIGNATARIO', colX.cliente, colY + 25);
   ctx.fillText('GUÍA WR', colX.wr, colY + 25);
   ctx.fillText('TRACKING', colX.tracking, colY + 25);
+  ctx.fillText('TIPO DE CAJA', colX.tipoCaja, colY + 25);
   ctx.fillText('PESO', colX.peso, colY + 25);
   ctx.fillText('UBICACIÓN', colX.ubicacion, colY + 25);
   ctx.fillText('ESTADO AMEX', colX.estado, colY + 25);
@@ -132,23 +134,61 @@ export function renderPackagesTableCanvas(packages: Paquete[]): HTMLCanvasElemen
     ctx.fillStyle = '#0f172a';
     ctx.font = 'bold 13.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     const rawNombre = (pkg.nombreConsignatario || 'CLIENTE AMEX').trim();
-    const cleanNombre = rawNombre.length > 32 ? `${rawNombre.slice(0, 30)}...` : rawNombre;
+    const cleanNombre = rawNombre.length > 30 ? `${rawNombre.slice(0, 28)}...` : rawNombre;
     ctx.fillText(cleanNombre, colX.cliente, currentY + 27);
 
     // Columna 2: Guía WR (Extra nítida, negrita y color azul institucional)
     ctx.fillStyle = '#1e3a8a';
     ctx.font = 'bold 13.5px "JetBrains Mono", Consolas, "Liberation Mono", Menlo, monospace';
     const wrText = pkg.numeroReciboBodega || pkg.tracking || 'S/N';
-    ctx.fillText(wrText, colX.wr, currentY + 27);
+    const cleanWr = wrText.length > 14 ? `${wrText.slice(0, 13)}.` : wrText;
+    ctx.fillText(cleanWr, colX.wr, currentY + 27);
 
     // Columna 3: Tracking
     ctx.fillStyle = '#334155';
     ctx.font = '600 12px "JetBrains Mono", Consolas, "Liberation Mono", Menlo, monospace';
     const rawTracking = (pkg.tracking || '-').trim();
-    const cleanTracking = rawTracking.length > 20 ? `${rawTracking.slice(0, 18)}...` : rawTracking;
+    const cleanTracking = rawTracking.length > 18 ? `${rawTracking.slice(0, 16)}...` : rawTracking;
     ctx.fillText(cleanTracking, colX.tracking, currentY + 27);
 
-    // Columna 4: Peso
+    // Columna 4: Tipo de Caja (Píldora distintiva de alto contraste)
+    const rawTipo = (pkg.tipoEmpaque || 'CAJA').trim().toUpperCase();
+    let tipoBg = '#fef3c7';
+    let tipoColor = '#92400e';
+    let tipoBorder = '#fde68a';
+
+    if (rawTipo.includes('SOBRE')) {
+      tipoBg = '#e0e7ff';
+      tipoColor = '#3730a3';
+      tipoBorder = '#c7d2fe';
+    } else if (rawTipo.includes('BOLSA')) {
+      tipoBg = '#ecfdf5';
+      tipoColor = '#065f46';
+      tipoBorder = '#a7f3d0';
+    } else if (rawTipo.includes('SACA')) {
+      tipoBg = '#f3e8ff';
+      tipoColor = '#6b21a8';
+      tipoBorder = '#e9d5ff';
+    }
+
+    const tipoLabel = rawTipo.length > 12 ? `${rawTipo.slice(0, 11)}.` : rawTipo;
+    ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    const tipoWidth = ctx.measureText(tipoLabel).width + 16;
+    const tipoPillY = currentY + 10;
+
+    ctx.fillStyle = tipoBg;
+    ctx.beginPath();
+    ctx.roundRect(colX.tipoCaja, tipoPillY, tipoWidth, 24, 6);
+    ctx.fill();
+
+    ctx.strokeStyle = tipoBorder;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.fillStyle = tipoColor;
+    ctx.fillText(tipoLabel, colX.tipoCaja + 8, tipoPillY + 17);
+
+    // Columna 5: Peso
     ctx.fillStyle = '#0f172a';
     ctx.font = 'bold 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     const pNum = Number(pkg.pesoKg);

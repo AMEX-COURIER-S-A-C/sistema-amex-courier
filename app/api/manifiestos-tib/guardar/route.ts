@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { authorizeUser, getUserDisplayName } from '@/lib/auth/guards';
+import { normalizeTibWr } from '@/lib/tib/apiClient';
 
 export async function POST(req: NextRequest) {
   try {
@@ -61,11 +62,11 @@ export async function POST(req: NextRequest) {
         });
       } else {
         wrs.forEach((wrItem: string) => {
-          const wrClean = String(wrItem).trim().toUpperCase();
+          const wrClean = normalizeTibWr(wrItem);
           detallesInserts.push({
             manifiesto_id: manifiesto.id,
             numero_guia_amx: guia,
-            numero_wr: wrClean,
+            numero_wr: wrClean || 'SIN_WR',
             observacion: obs,
             fila_index: idx + 1
           });

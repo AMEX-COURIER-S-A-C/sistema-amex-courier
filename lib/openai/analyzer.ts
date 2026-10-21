@@ -5,8 +5,9 @@ function getOpenAiKey(): string {
 }
 
 // Modelos por defecto y enrutamiento inteligente
-export const DEFAULT_OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o';
-export const FAST_TEXT_MODEL = process.env.OPENAI_FAST_MODEL || 'gpt-4o-mini';
+export const DEFAULT_OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-6-luna';
+export const FAST_TEXT_MODEL = process.env.OPENAI_FAST_MODEL || 'gpt-6-luna';
+export const MANIFEST_AI_MODEL = process.env.OPENAI_MANIFEST_MODEL || 'gpt-6.1-sol';
 export const SHALOM_AI_MODEL = process.env.OPENAI_SHALOM_MODEL || 'gpt-6-luna';
 
 /**
@@ -141,6 +142,7 @@ export function getOpenAiModelOptions(maxTokens = 500, modelOverride?: string) {
   const modelName = (modelOverride || DEFAULT_OPENAI_MODEL).toLowerCase();
   const isReasoningModel =
     modelName.includes('luna') ||
+    modelName.includes('sol') ||
     modelName.includes('o1') ||
     modelName.includes('o3') ||
     modelName.startsWith('gpt-6');
