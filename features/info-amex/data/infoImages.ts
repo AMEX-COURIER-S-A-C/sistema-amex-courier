@@ -1,7 +1,7 @@
 export interface AmexInfoImage {
   id: string;
   title: string;
-  category: 'tarifas' | 'pagos' | 'casillero' | 'sede';
+  category: 'tarifas' | 'pagos' | 'casillero' | 'sede' | 'cobertura';
   categoryLabel: string;
   badgeColor: string;
   filename: string;
@@ -61,6 +61,44 @@ export const AMEX_INFO_IMAGES: AmexInfoImage[] = [
 ⏱️ *Tiempo estimado de entrega:* 5 a 7 días hábiles una vez recibido en nuestro almacén de Miami.
 📱 *WhatsApp directo de atención:* +51 942 804 464
 📸 *Instagram:* @AMEXCOURIERINT`
+  },
+  {
+    id: 'cobertura-delivery',
+    title: 'Cobertura Delivery Free - Distritos Lima',
+    category: 'cobertura',
+    categoryLabel: 'Cobertura Delivery Free',
+    badgeColor: '#f97316',
+    filename: 'cobertura-delivery-free.jpg',
+    imageUrl: '/images/info-amex/cobertura-delivery-free.jpg',
+    description: 'Zonas y distritos con Delivery Free incluido en Lima Metropolitana: San Isidro, Lince, Miraflores, Jesús María, Pueblo Libre, San Miguel, Magdalena, San Borja, Santiago de Surco y La Molina.',
+    quickSummary: [
+      'Delivery Free en 10 distritos seleccionados de Lima',
+      'San Isidro, Lince, Miraflores, Jesús María',
+      'Pueblo Libre, San Miguel, Magdalena, San Borja',
+      'Santiago de Surco y La Molina',
+      '*Consulta el rango de envío según tu distrito',
+      '**Sujeto a restricciones por lejanía o accesibilidad'
+    ],
+    suggestedWhatsappText: `🛵 *COBERTURA DELIVERY FREE - AMEX COURIER* 📦✨
+
+¡Recibe tus compras directo en tu domicilio sin costo adicional en distritos seleccionados!
+
+📍 *Distritos con Cobertura Free:*
+• San Isidro
+• Lince
+• Miraflores
+• Jesús María
+• Pueblo Libre
+• San Miguel
+• Magdalena
+• San Borja
+• Santiago de Surco
+• La Molina
+
+📌 *Información importante:*
+* Consulta el rango de envío según tu dirección exacta.
+** Sujeto a restricciones de acceso y zonas periféricas.
+📦 Para otros distritos y provincias, realizamos envíos seguros vía courier o agencia (Shalom / Olva / Cruz del Sur).`
   },
   {
     id: 'shipping-address',

@@ -217,6 +217,13 @@ export default function InfoAmexTab() {
             Cuentas BBVA
           </button>
           <button
+            onClick={() => setSelectedCategory('cobertura')}
+            className={`info-amex-filter-btn ${selectedCategory === 'cobertura' ? 'active' : ''}`}
+          >
+            <i className="fa-solid fa-map-location-dot" />
+            Cobertura Free
+          </button>
+          <button
             onClick={() => setSelectedCategory('sede')}
             className={`info-amex-filter-btn ${selectedCategory === 'sede' ? 'active' : ''}`}
           >
