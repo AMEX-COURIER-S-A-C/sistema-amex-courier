@@ -79,6 +79,8 @@ export default function SyncTibImagesModal({
   const [scope, setScope] = useState<'current' | 'database'>('current');
   const [forceRefresh, setForceRefresh] = useState(false);
   const [limitSelection, setLimitSelection] = useState<number | 'all'>('all');
+  const [phaseStatus, setPhaseStatus] = useState<string>('');
+  const [statsBreakdown, setStatsBreakdown] = useState<{ oficial: number; fallback: number; notFound: number } | null>(null);
 
   // Opciones de sincronización (Campos a enriquecer)
   const [syncOptions, setSyncOptions] = useState({
@@ -270,7 +272,7 @@ export default function SyncTibImagesModal({
     return source;
   }, [scope, currentIncomplete.list, dbStats, limitSelection]);
 
-  // Iniciar la sincronización y enriquecimiento masivo
+  // Iniciar la sincronización y enriquecimiento masivo híbrido
   const handleStartSync = async () => {
     if (itemsToProcess.length === 0) return;
 
@@ -282,12 +284,15 @@ export default function SyncTibImagesModal({
     setNotFoundCount(0);
     setErrorCount(0);
     setLogs([]);
+    setStatsBreakdown({ oficial: 0, fallback: 0, notFound: 0 });
 
-    const CHUNK_SIZE = 3; // Lotes concurrentes
+    const CHUNK_SIZE = 50; // Lotes en bloque procesados en backend
     let currentProcessed = 0;
     let currentSuccess = 0;
     let currentNotFound = 0;
     let currentErrors = 0;
+    let totalOficial = 0;
+    let totalFallback = 0;
 
     for (let i = 0; i < itemsToProcess.length; i += CHUNK_SIZE) {
       if (cancelRef.current) {
@@ -296,79 +301,94 @@ export default function SyncTibImagesModal({
       }
 
       const chunk = itemsToProcess.slice(i, i + CHUNK_SIZE);
-      setCurrentWr(chunk.map((item) => item.numeroReciboBodega).join(', '));
+      const chunkWrs = chunk.map((item) => item.numeroReciboBodega);
+      const chunkIds = chunk.map((item) => item.id);
 
-      await Promise.all(
-        chunk.map(async (item) => {
-          if (cancelRef.current) return;
-          try {
-            const res = await fetch('/api/paquetes/tib-image', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                wr: item.numeroReciboBodega,
-                id: item.id,
-                forceRefresh,
-                syncOptions,
-              }),
-            });
+      setCurrentWr(chunkWrs.slice(0, 3).join(', ') + (chunkWrs.length > 3 ? ` (+${chunkWrs.length - 3} más)` : ''));
+      setPhaseStatus('Fase 1: Cruzando en bloque con la API Oficial TIB (.env)...');
 
-            const data = await res.json();
-            if (res.ok && data.found) {
+      try {
+        const res = await fetch('/api/paquetes/tib-enrich-hybrid', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            packageIds: chunkIds,
+            wrs: chunkWrs,
+            forceRefresh,
+            syncOptions,
+          }),
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success && Array.isArray(data.resultados)) {
+          const breakdown = data.desglose || {};
+          totalOficial += breakdown.resueltosApiOficial || 0;
+          totalFallback += breakdown.resueltosFallback || 0;
+
+          for (const itemRes of data.resultados) {
+            currentProcessed++;
+            if (itemRes.found) {
               currentSuccess++;
+              const sourceTag = itemRes.source === 'official_api' ? '⚡ API Oficial B2B' : '🌐 Respaldo Unitario';
               const fieldsLabel =
-                Array.isArray(data.updatedFields) && data.updatedFields.length > 0
-                  ? `Completado: ${data.updatedFields.join(', ')}`
-                  : 'Sincronizado sin cambios nuevos';
+                Array.isArray(itemRes.updatedFields) && itemRes.updatedFields.length > 0
+                  ? `[${sourceTag}] ${itemRes.updatedFields.join(', ')}`
+                  : `[${sourceTag}] Sincronizado`;
 
-              addLog(item.numeroReciboBodega, 'ok', fieldsLabel);
+              addLog(itemRes.wr, 'ok', fieldsLabel);
 
               if (onPackageUpdated) {
                 onPackageUpdated(
-                  item.numeroReciboBodega,
-                  data.tibImagenUrl,
-                  data.tibTicketPdfUrl,
-                  data.updatedData
+                  itemRes.wr,
+                  itemRes.fotoUrl || '',
+                  itemRes.ticketUrl || '',
+                  {
+                    tracking: itemRes.tracking,
+                    nombreConsignatario: itemRes.cliente,
+                    pesoKg: itemRes.pesoKg,
+                    tipoEmpaque: itemRes.empaque,
+                    estadoTib: itemRes.estadoTib,
+                  }
                 );
               }
-            } else if (res.ok && !data.found) {
-              currentNotFound++;
-              addLog(
-                item.numeroReciboBodega,
-                'not_found',
-                data.message || 'Sin registro en servidor TIB.'
-              );
             } else {
-              currentErrors++;
-              addLog(
-                item.numeroReciboBodega,
-                'error',
-                data.error || 'Respuesta inválida de TIB.'
-              );
+              currentNotFound++;
+              addLog(itemRes.wr, 'not_found', 'Sin registro en servidor TIB.');
             }
-          } catch (err: any) {
-            currentErrors++;
-            addLog(
-              item.numeroReciboBodega,
-              'error',
-              err?.message || 'Error de conexión con el servidor.'
-            );
-          } finally {
-            currentProcessed++;
-            setProcessedCount(currentProcessed);
-            setSuccessCount(currentSuccess);
-            setNotFoundCount(currentNotFound);
-            setErrorCount(currentErrors);
           }
-        })
-      );
+        } else {
+          currentErrors += chunk.length;
+          currentProcessed += chunk.length;
+          addLog('LOTE', 'error', data.error || 'Error procesando lote en TIB.');
+        }
+      } catch (err: any) {
+        currentErrors += chunk.length;
+        currentProcessed += chunk.length;
+        addLog('LOTE', 'error', err?.message || 'Error de conexión con el servidor.');
+      }
 
-      // Pausa de 150ms entre lotes para resguardar la API de TIB
-      await new Promise((r) => setTimeout(r, 150));
+      setProcessedCount(currentProcessed);
+      setSuccessCount(currentSuccess);
+      setNotFoundCount(currentNotFound);
+      setErrorCount(currentErrors);
+      setStatsBreakdown({
+        oficial: totalOficial,
+        fallback: totalFallback,
+        notFound: currentNotFound,
+      });
+    }
+
+    if (onRefreshData) {
+      try {
+        await onRefreshData();
+      } catch (e) {
+        console.warn('Error refrescando tabla:', e);
+      }
     }
 
     setStep('done');
     setCurrentWr(null);
+    setPhaseStatus('');
   };
 
   const addLog = (wr: string, status: 'ok' | 'not_found' | 'error' | 'cancelled', message: string) => {
@@ -973,6 +993,12 @@ export default function SyncTibImagesModal({
                   />
                 </div>
 
+                {phaseStatus && (
+                  <div style={{ fontSize: '12.5px', color: '#2563eb', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Sparkles className="w-3.5 h-3.5 text-blue-500 animate-pulse" />
+                    <span>{phaseStatus}</span>
+                  </div>
+                )}
                 {currentWr && (
                   <div style={{ fontSize: '12px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <span>Consultando TIB para lote:</span>
@@ -1129,10 +1155,10 @@ export default function SyncTibImagesModal({
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
                   gap: '12px',
                   width: '100%',
-                  maxWidth: '520px'
+                  maxWidth: '680px'
                 }}
               >
                 <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
@@ -1142,10 +1168,17 @@ export default function SyncTibImagesModal({
                   </div>
                 </div>
 
+                <div style={{ background: '#eff6ff', padding: '12px', borderRadius: '10px', border: '1px solid #bfdbfe' }}>
+                  <div style={{ fontSize: '11px', color: '#1d4ed8', fontWeight: 700 }}>⚡ API OFICIAL TIB</div>
+                  <div style={{ fontSize: '20px', fontWeight: 900, color: '#1e40af', marginTop: '2px' }}>
+                    {statsBreakdown?.oficial ?? successCount}
+                  </div>
+                </div>
+
                 <div style={{ background: '#f0fdf4', padding: '12px', borderRadius: '10px', border: '1px solid #bbf7d0' }}>
-                  <div style={{ fontSize: '11px', color: '#166534', fontWeight: 700 }}>ENRIQUECIDAS CON ÉXITO</div>
+                  <div style={{ fontSize: '11px', color: '#166534', fontWeight: 700 }}>🌐 RESPALDO UNITARIO</div>
                   <div style={{ fontSize: '20px', fontWeight: 900, color: '#15803d', marginTop: '2px' }}>
-                    {successCount}
+                    {statsBreakdown?.fallback ?? 0}
                   </div>
                 </div>
 
