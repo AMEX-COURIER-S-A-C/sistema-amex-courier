@@ -203,7 +203,10 @@ Debes extraer con total precisión:
 2. "filas": Todas las filas de la tabla presentes en esta página 1:
    INSTRUCCIONES CRÍTICAS DE FORMATO Y OCR:
    - FORMATO CANÓNICO DE CÓDIGO WR: Todo recibo de bodega TIB tiene EXACTAMENTE 11 caracteres: "WR" + TRES CEROS INICIALES ("000") + 6 DÍGITOS CORRELATIVOS (ejemplo: "WR000481141"). NUNCA omitas el tercer cero aunque la tinta del margen izquierdo esté desgastada o cortada. Si ves "WR00482...", el código real impreso es "WR000482...".
-   - ALERTA TIPOGRÁFICA DE MATRIZ DE PUNTOS (0 vs 8 y 1 vs 4): En esta tipografía el dígito "0" suele tener un punto central que el OCR confunde con "8" (ej: "WR000482002" termina en "2002", NO "2802"). Igualmente el dígito "1" es un trazo fino que no debe confundirse con "4" (ej: "WR000481141" termina en "1141", NO "4141"). Verifica con lupa cada dígito.
+   - ALERTA TIPOGRÁFICA DE MATRIZ DE PUNTOS (0 vs 8, 1 vs 4, 1 vs 7): En esta tipografía de agujas, NUNCA confundas: 
+     * "0" con "8": "WR000482002" termina en "2002" (NO "2802"); "WR000481988" termina en "988" (NO "908").
+     * "1" con "4": "WR000480131" tiene "131" (NO "431"); "WR000481904" termina en "904" (NO "901").
+     * "1" con "7": "WR000480177" tiene "177" (NO "777"); "WR000481101" tiene "101" (NO "701").
    - FORMATO DE GUÍA AMX: Siempre inicia con "AMX" seguido de dígitos correlativos (ej: "AMX000010658").
    - ALINEACIÓN POR LÍNEA HORIZONTAL: Cada fila está estrictamente delimitada por las líneas horizontales negras continuas de la tabla. Sigue la cuadrícula fila por fila de arriba a abajo. Cada código AMX de la columna izquierda se corresponde ÚNICA Y EXCLUSIVAMENTE con el código WR que está dentro de sus MISMAS líneas divisorias horizontales.
    - FILAS CON MÚLTIPLES PAQUETES: Si una fila tiene 2 o más códigos WR dentro de la misma celda (por ejemplo separados por '/' o '-', o en varios renglones dentro de la misma casilla), agrúpalos TODOS en el arreglo "wrs" de ESA misma guía. NUNCA desplaces códigos WR a las filas contiguas.
@@ -214,7 +217,10 @@ La tabla contiene 3 columnas: "GUIA", "OBSERVACION" y "WR".
 
 INSTRUCCIONES CRÍTICAS DE FORMATO Y OCR:
 - FORMATO CANÓNICO DE CÓDIGO WR: Todo recibo de bodega TIB tiene EXACTAMENTE 11 caracteres: "WR" + TRES CEROS INICIALES ("000") + 6 DÍGITOS CORRELATIVOS (ejemplo: "WR000481141"). Si la tinta del borde izquierdo está tenue o cortada y ves "WR00...", debes saber que siempre son 3 ceros: "WR000...".
-- ALERTA TIPOGRÁFICA DE MATRIZ DE PUNTOS (0 vs 8 y 1 vs 4): En la tipografía física de matriz de puntos, el dígito "0" suele confundirse con "8" (ej: "WR000482002" termina en "2002", NO "2802"). Igualmente el dígito "1" suele confundirse con "4" (ej: "WR000481141" termina en "1141", NO "4141"). Verifica minuciosamente cada dígito.
+- ALERTA TIPOGRÁFICA DE MATRIZ DE PUNTOS (0 vs 8, 1 vs 4, 1 vs 7): En esta tipografía física de agujas, mucho cuidado con no confundir:
+  * "0" con "8" (ej: "WR000482002" termina en "2002", NO "2802"; "WR000481988" termina en "988", NO "908").
+  * "1" con "4" (ej: "WR000480131" tiene "131", NO "431"; "WR000481904" termina en "904", NO "901").
+  * "1" con "7" (ej: "WR000480177" tiene "177", NO "777"; "WR000481101" tiene "101", NO "701").
 - ALINEACIÓN POR LÍNEA HORIZONTAL: Cada fila está estrictamente delimitada por las líneas horizontales negras continuas de la tabla. Sigue la cuadrícula fila por fila de arriba a abajo. Cada código AMX de la columna izquierda se corresponde ÚNICA Y EXCLUSIVAMENTE con el código WR que está dentro de sus MISMAS líneas divisorias horizontales.
 - FILAS CON MÚLTIPLES PAQUETES: Si una fila tiene 2 o más códigos WR dentro de la misma celda (por ejemplo separados por '/' o '-', o en varios renglones dentro de la misma casilla), agrúpalos TODOS en el arreglo "wrs" de ESA misma guía. NUNCA desplaces códigos WR hacia arriba o hacia abajo.
 - NUNCA DESPLACES FILAS: Si una celda WR estuviese en blanco, asigna "wrs": []. NUNCA le asignes a una fila el WR de otra fila.
