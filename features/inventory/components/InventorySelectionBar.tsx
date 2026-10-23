@@ -166,7 +166,7 @@ export default function InventorySelectionBar({
           onMouseLeave={e => (e.currentTarget.style.background = '#dc2626')}
         >
           <Trash2 className="w-3.5 h-3.5" />
-          <span>Eliminar</span>
+          <span title="Enviar a papelera (Soft Delete)">Papelera</span>
         </button>
       </div>
 

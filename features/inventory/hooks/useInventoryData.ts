@@ -13,7 +13,7 @@ import {
 import { supabase } from '@/lib/supabase/client';
 import { matchesFuzzySearch } from '@/lib/fuzzySearch';
 import { exportPaquetesToExcel, exportKardexToExcel } from '@/lib/excelExport';
-import { confirmDialog, alertDialog } from '@/lib/dialog';
+import { confirmDialog, alertDialog, promptDialog } from '@/lib/dialog';
 import { toast } from '@/lib/toast';
 import { soundEffects } from '@/lib/audio/soundEffects';
 import { inventoryService } from '../services/inventory.service';
@@ -522,13 +522,15 @@ export function useInventoryData({
     setSelectedPackageForAction(null);
   };
 
-  // Eliminar paquete individual
+  // Eliminar paquete individual con advertencia explícita de papelera
   const handleDeletePackage = async (pkgId: string, wrCode: string) => {
     const confirmed = await confirmDialog({
-      title: 'Eliminar paquete',
-      message: `¿Estás seguro de eliminar el paquete ${wrCode} de la base de datos de Almacén Lince?`,
-      confirmText: 'Sí, eliminar',
-      variant: 'danger'
+      title: '⚠️ Confirmar Envío a Papelera',
+      message: `¿Estás seguro de enviar el paquete ${wrCode} a la papelera (Soft Delete)? Dejará de mostrarse en la vista activa de Almacén Lince, pero sus datos se conservarán en auditoría.`,
+      confirmText: 'Sí, enviar a papelera',
+      cancelText: 'Cancelar y conservar',
+      variant: 'danger',
+      safeFocusCancel: true
     });
     if (!confirmed) return;
     try {
@@ -539,11 +541,12 @@ export function useInventoryData({
       setServerPaquetes(prev => prev.filter(x => x.id !== pkgId));
       setServerTotal(prev => Math.max(0, prev - 1));
       setSelectedIds(prev => prev.filter(x => x !== pkgId));
+      toast.success('Paquete en papelera', `El paquete ${wrCode} fue enviado a la papelera (Soft Delete).`);
     } catch (err) {
       console.error('Error eliminando paquete:', err);
       await alertDialog({
         title: 'Error de eliminación',
-        message: 'Error al eliminar paquete.',
+        message: 'No se pudo eliminar el paquete. Inténtalo de nuevo o contacta al administrador.',
         variant: 'danger'
       });
     }
@@ -812,16 +815,46 @@ export function useInventoryData({
     }
   };
 
-  // Eliminación masiva en lote
+  // Eliminación masiva en lote con máxima seguridad y confirmación estricta
   const handleBatchDelete = async () => {
     if (selectedIds.length === 0) return;
-    const confirmed = await confirmDialog({
-      title: 'Eliminar en lote',
-      message: `¿Estás seguro de eliminar los ${selectedIds.length} paquetes seleccionados de la base de datos?`,
-      confirmText: 'Sí, eliminar lote',
-      variant: 'danger'
-    });
-    if (!confirmed) return;
+    const count = selectedIds.length;
+
+    // Si son 3 o más paquetes (ej: toda una página o un bloque), exigir confirmación escrita estricta
+    if (count >= 3) {
+      const palabraClave = 'ELIMINAR';
+      const input = await promptDialog({
+        title: `🚨 ADVERTENCIA CRÍTICA: Eliminación Masiva (${count} paquetes)`,
+        message: `Estás a punto de enviar a la papelera (Soft Delete) ${count} paquetes seleccionados.\n\nEstos paquetes dejarán de mostrarse en la vista activa de Almacén Lince.\n\nPara confirmar que NO es un error accidental, escribe la palabra "${palabraClave}" (en mayúsculas) a continuación:`,
+        placeholder: 'Escribe ELIMINAR',
+        confirmText: `Confirmar eliminación de ${count} paquetes`,
+        cancelText: 'Cancelar y conservar paquetes',
+        variant: 'danger'
+      });
+
+      if (!input || input.trim().toUpperCase() !== palabraClave) {
+        if (input !== null) {
+          await alertDialog({
+            title: 'Operación cancelada',
+            message: `No escribiste la palabra "${palabraClave}". La eliminación masiva ha sido cancelada por seguridad y ningún paquete fue modificado.`,
+            variant: 'info'
+          });
+        }
+        return;
+      }
+    } else {
+      // Para 1 o 2 paquetes, diálogo de confirmación con enfoque seguro en Cancelar
+      const confirmed = await confirmDialog({
+        title: `⚠️ Confirmar Eliminación en Lote (${count} ${count === 1 ? 'paquete' : 'paquetes'})`,
+        message: `¿Estás seguro de enviar los ${count} paquetes seleccionados a la papelera (Soft Delete)? Dejarán de mostrarse en la vista activa de Almacén Lince.`,
+        confirmText: 'Sí, enviar a papelera',
+        cancelText: 'Cancelar y conservar',
+        variant: 'danger',
+        safeFocusCancel: true
+      });
+      if (!confirmed) return;
+    }
+
     try {
       await inventoryService.batchDelete(selectedIds);
       if (onDeletePackage) {
@@ -830,8 +863,10 @@ export function useInventoryData({
       setServerPaquetes(prev => prev.filter(p => !selectedIds.includes(p.id)));
       setServerTotal(prev => Math.max(0, prev - selectedIds.length));
       setSelectedIds([]);
+      toast.success('Eliminación masiva exitosa', `Se enviaron ${count} paquetes a la papelera (Soft Delete).`);
     } catch (err) {
       console.error('Error eliminando en lote:', err);
+      toast.error('Error masivo', 'Error al procesar la eliminación en lote.');
     }
   };
 
