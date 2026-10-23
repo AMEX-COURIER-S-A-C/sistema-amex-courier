@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Plus,
   Trash2,
@@ -15,7 +15,8 @@ import {
   MessageCircle,
   Smartphone,
   Eye,
-  MapPin
+  MapPin,
+  UserCheck
 } from 'lucide-react';
 import { CrearRutaInput, CrearParadaInput } from '@/types/despacho';
 import {
@@ -28,6 +29,14 @@ import {
 } from '@/lib/utils/phoneUtils';
 import { supabase } from '@/lib/supabase/client';
 import { confirmDialog } from '@/lib/dialog';
+import { despachoService } from '../services/despacho.service';
+
+interface UsuarioChofer {
+  id: string;
+  nombre_completo: string;
+  email: string;
+  rol_nombre?: string;
+}
 
 interface RutaBuilderModalProps {
   isOpen: boolean;
@@ -42,6 +51,12 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
   const [vehiculoPlaca, setVehiculoPlaca] = useState('CFM-085');
   const [fechaDespacho, setFechaDespacho] = useState(new Date().toISOString().slice(0, 10));
   const [notas, setNotas] = useState('');
+
+  // Usuarios registrados del sistema para selección de chofer
+  const [usuariosSistema, setUsuariosSistema] = useState<UsuarioChofer[]>([]);
+  const [isLoadingUsuarios, setIsLoadingUsuarios] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState<string>('');
+  const [isCustomChofer, setIsCustomChofer] = useState(false);
 
   // Paradas de la ruta
   const [paradas, setParadas] = useState<CrearParadaInput[]>([
@@ -68,6 +83,67 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
   const [isSearchingDb, setIsSearchingDb] = useState(false);
   const [dbEnrichMsg, setDbEnrichMsg] = useState<string | null>(null);
   const [activeTabBuilder, setActiveTabBuilder] = useState<'editor' | 'preview'>('editor');
+
+  // Cargar usuarios registrados del sistema al abrir el modal
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let isMounted = true;
+    setIsLoadingUsuarios(true);
+
+    despachoService.getUsuariosChoferes()
+      .then(users => {
+        if (!isMounted) return;
+        setUsuariosSistema(users);
+        setIsLoadingUsuarios(false);
+
+        if (choferNombre.trim()) {
+          const match = users.find(u => u.nombre_completo.toLowerCase() === choferNombre.trim().toLowerCase());
+          if (match) {
+            setSelectedUserId(match.id);
+            setIsCustomChofer(false);
+          } else {
+            setSelectedUserId('__custom__');
+            setIsCustomChofer(true);
+          }
+        } else if (users.length > 0) {
+          // Pre-seleccionar usuario sugerido si existe (ej. Angel u operador de almacén)
+          const suggested = users.find(u =>
+            u.nombre_completo.toLowerCase().includes('angel') ||
+            (u.rol_nombre && u.rol_nombre.toLowerCase().includes('almacen'))
+          ) || users[0];
+
+          if (suggested) {
+            setSelectedUserId(suggested.id);
+            setChoferNombre(suggested.nombre_completo);
+          }
+        }
+      })
+      .catch(err => {
+        console.warn('Error al cargar usuarios choferes:', err);
+        if (isMounted) setIsLoadingUsuarios(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen]);
+
+  // Selección de usuario chofer
+  const handleChoferSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value;
+    setSelectedUserId(val);
+
+    if (val === '__custom__') {
+      setIsCustomChofer(true);
+    } else {
+      setIsCustomChofer(false);
+      const found = usuariosSistema.find(u => u.id === val);
+      if (found) {
+        setChoferNombre(found.nombre_completo);
+      }
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -461,7 +537,7 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
     setErrorMsg('');
 
     if (!choferNombre.trim()) {
-      setErrorMsg('Ingresa el nombre del chofer o motorizado responsable.');
+      setErrorMsg('Selecciona un usuario registrado como chofer responsable.');
       return;
     }
 
@@ -901,23 +977,63 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
               {/* Formulario de Datos de la Ruta */}
               <div className="ruta-builder-meta-grid">
                 <div>
-                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
-                    Chofer / Repartidor *
+                  <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11.5px', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
+                    <span>Chofer / Usuario Responsable *</span>
+                    {isLoadingUsuarios && (
+                      <span style={{ fontSize: '10.5px', color: '#2563eb', fontWeight: 600 }}>Cargando usuarios...</span>
+                    )}
                   </label>
-                  <input
-                    type="text"
-                    placeholder="Ej: Carlos Chofer"
-                    value={choferNombre}
-                    onChange={e => setChoferNombre(e.target.value)}
+
+                  <select
+                    value={selectedUserId || (isCustomChofer ? '__custom__' : (choferNombre ? '__custom__' : ''))}
+                    onChange={handleChoferSelectChange}
+                    disabled={isLoadingUsuarios}
                     style={{
                       width: '100%',
                       padding: '8px 10px',
                       borderRadius: '6px',
                       border: '1px solid #cbd5e1',
                       fontSize: '13px',
-                      fontWeight: 600
+                      fontWeight: 700,
+                      background: '#ffffff',
+                      color: '#0f172a',
+                      cursor: 'pointer'
                     }}
-                  />
+                  >
+                    <option value="" disabled>
+                      {isLoadingUsuarios ? 'Cargando usuarios del sistema...' : '-- Seleccionar Usuario Registrado --'}
+                    </option>
+                    {usuariosSistema.map(u => (
+                      <option key={u.id} value={u.id}>
+                        👤 {u.nombre_completo} {u.rol_nombre ? `(${u.rol_nombre})` : ''}
+                      </option>
+                    ))}
+                    <option value="__custom__">✏️ Otro / Escribir chofer manual...</option>
+                  </select>
+
+                  {isCustomChofer && (
+                    <div style={{ marginTop: '6px' }}>
+                      <input
+                        type="text"
+                        placeholder="Escribe el nombre del chofer..."
+                        value={choferNombre}
+                        onChange={e => setChoferNombre(e.target.value)}
+                        autoFocus
+                        style={{
+                          width: '100%',
+                          padding: '7px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid #93c5fd',
+                          fontSize: '12.5px',
+                          fontWeight: 600,
+                          background: '#eff6ff'
+                        }}
+                      />
+                      <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
+                        Chofer no registrado en el sistema
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div>

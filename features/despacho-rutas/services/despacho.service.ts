@@ -231,6 +231,45 @@ export class DespachoService {
     return data.fotos || [];
   }
 
+  /**
+   * Obtiene la lista de usuarios registrados en el sistema para asignación como chofer
+   */
+  async getUsuariosChoferes(): Promise<{ id: string; nombre_completo: string; email: string; rol_nombre: string }[]> {
+    try {
+      const res = await fetch('/api/usuarios', { cache: 'no-store' });
+      if (res.ok) {
+        const json = await res.json();
+        if (Array.isArray(json.usuarios) && json.usuarios.length > 0) {
+          return json.usuarios;
+        }
+      }
+    } catch (err) {
+      console.warn('Error al llamar /api/usuarios:', err);
+    }
+
+    // Fallback directo a supabase si /api/usuarios fallara
+    try {
+      const { data } = await supabase
+        .from('perfiles_usuarios')
+        .select('id, nombre_completo, email, activo')
+        .eq('activo', true)
+        .order('nombre_completo');
+
+      if (data && data.length > 0) {
+        return data.map(d => ({
+          id: d.id,
+          nombre_completo: d.nombre_completo || d.email?.split('@')[0] || 'Usuario',
+          email: d.email || '',
+          rol_nombre: 'Usuario'
+        }));
+      }
+    } catch {
+      // Ignorar fallback
+    }
+
+    return [];
+  }
+
   private mapRutaDbToDomain(db: any): DespachoRuta {
     return {
       id: db.id,
