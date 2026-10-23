@@ -54,6 +54,24 @@ body {
   overflow: hidden;
 }
 
+/* Permitir scroll vertical en la página de login y vistas móviles que lo requieran */
+body.login-page,
+body:has(.amex-login-shell),
+body:has(.amex-login-viewport) {
+  height: auto !important;
+  min-height: 100dvh !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+@media (max-width: 768px) {
+  body.allow-mobile-scroll {
+    height: auto !important;
+    min-height: 100dvh !important;
+    overflow-y: auto !important;
+  }
+}
+
 /* Ocultar flechitas (spinners) de inputs numéricos */
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button,

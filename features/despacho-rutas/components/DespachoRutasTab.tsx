@@ -99,7 +99,216 @@ export default function DespachoRutasTab() {
   }) || [];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '1400px', margin: '0 auto' }}>
+    <div className="despacho-root-container">
+      <style>{`
+        .despacho-root-container {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          max-width: 1400px;
+          margin: 0 auto;
+          width: 100%;
+          box-sizing: border-box;
+        }
+        .despacho-header-card {
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 14px;
+          padding: 20px 24px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 12px;
+        }
+        .despacho-header-title {
+          margin: 0;
+          font-size: 20px;
+          fontWeight: 900;
+          color: #0f172a;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .despacho-header-actions {
+          display: flex;
+          gap: 10px;
+          align-items: center;
+        }
+        .despacho-metrics-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+          gap: 14px;
+        }
+        .despacho-metric-card {
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 12px;
+          padding: 16px;
+        }
+        .despacho-filters-bar {
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 12px;
+          padding: 12px 18px;
+          display: flex;
+          gap: 12px;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+        .despacho-ruta-card {
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 12px;
+          padding: 16px 20px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 16px;
+          box-shadow: 0 1px 3px rgba(15,23,42,0.04);
+          transition: all 0.15s ease;
+          position: relative;
+          box-sizing: border-box;
+        }
+        .despacho-ruta-col-info {
+          flex: 1 1 280px;
+          min-width: 240px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .despacho-ruta-col-chofer {
+          flex: 1 1 200px;
+          min-width: 180px;
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          padding: 0 12px;
+          border-left: 1px solid #f1f5f9;
+        }
+        .despacho-ruta-col-progreso {
+          flex: 1 1 230px;
+          min-width: 200px;
+          display: flex;
+          flex-direction: column;
+          gap: 5px;
+          padding: 0 12px;
+          border-left: 1px solid #f1f5f9;
+        }
+        .despacho-ruta-col-actions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          justify-content: flex-end;
+          flex: 0 0 auto;
+        }
+        .despacho-btn-chofer-primary {
+          background: #2563eb;
+          color: #ffffff;
+          border: none;
+          border-radius: 8px;
+          padding: 9px 15px;
+          font-size: 12.5px;
+          font-weight: 800;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          cursor: pointer;
+          box-shadow: 0 2px 4px rgba(37,99,235,0.25);
+          transition: all 0.15s ease;
+        }
+        .despacho-actions-row-secondary {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        @media (max-width: 768px) {
+          .despacho-root-container {
+            padding: 0 2px;
+            gap: 12px;
+          }
+          .despacho-header-card {
+            padding: 14px 14px;
+            gap: 10px;
+          }
+          .despacho-header-title {
+            font-size: 16.5px !important;
+            line-height: 1.25;
+          }
+          .despacho-header-actions {
+            width: 100%;
+            display: grid;
+            grid-template-columns: 1fr 1.3fr;
+            gap: 8px;
+          }
+          .despacho-header-actions button {
+            width: 100%;
+            justify-content: center;
+            padding: 10px 8px !important;
+            font-size: 12.5px !important;
+          }
+          .despacho-metrics-grid {
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+          }
+          .despacho-metric-card {
+            padding: 10px 12px;
+          }
+          .despacho-metric-card .metric-val {
+            font-size: 19px !important;
+          }
+          .despacho-filters-bar {
+            padding: 10px 12px;
+            gap: 8px;
+          }
+          .despacho-ruta-card {
+            padding: 14px 12px;
+            gap: 10px;
+            flex-direction: column;
+            align-items: stretch;
+          }
+          .despacho-ruta-col-info {
+            min-width: 100%;
+          }
+          .despacho-ruta-col-chofer {
+            min-width: 100%;
+            padding: 8px 0 0 0;
+            border-left: none;
+            border-top: 1px solid #f1f5f9;
+          }
+          .despacho-ruta-col-progreso {
+            min-width: 100%;
+            padding: 8px 0 0 0;
+            border-left: none;
+            border-top: 1px solid #f1f5f9;
+          }
+          .despacho-ruta-col-actions {
+            width: 100%;
+            flex-direction: column;
+            gap: 8px;
+            padding-top: 8px;
+            border-top: 1px solid #f1f5f9;
+          }
+          .despacho-btn-chofer-primary {
+            width: 100% !important;
+            justify-content: center !important;
+            padding: 11px 14px !important;
+            font-size: 13.5px !important;
+          }
+          .despacho-actions-row-secondary {
+            width: 100%;
+            display: grid;
+            grid-template-columns: 1.2fr 1fr 42px;
+            gap: 6px;
+          }
+          .despacho-actions-row-secondary button {
+            justify-content: center !important;
+            padding: 9px 6px !important;
+          }
+        }
+      `}</style>
       {/* 1. MODO CHOFER MÓVIL (Cuando hay una ruta activa seleccionada) */}
       {viewMode === 'chofer' && selectedRuta ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', maxWidth: '650px', margin: '0 auto', width: '100%' }}>
@@ -111,8 +320,8 @@ export default function DespachoRutasTab() {
                 background: '#ffffff',
                 border: '1px solid #cbd5e1',
                 borderRadius: '8px',
-                padding: '8px 14px',
-                fontSize: '13px',
+                padding: '8px 12px',
+                fontSize: '12.5px',
                 fontWeight: 700,
                 color: '#334155',
                 display: 'flex',
@@ -121,7 +330,8 @@ export default function DespachoRutasTab() {
                 cursor: 'pointer'
               }}
             >
-              <ArrowLeft className="w-4 h-4" /> Volver a todas las rutas
+              <ArrowLeft className="w-4 h-4" />
+              <span>Volver a rutas</span>
             </button>
 
             <button
@@ -280,39 +490,17 @@ export default function DespachoRutasTab() {
         /* 2. MODO TABLERO DEL OPERADOR (Lista de todas las rutas) */
         <>
           {/* Cabecera Principal */}
-          <div
-            style={{
-              background: '#ffffff',
-              border: '1px solid #e2e8f0',
-              borderRadius: '14px',
-              padding: '20px 24px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: '12px'
-            }}
-          >
+          <div className="despacho-header-card">
             <div>
-              <h1
-                style={{
-                  margin: 0,
-                  fontSize: '20px',
-                  fontWeight: 900,
-                  color: '#0f172a',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px'
-                }}
-              >
-                <Truck className="w-6 h-6 text-blue-600" /> 16. Rutas & Despacho Chofer (Última Milla)
+              <h1 className="despacho-header-title">
+                <Truck className="w-6 h-6 text-blue-600 shrink-0" /> 16. Rutas & Despacho Chofer (Última Milla)
               </h1>
               <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>
                 Arma los envíos del día sin depender del inventario previo, genera la hoja móvil con WhatsApp y llamadas para el chofer
               </p>
             </div>
 
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <div className="despacho-header-actions">
               <button
                 onClick={() => loadRutas(filtroFecha)}
                 className="btn"
@@ -356,49 +544,32 @@ export default function DespachoRutasTab() {
           </div>
 
           {/* Tarjetas Métricas */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-              gap: '14px'
-            }}
-          >
-            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+          <div className="despacho-metrics-grid">
+            <div className="despacho-metric-card">
               <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 700, marginBottom: '4px' }}>Rutas Registradas</div>
-              <div style={{ fontSize: '24px', fontWeight: 900, color: '#0f172a' }}>{totalRutas}</div>
+              <div className="metric-val" style={{ fontSize: '24px', fontWeight: 900, color: '#0f172a' }}>{totalRutas}</div>
             </div>
 
-            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+            <div className="despacho-metric-card">
               <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 700, marginBottom: '4px' }}>Total Paradas / Envíos</div>
-              <div style={{ fontSize: '24px', fontWeight: 900, color: '#2563eb' }}>{totalParadasGlobal}</div>
+              <div className="metric-val" style={{ fontSize: '24px', fontWeight: 900, color: '#2563eb' }}>{totalParadasGlobal}</div>
             </div>
 
-            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+            <div className="despacho-metric-card">
               <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 700, marginBottom: '4px' }}>Paradas Entregadas</div>
-              <div style={{ fontSize: '24px', fontWeight: 900, color: '#16a34a' }}>{totalEntregadasGlobal}</div>
+              <div className="metric-val" style={{ fontSize: '24px', fontWeight: 900, color: '#16a34a' }}>{totalEntregadasGlobal}</div>
             </div>
 
-            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
+            <div className="despacho-metric-card">
               <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 700, marginBottom: '4px' }}>Cumplimiento Global</div>
-              <div style={{ fontSize: '24px', fontWeight: 900, color: porcentajeGlobal === 100 ? '#16a34a' : '#d97706' }}>
+              <div className="metric-val" style={{ fontSize: '24px', fontWeight: 900, color: porcentajeGlobal === 100 ? '#16a34a' : '#d97706' }}>
                 {porcentajeGlobal}%
               </div>
             </div>
           </div>
 
           {/* Filtros de Búsqueda */}
-          <div
-            style={{
-              background: '#ffffff',
-              border: '1px solid #e2e8f0',
-              borderRadius: '12px',
-              padding: '12px 18px',
-              display: 'flex',
-              gap: '12px',
-              alignItems: 'center',
-              flexWrap: 'wrap'
-            }}
-          >
+          <div className="despacho-filters-bar">
             <div style={{ position: 'relative', flex: '1 1 280px' }}>
               <Search
                 style={{
@@ -510,20 +681,9 @@ export default function DespachoRutasTab() {
                 return (
                   <div
                     key={ruta.id}
+                    className="despacho-ruta-card"
                     style={{
-                      background: '#ffffff',
-                      border: '1px solid #e2e8f0',
                       borderLeft: isCompletada ? '5px solid #16a34a' : '5px solid #2563eb',
-                      borderRadius: '12px',
-                      padding: '16px 20px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      flexWrap: 'wrap',
-                      gap: '16px',
-                      boxShadow: '0 1px 3px rgba(15,23,42,0.04)',
-                      transition: 'all 0.15s ease',
-                      position: 'relative'
                     }}
                   >
                     {/* Badge destacado para la ruta más actual / reciente */}
@@ -549,7 +709,7 @@ export default function DespachoRutasTab() {
                     )}
 
                     {/* Columna 1: Identificador, Estado, Nombre y Fecha */}
-                    <div style={{ flex: '1 1 280px', minWidth: '240px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <div className="despacho-ruta-col-info">
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                         <span
                           style={{
@@ -631,17 +791,7 @@ export default function DespachoRutasTab() {
                     </div>
 
                     {/* Columna 2: Conductor & Vehículo */}
-                    <div
-                      style={{
-                        flex: '1 1 200px',
-                        minWidth: '180px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '3px',
-                        padding: '0 12px',
-                        borderLeft: '1px solid #f1f5f9'
-                      }}
-                    >
+                    <div className="despacho-ruta-col-chofer">
                       <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
                         Chofer / Repartidor
                       </div>
@@ -658,17 +808,7 @@ export default function DespachoRutasTab() {
                     </div>
 
                     {/* Columna 3: Barra de Progreso y Métricas de Entrega */}
-                    <div
-                      style={{
-                        flex: '1 1 230px',
-                        minWidth: '200px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '5px',
-                        padding: '0 12px',
-                        borderLeft: '1px solid #f1f5f9'
-                      }}
-                    >
+                    <div className="despacho-ruta-col-progreso">
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
                         <span style={{ fontWeight: 700, color: '#475569' }}>Entregas Realizadas</span>
                         <strong style={{ color: isCompletada ? '#16a34a' : '#2563eb', fontSize: '12.5px' }}>
@@ -700,111 +840,92 @@ export default function DespachoRutasTab() {
                       </div>
                     </div>
 
-                    {/* Columna 4: Botones de Acción */}
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        justifyContent: 'flex-end',
-                        flex: '0 0 auto'
-                      }}
-                    >
+                    {/* Columna 4: Botones de Acción (Adaptados a Móviles y Desktop) */}
+                    <div className="despacho-ruta-col-actions">
                       {/* Botón Primario: Abrir Vista Chofer */}
                       <button
                         onClick={() => selectRuta(ruta.id, 'chofer')}
-                        style={{
-                          background: '#2563eb',
-                          color: '#ffffff',
-                          border: 'none',
-                          borderRadius: '8px',
-                          padding: '9px 15px',
-                          fontSize: '12.5px',
-                          fontWeight: 800,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          cursor: 'pointer',
-                          boxShadow: '0 2px 4px rgba(37,99,235,0.25)',
-                          transition: 'all 0.15s ease'
-                        }}
+                        className="despacho-btn-chofer-primary"
                         title="Abrir hoja móvil interactiva con llamadas, WhatsApp y mapas"
                       >
-                        <ExternalLink className="w-4 h-4" /> Abrir Vista Chofer
+                        <ExternalLink className="w-4 h-4 shrink-0" /> Abrir Vista Chofer
                       </button>
 
-                      {/* Botón WhatsApp */}
-                      <button
-                        onClick={() => handleEnviarRutaWhatsApp(ruta)}
-                        style={{
-                          background: '#22c55e',
-                          color: '#ffffff',
-                          border: 'none',
-                          borderRadius: '8px',
-                          padding: '9px 12px',
-                          fontSize: '12px',
-                          fontWeight: 700,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '5px',
-                          cursor: 'pointer',
-                          boxShadow: '0 2px 4px rgba(34,197,94,0.25)'
-                        }}
-                        title="Enviar enlace al WhatsApp del chofer"
-                      >
-                        <MessageCircle className="w-4 h-4 fill-current" /> WhatsApp
-                      </button>
+                      {/* Fila Secundaria de Botones */}
+                      <div className="despacho-actions-row-secondary">
+                        {/* Botón WhatsApp */}
+                        <button
+                          onClick={() => handleEnviarRutaWhatsApp(ruta)}
+                          style={{
+                            background: '#22c55e',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '8px',
+                            padding: '9px 12px',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            cursor: 'pointer',
+                            boxShadow: '0 2px 4px rgba(34,197,94,0.25)'
+                          }}
+                          title="Enviar enlace al WhatsApp del chofer"
+                        >
+                          <MessageCircle className="w-4 h-4 fill-current shrink-0" /> WhatsApp
+                        </button>
 
-                      {/* Botón Copiar Enlace */}
-                      <button
-                        onClick={() => handleCopiarEnlaceChofer(ruta)}
-                        style={{
-                          background: copiedRutaId === ruta.id ? '#dcfce7' : '#f8fafc',
-                          border: '1px solid #cbd5e1',
-                          color: copiedRutaId === ruta.id ? '#15803d' : '#334155',
-                          borderRadius: '8px',
-                          padding: '9px 11px',
-                          fontSize: '12px',
-                          fontWeight: 700,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          cursor: 'pointer'
-                        }}
-                        title="Copiar enlace público de la ruta"
-                      >
-                        <Share2 className="w-3.5 h-3.5" />
-                        {copiedRutaId === ruta.id ? '¡Copiado!' : 'Enlace'}
-                      </button>
+                        {/* Botón Copiar Enlace */}
+                        <button
+                          onClick={() => handleCopiarEnlaceChofer(ruta)}
+                          style={{
+                            background: copiedRutaId === ruta.id ? '#dcfce7' : '#f8fafc',
+                            border: '1px solid #cbd5e1',
+                            color: copiedRutaId === ruta.id ? '#15803d' : '#334155',
+                            borderRadius: '8px',
+                            padding: '9px 11px',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            cursor: 'pointer'
+                          }}
+                          title="Copiar enlace público de la ruta"
+                        >
+                          <Share2 className="w-3.5 h-3.5 shrink-0" />
+                          {copiedRutaId === ruta.id ? '¡Copiado!' : 'Enlace'}
+                        </button>
 
-                      {/* Botón Eliminar */}
-                      <button
-                        onClick={async () => {
-                          const confirmed = await confirmDialog({
-                            title: 'Eliminar ruta de despacho',
-                            message: `¿Eliminar la ruta "${ruta.nombreRuta}" y todas sus paradas?`,
-                            confirmText: 'Sí, eliminar ruta',
-                            variant: 'danger'
-                          });
-                          if (confirmed) {
-                            handleEliminarRuta(ruta.id);
-                          }
-                        }}
-                        style={{
-                          background: '#fee2e2',
-                          border: '1px solid #fecaca',
-                          color: '#ef4444',
-                          borderRadius: '8px',
-                          padding: '9px 10px',
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center'
-                        }}
-                        title="Eliminar ruta"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                        {/* Botón Eliminar */}
+                        <button
+                          onClick={async () => {
+                            const confirmed = await confirmDialog({
+                              title: 'Eliminar ruta de despacho',
+                              message: `¿Eliminar la ruta "${ruta.nombreRuta}" y todas sus paradas?`,
+                              confirmText: 'Sí, eliminar ruta',
+                              variant: 'danger'
+                            });
+                            if (confirmed) {
+                              handleEliminarRuta(ruta.id);
+                            }
+                          }}
+                          style={{
+                            background: '#fee2e2',
+                            border: '1px solid #fecaca',
+                            color: '#ef4444',
+                            borderRadius: '8px',
+                            padding: '9px 10px',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                          title="Eliminar ruta"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );

@@ -289,7 +289,7 @@ export default function ChoferCardParada({
 
       {/* Dirección y Distrito */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
-        <div style={{ fontSize: '13px', color: '#334155' }}>
+        <div style={{ fontSize: '13px', color: '#334155', minWidth: 0, flex: 1, wordBreak: 'break-word' }}>
           <div style={{ fontWeight: 700, color: '#0f172a' }}>{parada.direccion}</div>
           <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>
             Distrito: <span style={{ color: '#2563eb', fontWeight: 800 }}>{parada.distrito}</span>
@@ -312,7 +312,8 @@ export default function ChoferCardParada({
             fontSize: '11.5px',
             fontWeight: 700,
             textDecoration: 'none',
-            whiteSpace: 'nowrap'
+            whiteSpace: 'nowrap',
+            flexShrink: 0
           }}
           title="Abrir en Google Maps / Waze"
         >

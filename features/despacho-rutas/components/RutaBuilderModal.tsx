@@ -497,43 +497,173 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
   const totalCobro = paradas.reduce((acc, p) => acc + (Number(p.montoCobro) || 0), 0);
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        backgroundColor: 'rgba(15, 23, 42, 0.7)',
-        backdropFilter: 'blur(4px)',
-        zIndex: 9999,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '16px'
-      }}
-    >
-      <div
-        style={{
-          background: '#ffffff',
-          borderRadius: '16px',
-          width: '100%',
-          maxWidth: '1100px',
-          maxHeight: '92vh',
-          display: 'flex',
-          flexDirection: 'column',
-          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
-          overflow: 'hidden'
-        }}
-      >
+    <div className="ruta-builder-overlay">
+      <style>{`
+        .ruta-builder-overlay {
+          position: fixed;
+          inset: 0;
+          background-color: rgba(15, 23, 42, 0.7);
+          backdrop-filter: blur(4px);
+          z-index: 9999;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 16px;
+          box-sizing: border-box;
+        }
+        .ruta-builder-dialog {
+          background: #ffffff;
+          border-radius: 16px;
+          width: 100%;
+          max-width: 1100px;
+          max-height: 92vh;
+          display: flex;
+          flex-direction: column;
+          box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+          overflow: hidden;
+        }
+        .ruta-builder-header {
+          padding: 18px 24px;
+          border-bottom: 1px solid #e2e8f0;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          background: #f8fafc;
+        }
+        .ruta-builder-body {
+          padding: 20px 24px;
+          overflow-y: auto;
+          display: flex;
+          flex-direction: column;
+          gap: 18px;
+          -webkit-overflow-scrolling: touch;
+        }
+        .ruta-builder-meta-grid {
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          border-radius: 12px;
+          padding: 16px;
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+          gap: 14px;
+        }
+        .ruta-builder-toolbar {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+        .ruta-builder-toolbar-actions {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .ruta-builder-footer {
+          padding: 16px 24px;
+          border-top: 1px solid #e2e8f0;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          background: #f8fafc;
+          flex-wrap: wrap;
+          gap: 12px;
+        }
+        .ruta-builder-footer-summary {
+          display: flex;
+          gap: 16px;
+          font-size: 13px;
+        }
+        .ruta-builder-footer-btns {
+          display: flex;
+          gap: 10px;
+        }
+        .table-scroll-hint {
+          display: none;
+          font-size: 11px;
+          font-weight: 700;
+          color: #2563eb;
+          background: #eff6ff;
+          border: 1px solid #bfdbfe;
+          padding: 6px 10px;
+          border-radius: 6px;
+          align-items: center;
+          gap: 6px;
+        }
+
+        @media (max-width: 768px) {
+          .ruta-builder-overlay {
+            padding: 6px !important;
+          }
+          .ruta-builder-dialog {
+            max-height: 96dvh !important;
+            border-radius: 12px !important;
+          }
+          .ruta-builder-header {
+            padding: 12px 14px !important;
+          }
+          .ruta-builder-header h2 {
+            font-size: 15px !important;
+          }
+          .ruta-builder-header p {
+            font-size: 11px !important;
+          }
+          .ruta-builder-body {
+            padding: 12px 10px !important;
+            gap: 12px !important;
+          }
+          .ruta-builder-meta-grid {
+            padding: 12px 10px !important;
+            grid-template-columns: 1fr 1fr !important;
+            gap: 10px !important;
+          }
+          .ruta-builder-toolbar {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 8px !important;
+          }
+          .ruta-builder-toolbar-actions {
+            display: grid !important;
+            grid-template-columns: 1fr 1fr !important;
+            gap: 6px !important;
+            width: 100% !important;
+          }
+          .ruta-builder-toolbar-actions button {
+            justify-content: center !important;
+            padding: 8px 6px !important;
+            font-size: 11.5px !important;
+          }
+          .table-scroll-hint {
+            display: flex !important;
+          }
+          .ruta-builder-footer {
+            padding: 12px 14px !important;
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 10px !important;
+          }
+          .ruta-builder-footer-summary {
+            display: flex !important;
+            justify-content: space-between !important;
+            width: 100% !important;
+            font-size: 12px !important;
+          }
+          .ruta-builder-footer-btns {
+            display: grid !important;
+            grid-template-columns: 1fr 2fr !important;
+            gap: 8px !important;
+            width: 100% !important;
+          }
+          .ruta-builder-footer-btns button {
+            justify-content: center !important;
+            padding: 10px 10px !important;
+            font-size: 12.5px !important;
+          }
+        }
+      `}</style>
+      <div className="ruta-builder-dialog">
         {/* Cabecera del Modal */}
-        <div
-          style={{
-            padding: '18px 24px',
-            borderBottom: '1px solid #e2e8f0',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            background: '#f8fafc'
-          }}
-        >
+        <div className="ruta-builder-header">
           <div>
             <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#0f172a' }}>
               🚚 Armar Hoja de Ruta y Despacho Diario
@@ -558,7 +688,7 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
         </div>
 
         {/* Cuerpo Scrollable */}
-        <div style={{ padding: '20px 24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+        <div className="ruta-builder-body">
           {errorMsg && (
             <div
               style={{
@@ -579,17 +709,7 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
           )}
 
           {/* Formulario de Datos de la Ruta (Sin Nombre de Ruta, Placa CFM-085 por defecto) */}
-          <div
-            style={{
-              background: '#f8fafc',
-              border: '1px solid #e2e8f0',
-              borderRadius: '12px',
-              padding: '16px',
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-              gap: '14px'
-            }}
-          >
+          <div className="ruta-builder-meta-grid">
             <div>
               <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
                 Chofer / Repartidor *
@@ -690,12 +810,12 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
           </div>
 
           {/* Barra de Herramientas de Paradas */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+          <div className="ruta-builder-toolbar">
             <div style={{ fontSize: '14px', fontWeight: 800, color: '#0f172a' }}>
               Paradas de Entrega ({paradas.filter(p => p.destinatario.trim()).length} clientes ingresados)
             </div>
 
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <div className="ruta-builder-toolbar-actions">
               <button
                 type="button"
                 onClick={handleBuscarEnInventario}
@@ -876,8 +996,14 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
             </div>
           )}
 
+          {/* Indicador visual de desplazamiento para dispositivos móviles */}
+          <div className="table-scroll-hint">
+            <span>↔</span>
+            <span>Desliza la tabla hacia los lados para ver y editar todas las columnas (Destinatario, WRs, Dirección, Celular)</span>
+          </div>
+
           {/* Tabla Editable de Paradas: Columnas Códigos WR y Bultos Separadas */}
-          <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflowX: 'auto' }}>
+          <div style={{ border: '1px solid #e2e8f0', borderRadius: '10px', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', minWidth: '950px' }}>
               <thead>
                 <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 800 }}>
@@ -1112,19 +1238,8 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
         </div>
 
         {/* Pie del Modal con Resumen y Botón de Publicación */}
-        <div
-          style={{
-            padding: '16px 24px',
-            borderTop: '1px solid #e2e8f0',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            background: '#f8fafc',
-            flexWrap: 'wrap',
-            gap: '12px'
-          }}
-        >
-          <div style={{ display: 'flex', gap: '16px', fontSize: '13px' }}>
+        <div className="ruta-builder-footer">
+          <div className="ruta-builder-footer-summary">
             <span>
               Total Paradas:{' '}
               <strong style={{ color: '#0f172a' }}>
@@ -1141,7 +1256,7 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
             )}
           </div>
 
-          <div style={{ display: 'flex', gap: '10px' }}>
+          <div className="ruta-builder-footer-btns">
             <button
               type="button"
               onClick={onClose}

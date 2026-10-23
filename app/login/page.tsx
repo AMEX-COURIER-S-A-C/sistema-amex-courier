@@ -36,6 +36,17 @@ export default function LoginPage() {
   };
 
   useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.body.classList.add('login-page');
+    }
+    return () => {
+      if (typeof document !== 'undefined') {
+        document.body.classList.remove('login-page');
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (cooldownSeconds <= 0) return;
     const timer = setInterval(() => {
       setCooldownSeconds((prev) => (prev > 0 ? prev - 1 : 0));
@@ -368,8 +379,10 @@ export default function LoginPage() {
 
   return (
     <div
+      className="amex-login-viewport"
       style={{
-        minHeight: '100vh',
+        minHeight: '100dvh',
+        width: '100%',
         background: theme.pageBackground,
         display: 'flex',
         alignItems: 'center',
@@ -377,7 +390,9 @@ export default function LoginPage() {
         padding: '24px 16px',
         fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
         position: 'relative',
-        overflow: 'hidden',
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        WebkitOverflowScrolling: 'touch',
       }}
     >
       {theme.isHalloween && <HalloweenBackdrop />}
@@ -458,6 +473,7 @@ export default function LoginPage() {
         .amex-submit-btn {
           margin-top: 6px;
           padding: 13px 16px;
+          min-height: 48px;
           border-radius: 10px;
           background: ${theme.submitBtnBackground};
           color: #ffffff;
@@ -472,6 +488,8 @@ export default function LoginPage() {
           gap: 9px;
           box-shadow: ${theme.submitBtnShadow};
           transition: all 0.18s ease;
+          width: 100%;
+          touch-action: manipulation;
         }
         .amex-submit-btn:hover:not(:disabled) {
           transform: translateY(-1px);
@@ -483,18 +501,92 @@ export default function LoginPage() {
           cursor: not-allowed;
         }
         @media (max-width: 860px) {
+          .amex-login-viewport {
+            padding: 16px 12px 32px 12px !important;
+            align-items: center !important;
+          }
           .amex-login-shell {
             grid-template-columns: 1fr;
-            max-width: 460px;
+            max-width: 480px;
+            margin: auto;
           }
           .amex-login-left {
-            padding: 28px 24px;
+            padding: 22px 20px;
             border-right: none;
             border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            gap: 20px;
+            gap: 16px;
           }
           .amex-login-right {
-            padding: 30px 24px;
+            padding: 24px 20px 28px 20px;
+          }
+        }
+        @media (max-width: 640px) {
+          .amex-login-viewport {
+            padding: 10px 8px 36px 8px !important;
+            min-height: 100dvh !important;
+            display: flex !important;
+            align-items: flex-start !important;
+          }
+          .amex-login-shell {
+            border-radius: 16px !important;
+            max-width: 100% !important;
+            margin-top: 6px !important;
+            margin-bottom: 20px !important;
+          }
+          .amex-login-left {
+            padding: 14px 16px 10px 16px !important;
+            gap: 8px !important;
+          }
+          .amex-login-left-badge {
+            margin-bottom: 8px !important;
+            font-size: 10px !important;
+            padding: 4px 10px !important;
+          }
+          .amex-login-left-logo-box {
+            padding: 10px 14px !important;
+            margin-bottom: 8px !important;
+            border-radius: 12px !important;
+          }
+          .amex-login-left-logo-img {
+            max-width: 190px !important;
+            max-height: 36px !important;
+          }
+          .amex-login-left-desc {
+            display: none !important;
+          }
+          .amex-login-left-footer {
+            display: none !important;
+          }
+          .amex-login-right {
+            padding: 16px 16px 22px 16px !important;
+          }
+          .amex-login-right-head {
+            margin-bottom: 14px !important;
+          }
+          .amex-login-right-title {
+            font-size: 19px !important;
+          }
+          .amex-login-right-desc {
+            font-size: 11.5px !important;
+            margin-top: 3px !important;
+          }
+          .amex-input-field {
+            font-size: 14px !important;
+            padding: 11px 12px 11px 36px !important;
+          }
+          .amex-submit-btn {
+            min-height: 48px !important;
+            padding: 13px 16px !important;
+            font-size: 14px !important;
+            margin-top: 10px !important;
+            margin-bottom: 4px !important;
+          }
+          .amex-login-mobile-footer {
+            display: block !important;
+            margin-top: 14px;
+            text-align: center;
+            font-size: 11px;
+            color: #64748b;
           }
         }
       `}</style>
@@ -518,6 +610,7 @@ export default function LoginPage() {
           {/* Top Badge & Logo Oficial */}
           <div>
             <div
+              className="amex-login-left-badge"
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -540,6 +633,7 @@ export default function LoginPage() {
 
             {/* Contenedor del Logo Oficial AMEX Courier */}
             <div
+              className="amex-login-left-logo-box"
               style={{
                 background: 'linear-gradient(145deg, rgba(15, 23, 42, 0.9) 0%, rgba(7, 11, 20, 0.95) 100%)',
                 border: theme.logoBoxBorder,
@@ -553,6 +647,7 @@ export default function LoginPage() {
               }}
             >
               <img
+                className="amex-login-left-logo-img"
                 src="/images/logo-amex-clean.png"
                 alt="AMEX Courier Logo Oficial"
                 style={{
@@ -566,6 +661,7 @@ export default function LoginPage() {
             </div>
 
             <p
+              className="amex-login-left-desc"
               style={{
                 fontSize: '13.5px',
                 color: '#94a3b8',
@@ -579,6 +675,7 @@ export default function LoginPage() {
 
           {/* Pie Institucional */}
           <div
+            className="amex-login-left-footer"
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -598,7 +695,7 @@ export default function LoginPage() {
         {/* ==================== PANEL DE AUTENTICACIÓN DERECHO ==================== */}
         <div className="amex-login-right">
           {/* Cabecera del Formulario */}
-          <div style={{ marginBottom: '26px' }}>
+          <div className="amex-login-right-head" style={{ marginBottom: '26px' }}>
             <div
               style={{
                 display: 'inline-flex',
@@ -616,6 +713,7 @@ export default function LoginPage() {
               <span>{isRecoveryMode ? 'Restablecimiento de Credenciales' : 'Portal de Operaciones'}</span>
             </div>
             <h1
+              className="amex-login-right-title"
               style={{
                 fontSize: '23px',
                 fontWeight: 900,
@@ -626,7 +724,7 @@ export default function LoginPage() {
             >
               {isRecoveryMode ? 'Actualizar Contraseña' : 'Iniciar Sesión'}
             </h1>
-            <p style={{ fontSize: '13px', color: '#94a3b8', marginTop: '6px', marginBottom: 0 }}>
+            <p className="amex-login-right-desc" style={{ fontSize: '13px', color: '#94a3b8', marginTop: '6px', marginBottom: 0 }}>
               {isRecoveryMode
                 ? 'Ingresa y confirma tu nueva clave corporativa de acceso.'
                 : 'Ingresa tus credenciales autorizadas de AMEX Courier.'}
@@ -948,6 +1046,11 @@ export default function LoginPage() {
               )}
             </button>
           </form>
+
+          {/* Pie Institucional visible solo en Móviles al final del formulario */}
+          <div className="amex-login-mobile-footer" style={{ display: 'none' }}>
+            <span>AMEX Courier S.A.C. • RUC 20607649082</span>
+          </div>
         </div>
       </div>
     </div>
