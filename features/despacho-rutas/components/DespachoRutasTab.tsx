@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Truck,
   Plus,
@@ -14,13 +14,19 @@ import {
   Calendar,
   User,
   Clock,
-  MessageCircle
+  MessageCircle,
+  Camera,
+  Image as ImageIcon,
+  Loader2,
+  X,
+  Maximize2
 } from 'lucide-react';
 import { useDespachoRutas } from '../hooks/useDespachoRutas';
 import RutaBuilderModal from './RutaBuilderModal';
 import ChoferCardParada from './ChoferCardParada';
 import { DespachoRuta } from '@/types/despacho';
-import { confirmDialog } from '@/lib/dialog';
+import { confirmDialog, alertDialog } from '@/lib/dialog';
+import { compressImageFile } from '@/lib/utils/imageCompressor';
 
 function formatFechaCreacion(isoString?: string): string {
   if (!isoString) return '';
@@ -56,12 +62,70 @@ export default function DespachoRutasTab() {
     handleActualizarEstadoParada,
     handleSubirFotoParada,
     handleEliminarFotoParada,
+    handleSubirFotoRuta,
+    handleEliminarFotoRuta,
     handleEliminarRuta
   } = useDespachoRutas();
 
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
   const [copiedRutaId, setCopiedRutaId] = useState<string | null>(null);
   const [filtroEstadoParada, setFiltroEstadoParada] = useState<'TODAS' | 'PENDIENTES' | 'ENTREGADAS'>('TODAS');
+
+  // Estados para fotos generales de la ruta
+  const [isUploadingFotoRuta, setIsUploadingFotoRuta] = useState(false);
+  const [uploadRutaStatus, setUploadRutaStatus] = useState('');
+  const [deletingRutaFotoUrl, setDeletingRutaFotoUrl] = useState<string | null>(null);
+  const [selectedRutaFotoModal, setSelectedRutaFotoModal] = useState<string | null>(null);
+  const rutaCameraInputRef = useRef<HTMLInputElement>(null);
+  const rutaFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleRutaFotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawFile = e.target.files?.[0];
+    if (!rawFile || !selectedRuta) return;
+
+    setIsUploadingFotoRuta(true);
+    setUploadRutaStatus('Optimizando foto...');
+    try {
+      const compressedFile = await compressImageFile(rawFile, 1600, 0.82);
+      setUploadRutaStatus('Subiendo foto...');
+      await handleSubirFotoRuta(selectedRuta.id, compressedFile, selectedRuta.nombreRuta);
+    } catch (err: any) {
+      await alertDialog({
+        title: 'Error al subir foto',
+        message: err.message || 'No se pudo subir la foto de la ruta.',
+        variant: 'danger'
+      });
+    } finally {
+      setIsUploadingFotoRuta(false);
+      setUploadRutaStatus('');
+      if (rutaCameraInputRef.current) rutaCameraInputRef.current.value = '';
+      if (rutaFileInputRef.current) rutaFileInputRef.current.value = '';
+    }
+  };
+
+  const handleEliminarFotoRutaClick = async (fotoUrl: string) => {
+    if (!selectedRuta) return;
+    const confirmed = await confirmDialog({
+      title: 'Eliminar foto de ruta',
+      message: '¿Estás seguro de eliminar esta foto general de la ruta?',
+      confirmText: 'Sí, eliminar',
+      variant: 'danger'
+    });
+    if (!confirmed) return;
+
+    setDeletingRutaFotoUrl(fotoUrl);
+    try {
+      await handleEliminarFotoRuta(selectedRuta.id, fotoUrl);
+    } catch (err: any) {
+      await alertDialog({
+        title: 'Error',
+        message: err.message || 'No se pudo eliminar la foto de la ruta.',
+        variant: 'danger'
+      });
+    } finally {
+      setDeletingRutaFotoUrl(null);
+    }
+  };
 
   // Copiar o compartir enlace al chofer
   const handleCopiarEnlaceChofer = (ruta: DespachoRuta) => {
@@ -507,6 +571,288 @@ export default function DespachoRutasTab() {
             </div>
           </div>
 
+          {/* Fotos Generales de la Ruta (Carga del Camión / Planilla Física) */}
+          <div
+            style={{
+              background: '#ffffff',
+              border: '1px solid #e2e8f0',
+              borderRadius: '14px',
+              padding: '14px 16px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  🚚 Fotos de Carga / Hoja de Ruta
+                  {selectedRuta.fotos && selectedRuta.fotos.length > 0 && (
+                    <span style={{ background: '#dbeafe', color: '#1e40af', padding: '1px 7px', borderRadius: '10px', fontSize: '11px', fontWeight: 800 }}>
+                      {selectedRuta.fotos.length}
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                  Camión cargado, precinto o planilla física (disponible en cualquier momento)
+                </div>
+              </div>
+              {isUploadingFotoRuta && (
+                <span style={{ fontSize: '11px', color: '#2563eb', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> {uploadRutaStatus || 'Subiendo...'}
+                </span>
+              )}
+            </div>
+
+            {/* Inputs ocultos para Cámara y Galería de Ruta */}
+            <input
+              ref={rutaCameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              style={{ display: 'none' }}
+              onChange={handleRutaFotoChange}
+            />
+            <input
+              ref={rutaFileInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={handleRutaFotoChange}
+            />
+
+            {/* Galería de fotos de la ruta */}
+            {selectedRuta.fotos && selectedRuta.fotos.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {selectedRuta.fotos.map((fotoUrl, idx) => (
+                  <div
+                    key={fotoUrl + idx}
+                    style={{
+                      position: 'relative',
+                      width: '72px',
+                      height: '72px',
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                      border: '1px solid #cbd5e1',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                      background: '#0f172a'
+                    }}
+                  >
+                    <img
+                      src={fotoUrl}
+                      alt={`Foto Ruta ${idx + 1}`}
+                      onClick={() => setSelectedRutaFotoModal(fotoUrl)}
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        cursor: 'pointer'
+                      }}
+                      title="Ver foto completa"
+                    />
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEliminarFotoRutaClick(fotoUrl);
+                      }}
+                      disabled={deletingRutaFotoUrl === fotoUrl}
+                      title="Eliminar foto"
+                      style={{
+                        position: 'absolute',
+                        top: '2px',
+                        right: '2px',
+                        background: 'rgba(239, 68, 68, 0.9)',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '50%',
+                        width: '20px',
+                        height: '20px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        padding: 0
+                      }}
+                    >
+                      {deletingRutaFotoUrl === fotoUrl ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-3 h-3" />
+                      )}
+                    </button>
+                    <div
+                      onClick={() => setSelectedRutaFotoModal(fotoUrl)}
+                      style={{
+                        position: 'absolute',
+                        bottom: '2px',
+                        left: '2px',
+                        background: 'rgba(0,0,0,0.6)',
+                        borderRadius: '4px',
+                        padding: '2px',
+                        cursor: 'pointer',
+                        display: 'flex'
+                      }}
+                    >
+                      <Maximize2 className="w-2.5 h-2.5 text-white" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Botones para tomar o subir foto de la ruta */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => rutaCameraInputRef.current?.click()}
+                disabled={isUploadingFotoRuta}
+                style={{
+                  background: '#f8fafc',
+                  border: '1px solid #3b82f6',
+                  color: '#2563eb',
+                  borderRadius: '8px',
+                  padding: '7px 10px',
+                  fontSize: '11.5px',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '5px',
+                  cursor: isUploadingFotoRuta ? 'not-allowed' : 'pointer',
+                  opacity: isUploadingFotoRuta ? 0.6 : 1
+                }}
+              >
+                <Camera className="w-3.5 h-3.5" /> Tomar Foto Carga
+              </button>
+
+              <button
+                type="button"
+                onClick={() => rutaFileInputRef.current?.click()}
+                disabled={isUploadingFotoRuta}
+                style={{
+                  background: '#f8fafc',
+                  border: '1px solid #cbd5e1',
+                  color: '#475569',
+                  borderRadius: '8px',
+                  padding: '7px 10px',
+                  fontSize: '11.5px',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '5px',
+                  cursor: isUploadingFotoRuta ? 'not-allowed' : 'pointer',
+                  opacity: isUploadingFotoRuta ? 0.6 : 1
+                }}
+              >
+                <ImageIcon className="w-3.5 h-3.5" /> Galería
+              </button>
+            </div>
+          </div>
+
+          {/* Modal Fullscreen para Fotos de la Ruta */}
+          {selectedRutaFotoModal && (
+            <div
+              onClick={() => setSelectedRutaFotoModal(null)}
+              style={{
+                position: 'fixed',
+                inset: 0,
+                backgroundColor: 'rgba(15, 23, 42, 0.85)',
+                backdropFilter: 'blur(4px)',
+                zIndex: 9999,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '16px'
+              }}
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  position: 'relative',
+                  maxWidth: '92vw',
+                  maxHeight: '90vh',
+                  background: '#0f172a',
+                  borderRadius: '16px',
+                  overflow: 'hidden',
+                  boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5)',
+                  display: 'flex',
+                  flexDirection: 'column'
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '12px 16px',
+                    background: '#1e293b',
+                    color: '#f8fafc',
+                    borderBottom: '1px solid #334155'
+                  }}
+                >
+                  <div style={{ fontSize: '13px', fontWeight: 700 }}>
+                    Foto de Ruta: <span style={{ color: '#38bdf8' }}>{selectedRuta.nombreRuta}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <a
+                      href={selectedRutaFotoModal}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        color: '#94a3b8',
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '4px',
+                        borderRadius: '6px'
+                      }}
+                      title="Abrir imagen original"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                    <button
+                      onClick={() => setSelectedRutaFotoModal(null)}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#ffffff',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '4px',
+                        borderRadius: '6px'
+                      }}
+                      title="Cerrar"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '12px',
+                    background: '#020617'
+                  }}
+                >
+                  <img
+                    src={selectedRutaFotoModal}
+                    alt="Foto de la ruta"
+                    style={{
+                      maxWidth: '100%',
+                      maxHeight: '75vh',
+                      objectFit: 'contain',
+                      borderRadius: '8px'
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Filtros rápidos de Paradas para el Chofer */}
           <div style={{ display: 'flex', gap: '8px' }}>
             <button
@@ -882,6 +1228,14 @@ export default function DespachoRutasTab() {
                         <span>
                           <strong style={{ color: '#0f172a' }}>{ruta.totalParadas}</strong> paradas / envíos
                         </span>
+                        {ruta.fotos && ruta.fotos.length > 0 && (
+                          <>
+                            <span>•</span>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', color: '#2563eb', fontWeight: 700 }}>
+                              <Camera className="w-3.5 h-3.5" /> {ruta.fotos.length} foto{ruta.fotos.length > 1 ? 's' : ''} carga
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
 

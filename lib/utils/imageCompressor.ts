@@ -177,3 +177,84 @@ export async function compressFileForAi(
     reader.readAsDataURL(file);
   });
 }
+
+
+/**
+ * Comprime un archivo File de imagen para subida rápida en redes móviles a R2 / servidor.
+ * Reduce fotos pesadas de celular (8-25 MB) a ~250-450 KB en formato JPEG manteniendo nitidez.
+ * Si no es imagen o ya es liviana (< 400 KB), retorna el archivo intacto de inmediato.
+ */
+export async function compressImageFile(
+  file: File,
+  maxWidth = 1600,
+  quality = 0.82
+): Promise<File> {
+  if (typeof window === 'undefined' || !file || !file.type.startsWith('image/')) {
+    return file;
+  }
+
+  // Si ya es menor a 400 KB, no es necesario recomprimir
+  if (file.size <= 400 * 1024) {
+    return file;
+  }
+
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          let { width, height } = img;
+          if (width > maxWidth || height > maxWidth) {
+            if (width > height) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            } else {
+              width = Math.round((width * maxWidth) / height);
+              height = maxWidth;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(file);
+            return;
+          }
+
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                const newName = file.name.replace(/\.[^/.]+$/, '') + '.jpg';
+                const compressedFile = new File([blob], newName, {
+                  type: 'image/jpeg',
+                  lastModified: Date.now()
+                });
+                resolve(compressedFile);
+              } else {
+                resolve(file);
+              }
+            },
+            'image/jpeg',
+            quality
+          );
+        } catch (e) {
+          console.warn('[AMEX Compressor] Falló compresión de File en canvas, usando original:', e);
+          resolve(file);
+        }
+      };
+      img.onerror = () => resolve(file);
+      img.src = reader.result as string;
+    };
+    reader.onerror = () => resolve(file);
+    reader.readAsDataURL(file);
+  });
+}

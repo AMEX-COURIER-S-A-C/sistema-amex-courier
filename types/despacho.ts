@@ -18,6 +18,7 @@ export interface DespachoRuta {
   totalParadas: number;
   paradasEntregadas: number;
   notas?: string | null;
+  fotos?: string[];
   creadoPor?: string | null;
   creadoEn: string;
   actualizadoEn: string;

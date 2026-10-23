@@ -20,6 +20,7 @@ import {
 import { DespachoParada, EstadoParada } from '@/types/despacho';
 import { getWhatsAppUrl, getGoogleMapsUrl, normalizePhoneNumber, parseWrAndBultos } from '@/lib/utils/phoneUtils';
 import { confirmDialog, alertDialog } from '@/lib/dialog';
+import { compressImageFile } from '@/lib/utils/imageCompressor';
 
 interface ChoferCardParadaProps {
   parada: DespachoParada;
@@ -37,6 +38,8 @@ export default function ChoferCardParada({
   const [isPromptingNoEntrega, setIsPromptingNoEntrega] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadStatusText, setUploadStatusText] = useState('');
+  const [isPendingEntregaAfterPhoto, setIsPendingEntregaAfterPhoto] = useState(false);
   const [deletingFotoUrl, setDeletingFotoUrl] = useState<string | null>(null);
   const [selectedFotoModal, setSelectedFotoModal] = useState<string | null>(null);
 
@@ -66,22 +69,44 @@ export default function ChoferCardParada({
     }
   };
 
+  const handleTomarFotoYEntregar = () => {
+    setIsPendingEntregaAfterPhoto(true);
+    if (cameraInputRef.current) {
+      cameraInputRef.current.click();
+    }
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const rawFile = e.target.files?.[0];
+    if (!rawFile) {
+      setIsPendingEntregaAfterPhoto(false);
+      return;
+    }
     if (!onSubirFoto) return;
 
     setIsUploading(true);
+    setUploadStatusText('Optimizando foto...');
     try {
-      await onSubirFoto(parada.id, file, parada.destinatario);
+      // Compresión en el cliente para subida instantánea (< 1s en 4G/3G)
+      const compressedFile = await compressImageFile(rawFile, 1600, 0.82);
+      setUploadStatusText('Subiendo evidencia...');
+      await onSubirFoto(parada.id, compressedFile, parada.destinatario);
+
+      // Si el chofer pulsó "Foto y Entregar", marcar como entregado en el mismo flujo
+      if (isPendingEntregaAfterPhoto) {
+        setIsPendingEntregaAfterPhoto(false);
+        await onActualizarEstado(parada.id, 'ENTREGADO');
+      }
     } catch (err: any) {
+      setIsPendingEntregaAfterPhoto(false);
       await alertDialog({
-        title: 'Error de imagen',
-        message: err.message || 'Error al subir la imagen',
+        title: 'Error al subir foto',
+        message: err.message || 'Error al subir la imagen. Revisa tu conexión e inténtalo de nuevo.',
         variant: 'danger'
       });
     } finally {
       setIsUploading(false);
+      setUploadStatusText('');
       if (fileInputRef.current) fileInputRef.current.value = '';
       if (cameraInputRef.current) cameraInputRef.current.value = '';
     }
@@ -431,13 +456,18 @@ export default function ChoferCardParada({
           gap: '8px'
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: '12px', fontWeight: 700, color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            📸 Fotos / Evidencias de Entrega {fotos.length > 0 && <span style={{ background: '#e2e8f0', color: '#1e293b', padding: '1px 6px', borderRadius: '10px', fontSize: '11px', fontWeight: 800 }}>{fotos.length}</span>}
-          </span>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+          <div>
+            <span style={{ fontSize: '12.5px', fontWeight: 800, color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              📸 Fotos / Evidencias de la Parada {fotos.length > 0 && <span style={{ background: '#dcfce7', color: '#15803d', padding: '1px 7px', borderRadius: '10px', fontSize: '11px', fontWeight: 800 }}>{fotos.length}</span>}
+            </span>
+            <div style={{ fontSize: '10.5px', color: '#64748b', marginTop: '2px' }}>
+              Disponible en cualquier momento (antes, durante o después de la entrega)
+            </div>
+          </div>
           {isUploading && (
-            <span style={{ fontSize: '11px', color: '#2563eb', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Subiendo...
+            <span style={{ fontSize: '11px', color: '#2563eb', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}>
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> {uploadStatusText || 'Subiendo...'}
             </span>
           )}
         </div>
@@ -705,50 +735,79 @@ export default function ChoferCardParada({
 
       {/* Acciones de Entrega para el Chofer */}
       {!isEntregado && !isPromptingNoEntrega && (
-        <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+          {/* Botón principal: Foto y Entregar (flujo rápido de 1 solo toque con cámara) */}
           <button
-            onClick={handleMarcarEntregado}
-            disabled={isUpdating}
+            onClick={handleTomarFotoYEntregar}
+            disabled={isUpdating || isUploading}
             style={{
-              flex: 1,
-              background: '#16a34a',
+              width: '100%',
+              background: 'linear-gradient(135deg, #16a34a, #15803d)',
               color: '#ffffff',
               border: 'none',
               borderRadius: '10px',
-              padding: '12px',
+              padding: '12px 14px',
               fontSize: '13.5px',
               fontWeight: 800,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '6px',
-              cursor: 'pointer',
-              boxShadow: '0 2px 6px rgba(22,163,74,0.3)'
+              gap: '8px',
+              cursor: (isUpdating || isUploading) ? 'not-allowed' : 'pointer',
+              boxShadow: '0 2px 8px rgba(22,163,74,0.35)',
+              opacity: (isUpdating || isUploading) ? 0.7 : 1
             }}
           >
-            <CheckCircle2 className="w-4 h-4" /> Marcar Entregado
+            <Camera className="w-4 h-4" /> 📸 Tomar Foto y Entregar
           </button>
 
-          <button
-            onClick={() => setIsPromptingNoEntrega(true)}
-            disabled={isUpdating}
-            style={{
-              background: '#fff1f2',
-              color: '#e11d48',
-              border: '1px solid #fecdd3',
-              borderRadius: '10px',
-              padding: '12px 14px',
-              fontSize: '12.5px',
-              fontWeight: 800,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              cursor: 'pointer'
-            }}
-            title="Registrar que no se pudo entregar"
-          >
-            <AlertCircle className="w-4 h-4" /> Problema
-          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {/* Solo Entregar (sin foto obligatoria) */}
+            <button
+              onClick={handleMarcarEntregado}
+              disabled={isUpdating || isUploading}
+              style={{
+                flex: 1,
+                background: '#f0fdf4',
+                color: '#15803d',
+                border: '1px solid #bbf7d0',
+                borderRadius: '10px',
+                padding: '10px 12px',
+                fontSize: '12.5px',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                cursor: (isUpdating || isUploading) ? 'not-allowed' : 'pointer',
+                opacity: (isUpdating || isUploading) ? 0.7 : 1
+              }}
+            >
+              <CheckCircle2 className="w-4 h-4" /> Solo Entregar
+            </button>
+
+            {/* Problema / No entregado */}
+            <button
+              onClick={() => setIsPromptingNoEntrega(true)}
+              disabled={isUpdating || isUploading}
+              style={{
+                background: '#fff1f2',
+                color: '#e11d48',
+                border: '1px solid #fecdd3',
+                borderRadius: '10px',
+                padding: '10px 14px',
+                fontSize: '12.5px',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                cursor: (isUpdating || isUploading) ? 'not-allowed' : 'pointer'
+              }}
+              title="Registrar que no se pudo entregar"
+            >
+              <AlertCircle className="w-4 h-4" /> Problema
+            </button>
+          </div>
         </div>
       )}
 
@@ -791,19 +850,40 @@ export default function ChoferCardParada({
             ))}
           </div>
 
-          <button
-            onClick={() => setIsPromptingNoEntrega(false)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: '#64748b',
-              fontSize: '11.5px',
-              cursor: 'pointer',
-              marginTop: '4px'
-            }}
-          >
-            Cancelar
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '4px' }}>
+            <button
+              type="button"
+              onClick={() => cameraInputRef.current?.click()}
+              disabled={isUploading}
+              style={{
+                background: '#ffffff',
+                border: '1px dashed #fda4af',
+                color: '#e11d48',
+                borderRadius: '6px',
+                padding: '6px 10px',
+                fontSize: '11px',
+                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                cursor: 'pointer'
+              }}
+            >
+              <Camera className="w-3.5 h-3.5" /> Foto de evidencia
+            </button>
+            <button
+              onClick={() => setIsPromptingNoEntrega(false)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#64748b',
+                fontSize: '11.5px',
+                cursor: 'pointer'
+              }}
+            >
+              Cancelar
+            </button>
+          </div>
         </div>
       )}
 

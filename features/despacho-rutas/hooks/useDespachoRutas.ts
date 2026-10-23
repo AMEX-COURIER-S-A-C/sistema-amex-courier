@@ -194,6 +194,53 @@ export function useDespachoRutas() {
     []
   );
 
+  // 5d. Subir fotografía general para la ruta completa
+  const handleSubirFotoRuta = useCallback(
+    async (rutaId: string, file: File, nombreRuta?: string): Promise<string> => {
+      try {
+        const result = await despachoService.subirFotoRuta(rutaId, file, nombreRuta);
+        setSelectedRuta(prev => {
+          if (!prev || prev.id !== rutaId) return prev;
+          return {
+            ...prev,
+            fotos: result.fotos
+          };
+        });
+        setRutas(prev =>
+          prev.map(r => (r.id === rutaId ? { ...r, fotos: result.fotos } : r))
+        );
+        return result.url;
+      } catch (err) {
+        console.error('Error subiendo foto de ruta:', err);
+        throw err;
+      }
+    },
+    []
+  );
+
+  // 5e. Eliminar fotografía de una ruta
+  const handleEliminarFotoRuta = useCallback(
+    async (rutaId: string, fotoUrl: string): Promise<void> => {
+      try {
+        const updatedFotos = await despachoService.eliminarFotoRuta(rutaId, fotoUrl);
+        setSelectedRuta(prev => {
+          if (!prev || prev.id !== rutaId) return prev;
+          return {
+            ...prev,
+            fotos: updatedFotos
+          };
+        });
+        setRutas(prev =>
+          prev.map(r => (r.id === rutaId ? { ...r, fotos: updatedFotos } : r))
+        );
+      } catch (err) {
+        console.error('Error eliminando foto de ruta:', err);
+        throw err;
+      }
+    },
+    []
+  );
+
   // 6. Efecto inicial y suscripción Realtime
   useEffect(() => {
     loadRutas(filtroFecha);
@@ -273,6 +320,8 @@ export function useDespachoRutas() {
     handleActualizarEstadoParada,
     handleSubirFotoParada,
     handleEliminarFotoParada,
+    handleSubirFotoRuta,
+    handleEliminarFotoRuta,
     handleEliminarRuta
   };
 }

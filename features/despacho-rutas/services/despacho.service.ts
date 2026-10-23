@@ -270,6 +270,56 @@ export class DespachoService {
     return [];
   }
 
+  /**
+   * Sube una fotografía o evidencia general para una ruta completa
+   */
+  async subirFotoRuta(
+    rutaId: string,
+    file: File,
+    nombreRuta?: string
+  ): Promise<{ url: string; fotos: string[] }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (nombreRuta) {
+      formData.append('nombreRuta', nombreRuta);
+    }
+
+    const res = await fetch(`/api/despacho/rutas/${rutaId}/fotos`, {
+      method: 'POST',
+      body: formData,
+      credentials: 'include'
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Error al subir la fotografía de la ruta.');
+    }
+
+    return {
+      url: data.url,
+      fotos: data.fotos || []
+    };
+  }
+
+  /**
+   * Elimina una foto asociada a una ruta
+   */
+  async eliminarFotoRuta(rutaId: string, fotoUrl: string): Promise<string[]> {
+    const res = await fetch(`/api/despacho/rutas/${rutaId}/fotos`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fotoUrl }),
+      credentials: 'include'
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Error al eliminar la fotografía de la ruta.');
+    }
+
+    return data.fotos || [];
+  }
+
   private mapRutaDbToDomain(db: any): DespachoRuta {
     return {
       id: db.id,
@@ -283,6 +333,7 @@ export class DespachoService {
       totalParadas: db.total_paradas ?? 0,
       paradasEntregadas: db.paradas_entregadas ?? 0,
       notas: db.notas,
+      fotos: Array.isArray(db.fotos) ? db.fotos : [],
       creadoPor: db.creado_por,
       creadoEn: db.creado_en,
       actualizadoEn: db.actualizado_en

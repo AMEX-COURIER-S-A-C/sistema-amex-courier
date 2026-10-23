@@ -281,7 +281,7 @@ describe('Módulo de Despacho y Rutas: Utilidades y Flujo de Chofer', () => {
     });
   });
 
-  describe('Gestión de Fotografías y Evidencias de Entrega por Parada', () => {
+  describe('Gestión de Fotografías y Evidencias de Entrega por Parada y por Ruta', () => {
     it('soporta colección vacía o múltiple de fotos por parada', () => {
       const fotosMock: string[] = [
         'https://r2.amex.com/FOLDER%20AMEX/despacho-rutas/paradas/foto1.jpg',
@@ -295,6 +295,20 @@ describe('Módulo de Despacho y Rutas: Utilidades y Flujo de Chofer', () => {
       const updatedFotos = fotosMock.filter(f => f !== 'https://r2.amex.com/FOLDER%20AMEX/despacho-rutas/paradas/foto1.jpg');
       expect(updatedFotos).toHaveLength(1);
       expect(updatedFotos[0]).toBe('https://r2.amex.com/FOLDER%20AMEX/despacho-rutas/paradas/foto2.jpg');
+    });
+
+    it('soporta fotos generales a nivel de ruta (carga del camión / planilla)', () => {
+      const rutaMock = {
+        id: 'ruta-123',
+        nombreRuta: 'Ruta Sur Chorrillos',
+        fotos: [
+          'https://r2.amex.com/FOLDER%20AMEX/despacho-rutas/rutas/camion_cargado.jpg',
+          'https://r2.amex.com/FOLDER%20AMEX/despacho-rutas/rutas/planilla_firmada.jpg'
+        ]
+      };
+
+      expect(rutaMock.fotos).toHaveLength(2);
+      expect(rutaMock.fotos[0]).toContain('camion_cargado.jpg');
     });
   });
 });
