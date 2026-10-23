@@ -1011,7 +1011,7 @@ tr:hover { background: #f8fafc !important; }
     display: none;
   }
   .main-content {
-    padding: 0 !important;
+    padding: 0 0 96px 0 !important;
     width: 100% !important;
   }
   .page-title-bar {

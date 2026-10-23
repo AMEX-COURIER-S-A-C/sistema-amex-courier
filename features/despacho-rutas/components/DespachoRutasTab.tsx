@@ -208,8 +208,8 @@ export default function DespachoRutasTab() {
           color: #ffffff;
           border: none;
           border-radius: 8px;
-          padding: 9px 15px;
-          font-size: 12.5px;
+          padding: 10px 16px;
+          font-size: 13px;
           font-weight: 800;
           display: inline-flex;
           align-items: center;
@@ -217,16 +217,85 @@ export default function DespachoRutasTab() {
           cursor: pointer;
           box-shadow: 0 2px 4px rgba(37,99,235,0.25);
           transition: all 0.15s ease;
+          min-height: 42px;
+          box-sizing: border-box;
+        }
+        .despacho-btn-chofer-primary:hover {
+          background: #1d4ed8;
         }
         .despacho-actions-row-secondary {
           display: inline-flex;
           align-items: center;
           gap: 8px;
         }
+        .despacho-btn-wa {
+          background: #16a34a;
+          color: #ffffff;
+          border: none;
+          border-radius: 8px;
+          padding: 9px 13px;
+          font-size: 12.5px;
+          font-weight: 800;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          cursor: pointer;
+          box-shadow: 0 2px 4px rgba(22,163,74,0.25);
+          transition: all 0.15s ease;
+          min-height: 40px;
+          box-sizing: border-box;
+        }
+        .despacho-btn-wa:hover {
+          background: #15803d;
+        }
+        .despacho-btn-share {
+          background: #f8fafc;
+          border: 1px solid #cbd5e1;
+          color: #334155;
+          border-radius: 8px;
+          padding: 9px 13px;
+          font-size: 12.5px;
+          font-weight: 800;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          min-height: 40px;
+          box-sizing: border-box;
+        }
+        .despacho-btn-share:hover {
+          background: #f1f5f9;
+        }
+        .despacho-btn-share.is-copied {
+          background: #dcfce7;
+          border-color: #86efac;
+          color: #15803d;
+        }
+        .despacho-btn-delete {
+          background: #fee2e2;
+          border: 1px solid #fecaca;
+          color: #ef4444;
+          border-radius: 8px;
+          padding: 9px 11px;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.15s ease;
+          min-height: 40px;
+          min-width: 42px;
+          box-sizing: border-box;
+        }
+        .despacho-btn-delete:hover {
+          background: #fecaca;
+        }
 
         @media (max-width: 768px) {
           .despacho-root-container {
-            padding: 0 2px;
+            padding: 0 4px 110px 4px !important;
             gap: 12px;
           }
           .despacho-header-card {
@@ -264,54 +333,80 @@ export default function DespachoRutasTab() {
             gap: 8px;
           }
           .despacho-ruta-card {
-            padding: 14px 12px;
-            gap: 10px;
-            flex-direction: column;
-            align-items: stretch;
+            padding: 14px 14px 16px 14px !important;
+            gap: 10px !important;
+            flex-direction: column !important;
+            align-items: stretch !important;
+            height: auto !important;
+            min-height: 0 !important;
           }
           .despacho-ruta-col-info {
-            min-width: 100%;
+            flex: 0 0 auto !important;
+            width: 100% !important;
+            min-width: 0 !important;
+            min-height: 0 !important;
           }
           .despacho-ruta-col-chofer {
-            min-width: 100%;
-            padding: 8px 0 0 0;
-            border-left: none;
-            border-top: 1px solid #f1f5f9;
+            flex: 0 0 auto !important;
+            width: 100% !important;
+            min-width: 0 !important;
+            min-height: 0 !important;
+            padding: 8px 0 0 0 !important;
+            border-left: none !important;
+            border-top: 1px solid #f1f5f9 !important;
           }
           .despacho-ruta-col-progreso {
-            min-width: 100%;
-            padding: 8px 0 0 0;
-            border-left: none;
-            border-top: 1px solid #f1f5f9;
+            flex: 0 0 auto !important;
+            width: 100% !important;
+            min-width: 0 !important;
+            min-height: 0 !important;
+            padding: 8px 0 0 0 !important;
+            border-left: none !important;
+            border-top: 1px solid #f1f5f9 !important;
           }
           .despacho-ruta-col-actions {
-            width: 100%;
-            flex-direction: column;
-            gap: 8px;
-            padding-top: 8px;
-            border-top: 1px solid #f1f5f9;
+            flex: 0 0 auto !important;
+            width: 100% !important;
+            min-width: 0 !important;
+            min-height: 0 !important;
+            flex-direction: column !important;
+            gap: 8px !important;
+            padding-top: 10px !important;
+            border-top: 1px solid #f1f5f9 !important;
           }
           .despacho-btn-chofer-primary {
             width: 100% !important;
             justify-content: center !important;
-            padding: 11px 14px !important;
+            padding: 12px 14px !important;
             font-size: 13.5px !important;
+            min-height: 44px !important;
           }
           .despacho-actions-row-secondary {
-            width: 100%;
-            display: grid;
-            grid-template-columns: 1.2fr 1fr 42px;
-            gap: 6px;
+            width: 100% !important;
+            display: grid !important;
+            grid-template-columns: 1.15fr 1.15fr 46px !important;
+            gap: 8px !important;
           }
-          .despacho-actions-row-secondary button {
+          .despacho-btn-wa,
+          .despacho-btn-share {
+            width: 100% !important;
             justify-content: center !important;
-            padding: 9px 6px !important;
+            padding: 10px 8px !important;
+            font-size: 13px !important;
+            font-weight: 800 !important;
+            min-height: 44px !important;
+          }
+          .despacho-btn-delete {
+            width: 46px !important;
+            min-height: 44px !important;
+            padding: 0 !important;
+            justify-content: center !important;
           }
         }
       `}</style>
       {/* 1. MODO CHOFER MÓVIL (Cuando hay una ruta activa seleccionada) */}
       {viewMode === 'chofer' && selectedRuta ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', maxWidth: '650px', margin: '0 auto', width: '100%' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', maxWidth: '650px', margin: '0 auto', width: '100%', paddingBottom: '96px' }}>
           {/* Botón Volver */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <button
@@ -856,45 +951,21 @@ export default function DespachoRutasTab() {
                         {/* Botón WhatsApp */}
                         <button
                           onClick={() => handleEnviarRutaWhatsApp(ruta)}
-                          style={{
-                            background: '#22c55e',
-                            color: '#ffffff',
-                            border: 'none',
-                            borderRadius: '8px',
-                            padding: '9px 12px',
-                            fontSize: '12px',
-                            fontWeight: 700,
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '5px',
-                            cursor: 'pointer',
-                            boxShadow: '0 2px 4px rgba(34,197,94,0.25)'
-                          }}
+                          className="despacho-btn-wa"
                           title="Enviar enlace al WhatsApp del chofer"
                         >
-                          <MessageCircle className="w-4 h-4 fill-current shrink-0" /> WhatsApp
+                          <MessageCircle className="w-4 h-4 fill-current shrink-0" />
+                          <span>WhatsApp</span>
                         </button>
 
-                        {/* Botón Copiar Enlace */}
+                        {/* Botón Compartir Enlace */}
                         <button
                           onClick={() => handleCopiarEnlaceChofer(ruta)}
-                          style={{
-                            background: copiedRutaId === ruta.id ? '#dcfce7' : '#f8fafc',
-                            border: '1px solid #cbd5e1',
-                            color: copiedRutaId === ruta.id ? '#15803d' : '#334155',
-                            borderRadius: '8px',
-                            padding: '9px 11px',
-                            fontSize: '12px',
-                            fontWeight: 700,
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            cursor: 'pointer'
-                          }}
-                          title="Copiar enlace público de la ruta"
+                          className={`despacho-btn-share ${copiedRutaId === ruta.id ? 'is-copied' : ''}`}
+                          title="Copiar y compartir enlace público de la ruta"
                         >
                           <Share2 className="w-3.5 h-3.5 shrink-0" />
-                          {copiedRutaId === ruta.id ? '¡Copiado!' : 'Enlace'}
+                          <span>{copiedRutaId === ruta.id ? '¡Copiado!' : 'Compartir'}</span>
                         </button>
 
                         {/* Botón Eliminar */}
@@ -910,20 +981,10 @@ export default function DespachoRutasTab() {
                               handleEliminarRuta(ruta.id);
                             }
                           }}
-                          style={{
-                            background: '#fee2e2',
-                            border: '1px solid #fecaca',
-                            color: '#ef4444',
-                            borderRadius: '8px',
-                            padding: '9px 10px',
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}
+                          className="despacho-btn-delete"
                           title="Eliminar ruta"
                         >
-                          <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                          <Trash2 className="w-4 h-4 shrink-0" />
                         </button>
                       </div>
                     </div>
