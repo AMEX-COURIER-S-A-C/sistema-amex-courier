@@ -1,7 +1,7 @@
 export interface AmexInfoImage {
   id: string;
   title: string;
-  category: 'tarifas' | 'pagos' | 'casillero' | 'sede' | 'cobertura';
+  category: 'tarifas' | 'pagos' | 'casillero' | 'sede' | 'cobertura' | 'maletas';
   categoryLabel: string;
   badgeColor: string;
   filename: string;
@@ -61,6 +61,45 @@ export const AMEX_INFO_IMAGES: AmexInfoImage[] = [
 ⏱️ *Tiempo estimado de entrega:* 5 a 7 días hábiles una vez recibido en nuestro almacén de Miami.
 📱 *WhatsApp directo de atención:* +51 942 804 464
 📸 *Instagram:* @AMEXCOURIERINT`
+  },
+  {
+    id: 'maleta-miami-peru',
+    title: 'Se Lleva Maleta Miami – Perú ($215 hasta 23 KG)',
+    category: 'maletas',
+    categoryLabel: 'Servicio Maleta 23 KG',
+    badgeColor: '#0284c7',
+    filename: 'se-lleva-maleta-tarifa.jpg',
+    imageUrl: '/images/info-amex/se-lleva-maleta-tarifa.jpg',
+    description: 'Servicio especial de transporte de maleta completa de Miami a Perú con salidas semanales: $215 dólares por maleta de hasta 23 kilos con delivery incluido en zonas de cobertura.',
+    quickSummary: [
+      '$215 USD por maleta completa (hasta 23 kilos)',
+      'Salidas semanales Miami – Perú',
+      'Delivery incluido en zonas de cobertura',
+      'Acepta: zapatillas, ropa, maquillaje, carteras, vitaminas y más',
+      'Condición: Todo sin etiqueta y no incluye electrónicos',
+      'Restricción: Máximo 5 vitaminas por maleta'
+    ],
+    suggestedWhatsappText: `✈️🧳 *SERVICIO SE LLEVA MALETA: MIAMI – PERÚ* 📦🇵🇪
+
+¡Trae tu equipaje o compras de USA al mejor precio cerrado!
+
+💰 *Precio fijo:* $215 USD (maleta de hasta 23 KG).
+🚚 *Delivery:* Totalmente INCLUIDO en zonas de cobertura en Lima.
+⏱️ *Frecuencia:* Salidas semanales.
+
+🛍️ *¿Qué artículos puedes incluir?*
+• Zapatillas y calzado
+• Ropa y textiles
+• Maquillaje y cosméticos
+• Carteras y accesorios
+• Vitaminas (hasta 5 frascos)
+
+⚠️ *Condiciones obligatorias:*
+1. Todo debe venir sin etiqueta.
+2. Máximo 5 vitaminas por maleta.
+3. No incluye artículos electrónicos.
+
+📲 ¡Escríbenos para reservar el espacio de tu maleta en el próximo vuelo! ✈️✨`
   },
   {
     id: 'cobertura-delivery',

@@ -224,6 +224,13 @@ export default function InfoAmexTab() {
             Cobertura Free
           </button>
           <button
+            onClick={() => setSelectedCategory('maletas')}
+            className={`info-amex-filter-btn ${selectedCategory === 'maletas' ? 'active' : ''}`}
+          >
+            <i className="fa-solid fa-suitcase-rolling" />
+            Maleta Miami
+          </button>
+          <button
             onClick={() => setSelectedCategory('sede')}
             className={`info-amex-filter-btn ${selectedCategory === 'sede' ? 'active' : ''}`}
           >
