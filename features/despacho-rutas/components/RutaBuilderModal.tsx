@@ -437,69 +437,12 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
     const text = e.clipboardData.getData('text');
     if (!text || !text.trim()) return;
 
-    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    // Al pegar una columna de Excel (incluso con varias filas), todas las filas pertenecen a
+    // ESTA MISMA PARADA (una fila de la ruta, no varias paradas independientes).
+    e.preventDefault();
 
-    // Si pegaron múltiples líneas (ej: copiaron una columna de 5 celdas de Excel)
-    if (lines.length > 1) {
-      e.preventDefault();
-      const confirmed = await confirmDialog({
-        title: '📋 Columna de códigos WR detectada',
-        message: `Has pegado una columna con ${lines.length} códigos WR de Excel.\n\n¿Deseas distribuir los códigos en ${lines.length} paradas separadas? (Si cancelas, se agruparán todos en esta sola parada).`,
-        confirmText: `Distribuir en ${lines.length} paradas`,
-        cancelText: 'Agrupar en esta parada'
-      });
-
-      if (confirmed) {
-        const newParadas = [...paradas];
-        const parsedItems = lines.map(line => parseWrAndBultos(line));
-
-        parsedItems.forEach((parsed, offset) => {
-          const targetIdx = index + offset;
-          const normWrs = parsed.normalizedWrs;
-          const bultos = parsed.bultos || '1 CJ';
-          const wrBultos = normWrs
-            ? (bultos && bultos !== '1 CJ' ? `${normWrs} · ${bultos}` : normWrs)
-            : bultos;
-
-          const paradaData: CrearParadaInput = {
-            destinatario: '',
-            wrCodes: normWrs,
-            bultos,
-            wrBultos,
-            direccion: 'Dirección pendiente',
-            distrito: 'MIRAFLORES',
-            telefono: '',
-            montoCobro: 0,
-            monedaCobro: 'USD'
-          };
-
-          if (targetIdx < newParadas.length) {
-            newParadas[targetIdx] = {
-              ...newParadas[targetIdx],
-              wrCodes: normWrs,
-              bultos,
-              wrBultos
-            };
-          } else {
-            newParadas.push(paradaData);
-          }
-        });
-
-        // Intentar autocompletar con DB
-        const { enrichedParadas, count } = await enrichParadasWithDbData(newParadas);
-        setParadas(enrichedParadas);
-        if (count > 0) {
-          setDbEnrichMsg(`✨ ${lines.length} paradas generadas (${count} autocompletadas desde inventario).`);
-          setTimeout(() => setDbEnrichMsg(null), 5000);
-        }
-        return;
-      }
-    }
-
-    // Si es una sola línea o eligió agrupar en esta parada
     const parsed = parseWrAndBultos(text);
     if (parsed.count > 0 || parsed.bultos) {
-      e.preventDefault();
       const normWrs = parsed.normalizedWrs;
       const currentBultos = (paradas[index]?.bultos || '').trim();
       const shouldAutoUpdate = !currentBultos || currentBultos === '1 CJ' || /^\d+\s*CJS?$/i.test(currentBultos);
@@ -511,6 +454,11 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
       handleUpdateFila(index, 'wrCodes', normWrs);
       handleUpdateFila(index, 'bultos', finalBultos);
       handleUpdateFila(index, 'wrBultos', finalWrBultos);
+
+      if (parsed.count > 1) {
+        setDbEnrichMsg(`✅ ${parsed.count} códigos WR asignados a esta parada (${finalBultos}).`);
+        setTimeout(() => setDbEnrichMsg(null), 4000);
+      }
 
       // Si el destinatario está vacío, intentar buscar en DB
       if (!paradas[index]?.destinatario?.trim() && parsed.wrs.length > 0) {
@@ -529,6 +477,8 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
           }
         });
       }
+    } else {
+      handleUpdateFila(index, 'wrCodes', text.trim());
     }
   };
 
@@ -1245,7 +1195,7 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
                     </button>
                   </div>
                   <p style={{ margin: 0, fontSize: '11px', color: '#4b5563' }}>
-                    ✨ Soporta columnas de <strong>puros códigos WR</strong> (uno por línea o separados por guion <code>-</code> o slash <code>/</code>), 2 columnas (Destinatario + WR), o formato completo de 5/6 columnas. Detecta y normaliza WRs automáticamente y autocompleta clientes desde inventario.
+                    ✨ Al pegar una columna de WRs (varias filas de Excel), se asignan juntas a <strong>1 sola parada de la ruta</strong>. Si pegas una tabla de varias columnas (Destinatario, WR, Dirección, etc.), cada cliente es una parada independiente.
                   </p>
 
                   <textarea

@@ -482,6 +482,36 @@ export function parseQuickPasteRows(clipboardText: string): CrearParadaInput[] {
   const rawLines = clipboardText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   if (rawLines.length === 0) return [];
 
+  // 1. Detectar si el portapapeles es una SOLA columna (ej: columna de celdas WR copiada de Excel con varias filas)
+  // Si ninguna fila tiene más de 1 columna con datos, todas las filas pertenecen a UNA SOLA parada de la ruta (no varias paradas independientes).
+  const hasMultipleCols = rawLines.some(line => {
+    const cols = line.includes('\t') ? line.split('\t').map(c => c.trim()) : line.split(';').map(c => c.trim());
+    return cols.filter(Boolean).length >= 2;
+  });
+
+  if (!hasMultipleCols) {
+    // Es una sola columna pegada: todas las filas pertenecen a una única fila de la ruta
+    const parsedWr = parseWrAndBultos(clipboardText);
+    if (parsedWr.count > 0 || parsedWr.bultos) {
+      const wrCodes = parsedWr.normalizedWrs;
+      const bultos = parsedWr.bultos || `${parsedWr.count} CJ${parsedWr.count > 1 ? 'S' : ''}`;
+      const wrBultos = wrCodes ? (bultos && bultos !== '1 CJ' ? `${wrCodes} · ${bultos}` : wrCodes) : bultos;
+
+      return [{
+        destinatario: '',
+        wrCodes,
+        bultos,
+        wrBultos,
+        direccion: 'Dirección pendiente',
+        distrito: 'MIRAFLORES',
+        telefono: '',
+        montoCobro: 0,
+        monedaCobro: 'USD'
+      }];
+    }
+  }
+
+  // 2. Si tiene múltiples columnas (tabla de Excel con Destinatario, WR, etc.)
   const paradas: CrearParadaInput[] = [];
 
   for (const line of rawLines) {
@@ -491,33 +521,68 @@ export function parseQuickPasteRows(clipboardText: string): CrearParadaInput[] {
 
     // Ignorar cabeceras repetidas del Excel de entregas
     if (
-      !col0 ||
       /^(NOMBRE|CLIENTE|DESTINATARIO|WR|CÓDIGO|CODIGO|WAREHOUSE|GUIA|GUIAS)$/i.test(col0) ||
       col0.toUpperCase().startsWith('CLIENTE:')
     ) {
       continue;
     }
 
-    // Caso 1: Una sola columna (Columna de WRs pegada directamente de Excel)
+    // Si la fila no tiene destinatario pero sí tiene un WR en alguna columna,
+    // y ya existe una parada previa, agrupar este WR en la parada previa de la ruta
+    if (!col0 && paradas.length > 0) {
+      const otherColsText = cols.slice(1).join(' ');
+      const parsedWr = parseWrAndBultos(otherColsText);
+      if (parsedWr.count > 0) {
+        const lastParada = paradas[paradas.length - 1];
+        const existingWrs = lastParada.wrCodes ? lastParada.wrCodes.split(' / ') : [];
+        const combinedWrs = Array.from(new Set([...existingWrs, ...parsedWr.wrs]));
+        const count = combinedWrs.length;
+        const normWrs = combinedWrs.join(' / ');
+        const bultos = `${count} CJ${count > 1 ? 'S' : ''}`;
+        const wrBultos = normWrs ? (bultos && bultos !== '1 CJ' ? `${normWrs} · ${bultos}` : normWrs) : bultos;
+
+        lastParada.wrCodes = normWrs;
+        lastParada.bultos = bultos;
+        lastParada.wrBultos = wrBultos;
+        continue;
+      }
+    }
+
+    // Caso 1: Fila de 1 sola columna dentro de una tabla (ej: WR adicional de la parada previa)
     if (cols.length === 1 || (cols.length > 1 && !cols[1] && !cols[2] && !cols[3])) {
       const parsedWr = parseWrAndBultos(col0);
       if (parsedWr.count > 0 || isWrOrWrList(col0)) {
-        const wrCodes = parsedWr.normalizedWrs;
-        const bultos = parsedWr.bultos || '1 CJ';
-        const wrBultos = wrCodes ? (bultos && bultos !== '1 CJ' ? `${wrCodes} · ${bultos}` : wrCodes) : bultos;
+        if (paradas.length > 0) {
+          const lastParada = paradas[paradas.length - 1];
+          const existingWrs = lastParada.wrCodes ? lastParada.wrCodes.split(' / ') : [];
+          const combinedWrs = Array.from(new Set([...existingWrs, ...parsedWr.wrs]));
+          const count = combinedWrs.length;
+          const normWrs = combinedWrs.join(' / ');
+          const bultos = `${count} CJ${count > 1 ? 'S' : ''}`;
+          const wrBultos = normWrs ? (bultos && bultos !== '1 CJ' ? `${normWrs} · ${bultos}` : normWrs) : bultos;
 
-        paradas.push({
-          destinatario: '',
-          wrCodes,
-          bultos,
-          wrBultos,
-          direccion: 'Dirección pendiente',
-          distrito: 'MIRAFLORES',
-          telefono: '',
-          montoCobro: 0,
-          monedaCobro: 'USD'
-        });
-        continue;
+          lastParada.wrCodes = normWrs;
+          lastParada.bultos = bultos;
+          lastParada.wrBultos = wrBultos;
+          continue;
+        } else {
+          const wrCodes = parsedWr.normalizedWrs;
+          const bultos = parsedWr.bultos || '1 CJ';
+          const wrBultos = wrCodes ? (bultos && bultos !== '1 CJ' ? `${wrCodes} · ${bultos}` : wrCodes) : bultos;
+
+          paradas.push({
+            destinatario: '',
+            wrCodes,
+            bultos,
+            wrBultos,
+            direccion: 'Dirección pendiente',
+            distrito: 'MIRAFLORES',
+            telefono: '',
+            montoCobro: 0,
+            monedaCobro: 'USD'
+          });
+          continue;
+        }
       }
     }
 

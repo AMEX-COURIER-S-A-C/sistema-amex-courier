@@ -247,7 +247,7 @@ describe('Módulo de Despacho y Rutas: Utilidades y Flujo de Chofer', () => {
       expect(explicit.bultos).toBe('8 CJS');
     });
 
-    it('soporta pegado de columna de puros códigos WR sin columnas adicionales', () => {
+    it('al pegar una columna de puros códigos WR de Excel con varias filas se agrupa en 1 sola parada de la ruta', () => {
       const wrColumnText = [
         'WR000485000',
         'WR000485001',
@@ -256,28 +256,42 @@ describe('Módulo de Despacho y Rutas: Utilidades y Flujo de Chofer', () => {
       ].join('\n');
 
       const paradas = parseQuickPasteRows(wrColumnText);
-      expect(paradas).toHaveLength(4);
-      expect(paradas[0].wrCodes).toBe('WR000485000');
-      expect(paradas[0].bultos).toBe('1 CJ');
-      expect(paradas[1].wrCodes).toBe('WR000485001');
-      expect(paradas[1].bultos).toBe('1 CJ');
-      expect(paradas[2].wrCodes).toBe('WR000405148 / WR000405149');
-      expect(paradas[2].bultos).toBe('2 CJS');
-      expect(paradas[3].wrCodes).toBe('WR000405150 / WR000405151');
-      expect(paradas[3].bultos).toBe('2 CJS');
+      // Cada parada es independiente, pero si se pegan varias filas de una columna es de 1 fila de la ruta (no varias)
+      expect(paradas).toHaveLength(1);
+      expect(paradas[0].wrCodes).toBe('WR000485000 / WR000485001 / WR000405148 / WR000405149 / WR000405150 / WR000405151');
+      expect(paradas[0].bultos).toBe('6 CJS');
+      expect(paradas[0].wrBultos).toBe('WR000485000 / WR000485001 / WR000405148 / WR000405149 / WR000405150 / WR000405151 · 6 CJS');
     });
 
-    it('soporta pegado de 2 columnas reconociendo si el WR está en col 0 o col 1', () => {
-      const formatoDestWr = 'DANIEL VALDIVIA\t405148';
-      const p1 = parseQuickPasteRows(formatoDestWr);
-      expect(p1[0].destinatario).toBe('DANIEL VALDIVIA');
-      expect(p1[0].wrCodes).toBe('WR000405148');
+    it('soporta pegado de tabla de 2 columnas con clientes independientes', () => {
+      const formatoDestWr = [
+        'DANIEL VALDIVIA\t405148',
+        'LISS CASTILLO\t405149 - 405150'
+      ].join('\n');
+      const paradas = parseQuickPasteRows(formatoDestWr);
+      expect(paradas).toHaveLength(2);
+      expect(paradas[0].destinatario).toBe('DANIEL VALDIVIA');
+      expect(paradas[0].wrCodes).toBe('WR000405148');
+      expect(paradas[0].bultos).toBe('1 CJ');
+      expect(paradas[1].destinatario).toBe('LISS CASTILLO');
+      expect(paradas[1].wrCodes).toBe('WR000405149 / WR000405150');
+      expect(paradas[1].bultos).toBe('2 CJS');
+    });
 
-      const formatoWrDest = '405149 - 405150\tLISS CASTILLO';
-      const p2 = parseQuickPasteRows(formatoWrDest);
-      expect(p2[0].destinatario).toBe('LISS CASTILLO');
-      expect(p2[0].wrCodes).toBe('WR000405149 / WR000405150');
-      expect(p2[0].bultos).toBe('2 CJS');
+    it('agrupa filas secundarias de WRs sin cliente al cliente previo en tablas de Excel', () => {
+      const formatoAgrupado = [
+        'DANIEL VALDIVIA\t405148\tCALLE FRANCIA 510\tMIRAFLORES\t997370290',
+        '\t405149',
+        '\t405150',
+        'LISS CASTILLO\t405151\tAV LARCO 200\tMIRAFLORES\t998000000'
+      ].join('\n');
+      const paradas = parseQuickPasteRows(formatoAgrupado);
+      expect(paradas).toHaveLength(2);
+      expect(paradas[0].destinatario).toBe('DANIEL VALDIVIA');
+      expect(paradas[0].wrCodes).toBe('WR000405148 / WR000405149 / WR000405150');
+      expect(paradas[0].bultos).toBe('3 CJS');
+      expect(paradas[1].destinatario).toBe('LISS CASTILLO');
+      expect(paradas[1].wrCodes).toBe('WR000405151');
     });
   });
 
