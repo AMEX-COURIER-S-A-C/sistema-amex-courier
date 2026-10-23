@@ -1,14 +1,18 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, Trash2, Clipboard, CheckCircle2, X, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, Clipboard, CheckCircle2, X, AlertCircle, ClipboardPaste, Sparkles, Search } from 'lucide-react';
 import { CrearRutaInput, CrearParadaInput } from '@/types/despacho';
 import {
   ZONAS_LIMA_DISTRITOS,
   parseQuickPasteRows,
   normalizeDistrito,
-  parseWrAndBultos
+  parseWrAndBultos,
+  parseWrCodes,
+  isWrOrWrList
 } from '@/lib/utils/phoneUtils';
+import { supabase } from '@/lib/supabase/client';
+import { confirmDialog } from '@/lib/dialog';
 
 interface RutaBuilderModalProps {
   isOpen: boolean;
@@ -46,6 +50,8 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isSearchingDb, setIsSearchingDb] = useState(false);
+  const [dbEnrichMsg, setDbEnrichMsg] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -138,7 +144,7 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
   };
 
   // Procesar pegado de Excel (Quick Paste)
-  const handleProcessQuickPaste = () => {
+  const handleProcessQuickPaste = async () => {
     if (!pasteText.trim()) {
       setPasteError('Pega texto de filas copiado de Excel antes de procesar.');
       return;
@@ -146,19 +152,292 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
 
     const parsed = parseQuickPasteRows(pasteText);
     if (parsed.length === 0) {
-      setPasteError('No se reconocieron paradas válidas. Asegúrate de copiar filas con columnas de Destinatario, WRs, Dirección y Celular.');
+      setPasteError('No se reconocieron paradas válidas. Puedes pegar una columna de códigos WR, o filas con Destinatario, WRs, Dirección y Celular.');
       return;
     }
 
-    // Si la primera fila estaba vacía, reemplazarla
+    // Auto-enriquecer con DB si es posible
+    const { enrichedParadas, count } = await enrichParadasWithDbData(parsed);
+
+    // Si la primera fila estaba vacía (sin destinatario y sin WRs), reemplazarla
     setParadas(prev => {
-      const cleanPrev = prev.filter(p => p.destinatario.trim() !== '');
-      return [...cleanPrev, ...parsed];
+      const cleanPrev = prev.filter(p => p.destinatario.trim() !== '' || (p.wrCodes && p.wrCodes.trim() !== ''));
+      return [...cleanPrev, ...enrichedParadas];
     });
 
     setPasteText('');
     setShowPasteArea(false);
     setPasteError('');
+
+    if (count > 0) {
+      setDbEnrichMsg(`✨ ${enrichedParadas.length} paradas agregadas (${count} autocompletadas desde inventario).`);
+      setTimeout(() => setDbEnrichMsg(null), 5000);
+    }
+  };
+
+  // Enriquecer paradas con datos de clientes desde el inventario en Supabase
+  const enrichParadasWithDbData = async (
+    paradasToEnrich: CrearParadaInput[],
+    forceUpdateNames = false
+  ): Promise<{ enrichedParadas: CrearParadaInput[]; count: number }> => {
+    const wrCodesMap = new Map<number, string[]>();
+    const allWrsToSearch: string[] = [];
+
+    paradasToEnrich.forEach((p, idx) => {
+      const rawWr = p.wrCodes || p.wrBultos || '';
+      const codes = parseWrCodes(rawWr);
+      if (codes.length > 0) {
+        wrCodesMap.set(idx, codes);
+        codes.forEach(c => {
+          if (!allWrsToSearch.includes(c)) allWrsToSearch.push(c);
+        });
+      }
+    });
+
+    if (allWrsToSearch.length === 0) {
+      return { enrichedParadas: paradasToEnrich, count: 0 };
+    }
+
+    setIsSearchingDb(true);
+    try {
+      const { data: dbPackages, error } = await supabase
+        .from('paquetes')
+        .select(`
+          numero_recibo_bodega,
+          nombre_consignatario,
+          tracking,
+          cliente_id,
+          clientes (
+            nombre,
+            apellido,
+            telefono,
+            distrito,
+            direccion_entrega
+          )
+        `)
+        .in('numero_recibo_bodega', allWrsToSearch)
+        .is('eliminado_en', null);
+
+      if (error || !dbPackages || dbPackages.length === 0) {
+        return { enrichedParadas: paradasToEnrich, count: 0 };
+      }
+
+      const pkgMap = new Map<string, any>();
+      dbPackages.forEach((pkg: any) => {
+        if (pkg.numero_recibo_bodega) {
+          pkgMap.set(pkg.numero_recibo_bodega.toUpperCase().trim(), pkg);
+        }
+      });
+
+      let enrichedCount = 0;
+      const updated = paradasToEnrich.map((parada, idx) => {
+        const codes = wrCodesMap.get(idx);
+        if (!codes || codes.length === 0) return parada;
+
+        let matchedPkg: any = null;
+        for (const c of codes) {
+          const found = pkgMap.get(c.toUpperCase());
+          if (found) {
+            matchedPkg = found;
+            break;
+          }
+        }
+
+        if (!matchedPkg) return parada;
+
+        let changed = false;
+        const cliente = matchedPkg.clientes;
+        const cleanDbName = cliente?.nombre
+          ? `${cliente.nombre} ${cliente.apellido || ''}`.trim()
+          : String(matchedPkg.nombre_consignatario || '')
+              .replace(/^AMEX\s+(GLX\s+)?/i, '')
+              .trim();
+
+        let newDestinatario = parada.destinatario;
+        if (
+          forceUpdateNames ||
+          !parada.destinatario?.trim() ||
+          parada.destinatario.toUpperCase().startsWith('WR') ||
+          parada.destinatario === 'Cliente Pendiente'
+        ) {
+          if (cleanDbName) {
+            newDestinatario = cleanDbName;
+            changed = true;
+          }
+        }
+
+        let newDireccion = parada.direccion;
+        if (!parada.direccion?.trim() || parada.direccion === 'Dirección pendiente') {
+          if (cliente?.direccion_entrega) {
+            newDireccion = cliente.direccion_entrega;
+            changed = true;
+          }
+        }
+
+        let newDistrito = parada.distrito;
+        if (!parada.distrito || parada.distrito === 'MIRAFLORES') {
+          if (cliente?.distrito) {
+            newDistrito = normalizeDistrito(cliente.distrito);
+            changed = true;
+          }
+        }
+
+        let newTelefono = parada.telefono;
+        if (!parada.telefono?.trim()) {
+          if (cliente?.telefono) {
+            newTelefono = cliente.telefono;
+            changed = true;
+          }
+        }
+
+        if (changed) {
+          enrichedCount++;
+          return {
+            ...parada,
+            destinatario: newDestinatario || parada.destinatario,
+            direccion: newDireccion,
+            distrito: newDistrito,
+            telefono: newTelefono
+          };
+        }
+
+        return parada;
+      });
+
+      return { enrichedParadas: updated, count: enrichedCount };
+    } catch (err) {
+      console.warn('Error al buscar paquetes en DB para enriquecer paradas:', err);
+      return { enrichedParadas: paradasToEnrich, count: 0 };
+    } finally {
+      setIsSearchingDb(false);
+    }
+  };
+
+  // Botón para buscar datos en inventario para todas las paradas actuales
+  const handleBuscarEnInventario = async () => {
+    const { enrichedParadas, count } = await enrichParadasWithDbData(paradas, true);
+    setParadas(enrichedParadas);
+    if (count > 0) {
+      setDbEnrichMsg(`✅ Se autocompletaron ${count} paradas con datos de clientes desde el inventario.`);
+    } else {
+      setDbEnrichMsg('ℹ️ No se encontraron nuevos datos en el inventario para las paradas actuales.');
+    }
+    setTimeout(() => setDbEnrichMsg(null), 5000);
+  };
+
+  // Pegar directo desde portapapeles en el textarea
+  const handlePasteFromClipboard = async () => {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          setPasteText(text);
+          setPasteError('');
+        }
+      }
+    } catch (err) {
+      console.warn('No se pudo acceder al portapapeles:', err);
+    }
+  };
+
+  // Interceptar pegado de columna o WRs separados por guion/slash en la celda WR de la tabla
+  const handleWrCellPaste = async (index: number, e: React.ClipboardEvent<HTMLInputElement>) => {
+    const text = e.clipboardData.getData('text');
+    if (!text || !text.trim()) return;
+
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+
+    // Si pegaron múltiples líneas (ej: copiaron una columna de 5 celdas de Excel)
+    if (lines.length > 1) {
+      e.preventDefault();
+      const confirmed = await confirmDialog({
+        title: '📋 Columna de códigos WR detectada',
+        message: `Has pegado una columna con ${lines.length} códigos WR de Excel.\n\n¿Deseas distribuir los códigos en ${lines.length} paradas separadas? (Si cancelas, se agruparán todos en esta sola parada).`,
+        confirmText: `Distribuir en ${lines.length} paradas`,
+        cancelText: 'Agrupar en esta parada'
+      });
+
+      if (confirmed) {
+        const newParadas = [...paradas];
+        const parsedItems = lines.map(line => parseWrAndBultos(line));
+
+        parsedItems.forEach((parsed, offset) => {
+          const targetIdx = index + offset;
+          const normWrs = parsed.normalizedWrs;
+          const bultos = parsed.bultos || '1 CJ';
+          const wrBultos = normWrs
+            ? (bultos && bultos !== '1 CJ' ? `${normWrs} · ${bultos}` : normWrs)
+            : bultos;
+
+          const paradaData: CrearParadaInput = {
+            destinatario: '',
+            wrCodes: normWrs,
+            bultos,
+            wrBultos,
+            direccion: 'Dirección pendiente',
+            distrito: 'MIRAFLORES',
+            telefono: '',
+            montoCobro: 0,
+            monedaCobro: 'USD'
+          };
+
+          if (targetIdx < newParadas.length) {
+            newParadas[targetIdx] = {
+              ...newParadas[targetIdx],
+              wrCodes: normWrs,
+              bultos,
+              wrBultos
+            };
+          } else {
+            newParadas.push(paradaData);
+          }
+        });
+
+        // Intentar autocompletar con DB
+        const { enrichedParadas, count } = await enrichParadasWithDbData(newParadas);
+        setParadas(enrichedParadas);
+        if (count > 0) {
+          setDbEnrichMsg(`✨ ${lines.length} paradas generadas (${count} autocompletadas desde inventario).`);
+          setTimeout(() => setDbEnrichMsg(null), 5000);
+        }
+        return;
+      }
+    }
+
+    // Si es una sola línea o eligió agrupar en esta parada
+    const parsed = parseWrAndBultos(text);
+    if (parsed.count > 0 || parsed.bultos) {
+      e.preventDefault();
+      const normWrs = parsed.normalizedWrs;
+      const currentBultos = (paradas[index]?.bultos || '').trim();
+      const shouldAutoUpdate = !currentBultos || currentBultos === '1 CJ' || /^\d+\s*CJS?$/i.test(currentBultos);
+      const finalBultos = (shouldAutoUpdate && parsed.bultos) ? parsed.bultos : (currentBultos || '1 CJ');
+      const finalWrBultos = (finalBultos && finalBultos !== '1 CJ')
+        ? `${normWrs} · ${finalBultos}`
+        : normWrs;
+
+      handleUpdateFila(index, 'wrCodes', normWrs);
+      handleUpdateFila(index, 'bultos', finalBultos);
+      handleUpdateFila(index, 'wrBultos', finalWrBultos);
+
+      // Si el destinatario está vacío, intentar buscar en DB
+      if (!paradas[index]?.destinatario?.trim() && parsed.wrs.length > 0) {
+        const temp = [...paradas];
+        temp[index] = {
+          ...temp[index],
+          wrCodes: normWrs,
+          bultos: finalBultos,
+          wrBultos: finalWrBultos
+        };
+        enrichParadasWithDbData(temp).then(({ enrichedParadas, count }) => {
+          if (count > 0) {
+            setParadas(enrichedParadas);
+            setDbEnrichMsg('✨ Datos de cliente autocompletados desde el inventario.');
+            setTimeout(() => setDbEnrichMsg(null), 4000);
+          }
+        });
+      }
+    }
   };
 
   // Guardar y publicar ruta
@@ -170,9 +449,9 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
       return;
     }
 
-    const paradasValidas = paradas.filter(p => p.destinatario.trim() !== '');
+    const paradasValidas = paradas.filter(p => p.destinatario.trim() !== '' || (p.wrCodes && p.wrCodes.trim() !== ''));
     if (paradasValidas.length === 0) {
-      setErrorMsg('Debes ingresar al menos una parada con destinatario.');
+      setErrorMsg('Debes ingresar al menos una parada con destinatario o código WR.');
       return;
     }
 
@@ -416,7 +695,30 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
               Paradas de Entrega ({paradas.filter(p => p.destinatario.trim()).length} clientes ingresados)
             </div>
 
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={handleBuscarEnInventario}
+                disabled={isSearchingDb}
+                style={{
+                  background: '#fdf4ff',
+                  border: '1px solid #f0abfc',
+                  color: '#a21caf',
+                  borderRadius: '8px',
+                  padding: '7px 12px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  cursor: isSearchingDb ? 'wait' : 'pointer'
+                }}
+                title="Busca los códigos WR en el inventario del sistema para autocompletar nombres, direcciones y celulares"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-fuchsia-600" />
+                {isSearchingDb ? 'Buscando en Inventario...' : 'Autocompletar de Inventario'}
+              </button>
+
               <button
                 type="button"
                 onClick={() => setShowPasteArea(!showPasteArea)}
@@ -434,7 +736,7 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
                   cursor: 'pointer'
                 }}
               >
-                <Clipboard className="w-3.5 h-3.5" /> Pegar Filas desde Excel
+                <Clipboard className="w-3.5 h-3.5" /> Pegar Filas o Columna de WRs
               </button>
 
               <button
@@ -459,6 +761,26 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
             </div>
           </div>
 
+          {dbEnrichMsg && (
+            <div
+              style={{
+                background: '#ecfdf5',
+                border: '1px solid #a7f3d0',
+                color: '#065f46',
+                borderRadius: '8px',
+                padding: '8px 14px',
+                fontSize: '12px',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+              <span>{dbEnrichMsg}</span>
+            </div>
+          )}
+
           {/* Área de Pegado Rápido desde Excel (Quick Paste) */}
           {showPasteArea && (
             <div
@@ -472,18 +794,39 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
                 gap: '8px'
               }}
             >
-              <div style={{ fontSize: '12px', fontWeight: 800, color: '#166534' }}>
-                📋 Pegar Filas desde Excel (Copia las filas en Excel y pégalas aquí):
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ fontSize: '12px', fontWeight: 800, color: '#166534' }}>
+                  📋 Pegar Filas o Columna de Códigos WR desde Excel:
+                </div>
+                <button
+                  type="button"
+                  onClick={handlePasteFromClipboard}
+                  style={{
+                    background: '#ffffff',
+                    border: '1px solid #86efac',
+                    color: '#15803d',
+                    borderRadius: '6px',
+                    padding: '4px 10px',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <ClipboardPaste className="w-3.5 h-3.5" /> Pegar Portapapeles (Ctrl+V)
+                </button>
               </div>
               <p style={{ margin: 0, fontSize: '11px', color: '#4b5563' }}>
-                Detecta celdas con WRs múltiples separados por guion (-) o slash (/) y autocalcula la cantidad de bultos (soporta con o sin columna de bultos en el Excel).
+                ✨ Soporta columnas de <strong>puros códigos WR</strong> (uno por línea o separados por guion <code>-</code> o slash <code>/</code>), 2 columnas (Destinatario + WR), o formato completo de 5/6 columnas. Detecta y normaliza WRs automáticamente y autocompleta clientes desde inventario.
               </p>
 
               <textarea
                 rows={4}
                 value={pasteText}
                 onChange={e => setPasteText(e.target.value)}
-                placeholder={'DANIEL VALDIVIA\t405148\tCALLE FRANCIA 510\tMIRAFLORES\t997 370 290\nLISS CASTILLO\t405148-405149\tAV CACERES 136\tMIRAFLORES\t969 738 878\t14.70'}
+                placeholder={'Columna de WRs:\nWR000485000\n405148 - 405149\n405150 / 405151\n\nO formato completo de Excel:\nDANIEL VALDIVIA\t405148\tCALLE FRANCIA 510\tMIRAFLORES\t997 370 290'}
                 style={{
                   width: '100%',
                   padding: '8px',
@@ -581,10 +924,11 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                           <input
                             type="text"
-                            placeholder="Ej: 405148 / 405149"
+                            placeholder="Ej: 405148-405149 ó 405148 / 405149"
                             value={wrValue}
                             onChange={e => handleWrChange(idx, e.target.value)}
                             onBlur={() => handleWrBlur(idx)}
+                            onPaste={e => handleWrCellPaste(idx, e)}
                             style={{
                               width: '100%',
                               padding: '6px 8px',

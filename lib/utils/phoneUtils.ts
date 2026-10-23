@@ -3,6 +3,7 @@
  */
 
 import { CrearParadaInput } from '@/types/despacho';
+import { normalizeWr } from '@/lib/validations/wr';
 
 export interface PhoneNormalizationResult {
   raw: string;
@@ -284,31 +285,83 @@ export function isKnownDistrito(val: string | null | undefined): boolean {
 }
 
 /**
- * Extrae y normaliza códigos WR de un texto, soportando separadores por guion (-), slash (/), comas, etc.
+ * Determina si una cadena contiene código(s) de Guía WR
+ * (inicia con WR, o es un número de 4 a 9 dígitos, o contiene códigos separados por guion o slash).
  */
-export function parseWrCodes(raw: string | null | undefined): string[] {
+export function isWrOrWrList(val: string | null | undefined): boolean {
+  if (!val) return false;
+  const str = String(val).trim().toUpperCase();
+  if (!str) return false;
+
+  // Si contiene prefijo WR canónico o con guion/espacio (ej: WR000485000, WR-405148)
+  if (/\bWR[-_]?[A-Z0-9]{4,11}\b/i.test(str)) return true;
+
+  // Si es un código numérico correlativo de 4 a 9 dígitos (típico WR sin prefijo)
+  if (/^\d{4,8}$/.test(str)) return true;
+  if (/^0\d{5,8}$/.test(str)) return true;
+
+  // Si contiene dos o más códigos numéricos o WRs separados por guion, slash o coma (ej: 405148-405149 o 405148/405149)
+  if (/\b\d{4,9}\s*[-–—\/]\s*\d{4,9}\b/.test(str)) return true;
+  if (/WR[-_]?[A-Z0-9]+\s*[-–—\/]\s*WR[-_]?[A-Z0-9]+/i.test(str)) return true;
+
+  return false;
+}
+
+export interface ParseWrOptions {
+  normalize?: boolean;
+}
+
+/**
+ * Extrae y normaliza códigos WR de un texto, soportando separadores por guion (-), slash (/), comas, etc.
+ * Admite opción normalize (por defecto true) para formatear canónicamente a WR000xxxxxx.
+ */
+export function parseWrCodes(raw: string | null | undefined, options?: ParseWrOptions): string[] {
   if (!raw || !String(raw).trim()) return [];
   let str = String(raw).trim();
 
-  // Preservar prefijo WR- evitando que el guion sea interpretado como separador
-  const placeholder = '__WR_HYPHEN__';
-  str = str.replace(/\b(WR)-/gi, (_match, p1) => `${p1}${placeholder}`);
+  // Eliminar comillas externas típicas de celdas multilinea de Excel
+  str = str.replace(/^["'\s]+|["'\s]+$/g, '');
 
-  // Separadores: slashes /, \, comas ,, punto y coma ;, saltos de línea, tabulaciones, o guiones -
-  const tokens = str.split(/[\/,;\\\n\r\t]+|\s*-\s*/);
+  // Preservar prefijo WR- evitando que el guion interno sea interpretado como separador
+  const placeholder = '__WR_HYPHEN__';
+  str = str.replace(/\b(WR)\s*-\s*(?=[A-Z0-9]{3,9})/gi, (_match, p1) => `${p1}${placeholder}`);
+
+  // Normalizar separadores variados: /, \, |, ;, comas, bullets (•, ·), guiones tipográficos (–, —)
+  str = str.replace(/[/\\|,;•·–—]+/g, '\n');
+  // Guiones separadores entre códigos (con o sin espacios)
+  str = str.replace(/\s*-\s*/g, '\n');
+  // Guiones residuales entre códigos alfanuméricos
+  str = str.replace(/(?<=[0-9A-Za-z])-(?=[0-9A-Za-z])/g, '\n');
+  // Separar códigos contiguos separados por espacios en blanco de al menos 4 caracteres
+  str = str.replace(/(?<=\b(?:WR)?[A-Za-z0-9]{4,11})\s+(?=(?:WR)?[A-Za-z0-9]{4,11}\b)/gi, '\n');
+
+  const tokens = str.split(/\r?\n/);
   const wrs: string[] = [];
+  const shouldNormalize = options?.normalize !== false;
 
   for (const token of tokens) {
-    const clean = token.replace(new RegExp(placeholder, 'g'), '-').trim().toUpperCase();
+    let clean = token
+      .replace(new RegExp(placeholder, 'g'), '-')
+      .replace(/["'()[\]{}]/g, '')
+      .trim()
+      .toUpperCase();
     if (!clean) continue;
 
     // Descartar tokens que claramente sean sólo palabras de bultos/notas
-    const isBultoTextOnly = /^(MAS|MÁS|\+)?\s*\d*\s*(CJ|CJS|CAJA|CAJAS|BULTO|BULTOS|PAQ|PAQUETE|PAQUETES|SOBRE|SOBRES|UND|PZA|PZAS)$/i.test(clean) ||
+    const isBultoTextOnly =
+      /^(MAS|MÁS|\+)?\s*\d*\s*(CJ|CJS|CAJA|CAJAS|BULTO|BULTOS|PAQ|PAQUETE|PAQUETES|SOBRE|SOBRES|UND|PZA|PZAS)$/i.test(clean) ||
       /^(MAS|MÁS|CJ|CJS|CAJA|CAJAS|SOBRE|SOBRES)$/i.test(clean);
-    
+
     if (isBultoTextOnly) continue;
 
-    wrs.push(clean);
+    // Aceptar si tiene prefijo WR o es un número de al menos 4 dígitos
+    const isWrCandidate = clean.startsWith('WR') || /^\d{4,9}$/.test(clean);
+    if (!isWrCandidate) continue;
+
+    const finalCode = shouldNormalize ? normalizeWr(clean) : clean;
+    if (finalCode && !wrs.includes(finalCode)) {
+      wrs.push(finalCode);
+    }
   }
 
   return wrs;
@@ -323,6 +376,7 @@ export function formatNormalizedWrs(wrs: string[]): string {
 
 export interface WrAndBultosParsed {
   wrs: string[];
+  rawWrs?: string[];
   normalizedWrs: string;
   bultos: string;
   count: number;
@@ -330,43 +384,82 @@ export interface WrAndBultosParsed {
 
 /**
  * Parsea una celda que contiene códigos WR y/o descripción de bultos.
- * Detecta WRs separados por guion o slash y autocalcula la cantidad de bultos
+ * Detecta WRs separados por guion (-) o slash (/) y autocalcula la cantidad de bultos
  * (1 WR -> '1 CJ', 2+ WRs -> 'N CJS').
+ * Normaliza automáticamente los códigos WR al formato canónico WR000xxxxxx.
  */
-export function parseWrAndBultos(raw: string | null | undefined): WrAndBultosParsed {
+export function parseWrAndBultos(
+  raw: string | null | undefined,
+  options?: ParseWrOptions
+): WrAndBultosParsed {
   if (!raw || !String(raw).trim()) {
-    return { wrs: [], normalizedWrs: '', bultos: '', count: 0 };
+    return { wrs: [], rawWrs: [], normalizedWrs: '', bultos: '', count: 0 };
   }
 
   let str = String(raw).trim();
-  const placeholder = '__WR_HYPHEN__';
-  str = str.replace(/\b(WR)-/gi, (_match, p1) => `${p1}${placeholder}`);
+  str = str.replace(/^["'\s]+|["'\s]+$/g, '');
 
-  const tokens = str.split(/[\/,;\\\n\r\t]+|\s*-\s*/);
+  // Extraer notas explícitas de bultos (ej: '404403- MAS 8 CJS' o 'WR001 / 10 CJS')
+  const bultoMatch = str.match(/(?:^|[–—\-\/,;|\s])\s*(?:MAS|MÁS|\+)?\s*(\d+\s*(?:CJ|CJS|CAJA|CAJAS|BULTO|BULTOS|PAQ|PAQUETE|PAQUETES|SOBRE|SOBRES|UND|PZA|PZAS))\b/i);
+  let explicitBultos = '';
+  if (bultoMatch) {
+    explicitBultos = bultoMatch[1].trim().toUpperCase();
+  }
+
+  // Preservar prefijo WR-
+  const placeholder = '__WR_HYPHEN__';
+  str = str.replace(/\b(WR)\s*-\s*(?=[A-Z0-9]{3,9})/gi, (_match, p1) => `${p1}${placeholder}`);
+
+  // Normalizar separadores a saltos de línea
+  str = str.replace(/[/\\|,;•·–—]+/g, '\n');
+  str = str.replace(/\s*-\s*/g, '\n');
+  str = str.replace(/(?<=[0-9A-Za-z])-(?=[0-9A-Za-z])/g, '\n');
+  str = str.replace(/(?<=\b(?:WR)?[A-Za-z0-9]{4,11})\s+(?=(?:WR)?[A-Za-z0-9]{4,11}\b)/gi, '\n');
+
+  const tokens = str.split(/\r?\n/);
   const wrs: string[] = [];
+  const rawWrs: string[] = [];
   const bultoTokens: string[] = [];
+  const shouldNormalize = options?.normalize !== false;
 
   for (const token of tokens) {
-    const clean = token.replace(new RegExp(placeholder, 'g'), '-').trim();
+    const clean = token
+      .replace(new RegExp(placeholder, 'g'), '-')
+      .replace(/["'()[\]{}]/g, '')
+      .trim();
     if (!clean) continue;
 
-    const isBultoOrNote = /\b(cj|cjs|caja|cajas|bulto|bultos|paq|paquete|paquetes|sobre|sobres|mas|más)\b/i.test(clean);
+    const isBultoOrNote =
+      /\b(cj|cjs|caja|cajas|bulto|bultos|paq|paquete|paquetes|sobre|sobres|mas|más)\b/i.test(clean) ||
+      /^(MAS|MÁS|\+)?\s*\d*\s*(CJ|CJS|CAJA|CAJAS|BULTO|BULTOS|PAQ|PAQUETE|PAQUETES|SOBRE|SOBRES)$/i.test(clean);
+
     if (isBultoOrNote) {
       bultoTokens.push(clean);
     } else {
-      wrs.push(clean.toUpperCase());
+      const upper = clean.toUpperCase();
+      const isWrCandidate = upper.startsWith('WR') || /^\d{4,9}$/.test(upper);
+      if (isWrCandidate) {
+        const finalCode = shouldNormalize ? normalizeWr(upper) : upper;
+        if (!wrs.includes(finalCode)) {
+          wrs.push(finalCode);
+          rawWrs.push(upper);
+        }
+      }
     }
   }
 
   let bultos = '';
-  if (bultoTokens.length > 0) {
-    bultos = bultoTokens.join(' ').replace(/^MAS\s+/i, '').replace(/^MÁS\s+/i, '').trim();
+  if (explicitBultos) {
+    bultos = explicitBultos;
+  } else if (bultoTokens.length > 0) {
+    bultos = bultoTokens.join(' ').replace(/^MAS\s+/i, '').replace(/^MÁS\s+/i, '').trim().toUpperCase();
   } else if (wrs.length > 0) {
     bultos = wrs.length === 1 ? '1 CJ' : `${wrs.length} CJS`;
   }
 
   return {
     wrs,
+    rawWrs,
     normalizedWrs: wrs.join(' / '),
     bultos,
     count: wrs.length
@@ -375,8 +468,10 @@ export function parseWrAndBultos(raw: string | null | undefined): WrAndBultosPar
 
 /**
  * Parser de filas pegadas desde Excel (Quick Paste)
- * Convierte texto tabulado (\t) copiado del portapapeles a paradas estructuradas.
+ * Convierte texto copiado del portapapeles a paradas estructuradas.
  * Detección inteligente flexible:
+ * - Soporta pegar una columna de solo WRs (1 código por fila o múltiples WRs separados por - o /).
+ * - Soporta 2 columnas (Destinatario | WR o WR | Destinatario).
  * - Detecta automáticamente si la celda de WRs contiene múltiples códigos separados por guion (-) o slash (/).
  * - Autocalcula bultos según cantidad de WRs (1 WR -> '1 CJ', N WRs -> 'N CJS').
  * - Soporta tanto formato de 5 columnas como de 6 columnas (con columna explícita de Bultos).
@@ -384,29 +479,96 @@ export function parseWrAndBultos(raw: string | null | undefined): WrAndBultosPar
 export function parseQuickPasteRows(clipboardText: string): CrearParadaInput[] {
   if (!clipboardText || !clipboardText.trim()) return [];
 
-  const lines = clipboardText.split(/\r?\n/);
+  const rawLines = clipboardText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (rawLines.length === 0) return [];
+
   const paradas: CrearParadaInput[] = [];
 
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-
+  for (const line of rawLines) {
     // Detectar separador (tabulación de Excel o punto y coma)
-    const cols = trimmed.includes('\t') ? trimmed.split('\t') : trimmed.split(';');
+    const cols = line.includes('\t') ? line.split('\t').map(c => c.trim()) : line.split(';').map(c => c.trim());
     const col0 = String(cols[0] || '').trim();
 
     // Ignorar cabeceras repetidas del Excel de entregas
-    if (!col0 || col0.toUpperCase() === 'NOMBRE' || col0.toUpperCase().startsWith('CLIENTE:')) {
+    if (
+      !col0 ||
+      /^(NOMBRE|CLIENTE|DESTINATARIO|WR|CÓDIGO|CODIGO|WAREHOUSE|GUIA|GUIAS)$/i.test(col0) ||
+      col0.toUpperCase().startsWith('CLIENTE:')
+    ) {
       continue;
     }
 
-    const destinatario = col0;
-    const col1 = String(cols[1] || '').trim();
-    const col2 = String(cols[2] || '').trim();
-    const col3 = String(cols[3] || '').trim();
-    const col4 = String(cols[4] || '').trim();
-    const col5 = String(cols[5] || '').trim();
-    const col6 = String(cols[6] || '').trim();
+    // Caso 1: Una sola columna (Columna de WRs pegada directamente de Excel)
+    if (cols.length === 1 || (cols.length > 1 && !cols[1] && !cols[2] && !cols[3])) {
+      const parsedWr = parseWrAndBultos(col0);
+      if (parsedWr.count > 0 || isWrOrWrList(col0)) {
+        const wrCodes = parsedWr.normalizedWrs;
+        const bultos = parsedWr.bultos || '1 CJ';
+        const wrBultos = wrCodes ? (bultos && bultos !== '1 CJ' ? `${wrCodes} · ${bultos}` : wrCodes) : bultos;
+
+        paradas.push({
+          destinatario: '',
+          wrCodes,
+          bultos,
+          wrBultos,
+          direccion: 'Dirección pendiente',
+          distrito: 'MIRAFLORES',
+          telefono: '',
+          montoCobro: 0,
+          monedaCobro: 'USD'
+        });
+        continue;
+      }
+    }
+
+    // Caso 2: 2 Columnas (ej: Destinatario | WR o WR | Destinatario)
+    if (cols.length === 2) {
+      const col1 = String(cols[1] || '').trim();
+      const col0IsWr = isWrOrWrList(col0);
+      const col1IsWr = isWrOrWrList(col1);
+
+      let destinatario = col0;
+      let wrRaw = col1;
+
+      if (col0IsWr && !col1IsWr) {
+        destinatario = col1;
+        wrRaw = col0;
+      }
+
+      const parsedWr = parseWrAndBultos(wrRaw);
+      const wrCodes = parsedWr.normalizedWrs;
+      const bultos = parsedWr.bultos || '1 CJ';
+      const wrBultos = wrCodes ? (bultos && bultos !== '1 CJ' ? `${wrCodes} · ${bultos}` : wrCodes) : bultos;
+
+      paradas.push({
+        destinatario,
+        wrCodes,
+        bultos,
+        wrBultos,
+        direccion: 'Dirección pendiente',
+        distrito: 'MIRAFLORES',
+        telefono: '',
+        montoCobro: 0,
+        monedaCobro: 'USD'
+      });
+      continue;
+    }
+
+    // Caso 3: 3+ Columnas (Formatos de 5 o 6 columnas desde Excel)
+    let colDest = cols[0];
+    let colWr = cols[1];
+    let colRestStart = 2;
+
+    // Detección si col0 es WR y col1 es Destinatario
+    if (isWrOrWrList(cols[0]) && !isWrOrWrList(cols[1])) {
+      colDest = cols[1];
+      colWr = cols[0];
+    }
+
+    const col2 = String(cols[colRestStart] || '').trim();
+    const col3 = String(cols[colRestStart + 1] || '').trim();
+    const col4 = String(cols[colRestStart + 2] || '').trim();
+    const col5 = String(cols[colRestStart + 3] || '').trim();
 
     // Determinar si cols tiene columna de bultos separada (6+ columnas)
     const isCol3Dist = isKnownDistrito(col3);
@@ -423,30 +585,26 @@ export function parseQuickPasteRows(clipboardText: string): CrearParadaInput[] {
 
     if ((isCol4Dist && !isCol3Dist) || (col2LooksLikeBultos && cols.length >= 6)) {
       // 6 columnas: Destinatario | WRs | Bultos | Dirección | Distrito | Teléfono | Cobro
-      const parsedWr = parseWrAndBultos(col1);
-      wrCodes = parsedWr.normalizedWrs || col1;
+      const parsedWr = parseWrAndBultos(colWr);
+      wrCodes = parsedWr.normalizedWrs;
       bultos = col2 || parsedWr.bultos || '1 CJ';
-      wrBultos = wrCodes ? (bultos ? `${wrCodes} · ${bultos}` : wrCodes) : bultos;
+      wrBultos = wrCodes ? (bultos && bultos !== '1 CJ' ? `${wrCodes} · ${bultos}` : wrCodes) : bultos;
       direccion = col3 || 'Dirección pendiente';
       distrito = normalizeDistrito(col4 || 'LIMA');
       telefono = col5;
 
+      const col6 = String(cols[colRestStart + 4] || '').trim();
       if (col6) {
         const rawNum = String(col6).replace(/[^0-9.]/g, '');
         const num = parseFloat(rawNum);
         if (!isNaN(num) && num > 0) montoCobro = num;
       }
     } else {
-      // 5 columnas estándar: Destinatario | WRs (o WR/Bultos) | Dirección | Distrito | Teléfono | Cobro
-      const parsedWr = parseWrAndBultos(col1);
+      // 5 columnas estándar: Destinatario | WRs | Dirección | Distrito | Teléfono | Cobro
+      const parsedWr = parseWrAndBultos(colWr);
       wrCodes = parsedWr.normalizedWrs;
       bultos = parsedWr.bultos || '1 CJ';
-
-      // Preservar col1 o normalizar si tiene múltiples WRs
-      wrBultos = col1 || '1 CJ';
-      if (parsedWr.wrs.length > 1) {
-        wrBultos = parsedWr.normalizedWrs;
-      }
+      wrBultos = wrCodes ? (bultos && bultos !== '1 CJ' ? `${wrCodes} · ${bultos}` : wrCodes) : bultos;
 
       direccion = col2 || 'Dirección pendiente';
       distrito = normalizeDistrito(col3 || 'LIMA');
@@ -460,7 +618,7 @@ export function parseQuickPasteRows(clipboardText: string): CrearParadaInput[] {
     }
 
     paradas.push({
-      destinatario,
+      destinatario: colDest,
       wrBultos,
       wrCodes,
       bultos,

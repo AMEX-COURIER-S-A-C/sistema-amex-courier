@@ -5,6 +5,7 @@ import {
   getGoogleMapsUrl,
   normalizeDistrito,
   parseQuickPasteRows,
+  isWrOrWrList,
   parseWrCodes,
   parseWrAndBultos,
   formatNormalizedWrs,
@@ -120,7 +121,8 @@ describe('Módulo de Despacho y Rutas: Utilidades y Flujo de Chofer', () => {
 
       // Parada 1
       expect(paradas[0].destinatario).toBe('DANIEL VALDIVIA');
-      expect(paradas[0].wrBultos).toBe('405148');
+      expect(paradas[0].wrBultos).toBe('WR000405148');
+      expect(paradas[0].wrCodes).toBe('WR000405148');
       expect(paradas[0].direccion).toBe('CALLE FRANCIA 510 DPTO 602');
       expect(paradas[0].distrito).toBe('MIRAFLORES');
       expect(paradas[0].telefono).toBe('997 370 290');
@@ -128,7 +130,8 @@ describe('Módulo de Despacho y Rutas: Utilidades y Flujo de Chofer', () => {
 
       // Parada 2 (con bultos y cobro)
       expect(paradas[1].destinatario).toBe('LISS CASTILLO');
-      expect(paradas[1].wrBultos).toBe('404403- MAS 8 CJS');
+      expect(paradas[1].wrBultos).toBe('WR000404403 · 8 CJS');
+      expect(paradas[1].wrCodes).toBe('WR000404403');
       expect(paradas[1].montoCobro).toBe(14.70);
 
       // Parada 3 (con bultos CJS)
@@ -160,14 +163,14 @@ describe('Módulo de Despacho y Rutas: Utilidades y Flujo de Chofer', () => {
 
       // Fila 1: Separado por guión (-)
       expect(paradas[0].destinatario).toBe('CARLOS GOMEZ');
-      expect(paradas[0].wrCodes).toBe('405148 / 405149');
+      expect(paradas[0].wrCodes).toBe('WR000405148 / WR000405149');
       expect(paradas[0].bultos).toBe('2 CJS');
       expect(paradas[0].direccion).toBe('AV LARCO 456');
       expect(paradas[0].distrito).toBe('MIRAFLORES');
 
       // Fila 2: Separado por slash (/) con cobro
       expect(paradas[1].destinatario).toBe('MARIA LOPEZ');
-      expect(paradas[1].wrCodes).toBe('405148 / 405149 / 405150');
+      expect(paradas[1].wrCodes).toBe('WR000405148 / WR000405149 / WR000405150');
       expect(paradas[1].bultos).toBe('3 CJS');
       expect(paradas[1].montoCobro).toBe(15.00);
       expect(paradas[1].distrito).toBe('SANTIAGO DE SURCO');
@@ -179,7 +182,7 @@ describe('Módulo de Despacho y Rutas: Utilidades y Flujo de Chofer', () => {
 
       expect(paradas).toHaveLength(1);
       expect(paradas[0].destinatario).toBe('JOSE SANCHEZ');
-      expect(paradas[0].wrCodes).toBe('405148 / 405149');
+      expect(paradas[0].wrCodes).toBe('WR000405148 / WR000405149');
       expect(paradas[0].bultos).toBe('5 CJS');
       expect(paradas[0].direccion).toBe('AV BOLOGNESI 123');
       expect(paradas[0].distrito).toBe('BARRANCO');
@@ -189,46 +192,49 @@ describe('Módulo de Despacho y Rutas: Utilidades y Flujo de Chofer', () => {
   });
 
   describe('Detección y Normalización de Códigos WR (Guion y Slash)', () => {
-    it('detecta códigos separados por guion con y sin espacios', () => {
-      expect(parseWrCodes('405148-405149')).toEqual(['405148', '405149']);
-      expect(parseWrCodes('405148 - 405149')).toEqual(['405148', '405149']);
-      expect(parseWrCodes('405148 - 405149 - 405150')).toEqual(['405148', '405149', '405150']);
+    it('detecta códigos separados por guion con y sin espacios y los normaliza', () => {
+      expect(parseWrCodes('405148-405149')).toEqual(['WR000405148', 'WR000405149']);
+      expect(parseWrCodes('405148 - 405149')).toEqual(['WR000405148', 'WR000405149']);
+      expect(parseWrCodes('405148 - 405149 - 405150')).toEqual(['WR000405148', 'WR000405149', 'WR000405150']);
+      // Con normalize: false devuelve códigos crudos
+      expect(parseWrCodes('405148-405149', { normalize: false })).toEqual(['405148', '405149']);
     });
 
     it('detecta códigos separados por slash con y sin espacios', () => {
-      expect(parseWrCodes('405148/405149')).toEqual(['405148', '405149']);
-      expect(parseWrCodes('405148 / 405149')).toEqual(['405148', '405149']);
-      expect(parseWrCodes('405148 / 405149 / 405150')).toEqual(['405148', '405149', '405150']);
+      expect(parseWrCodes('405148/405149')).toEqual(['WR000405148', 'WR000405149']);
+      expect(parseWrCodes('405148 / 405149')).toEqual(['WR000405148', 'WR000405149']);
+      expect(parseWrCodes('405148 / 405149 / 405150')).toEqual(['WR000405148', 'WR000405149', 'WR000405150']);
     });
 
     it('maneja separadores mixtos de guion, slash y coma', () => {
       expect(parseWrCodes('405148 - 405149 / 405150, 405151')).toEqual([
-        '405148',
-        '405149',
-        '405150',
-        '405151'
+        'WR000405148',
+        'WR000405149',
+        'WR000405150',
+        'WR000405151'
       ]);
     });
 
-    it('preserva prefijos de tipo WR- sin fragmentarlos', () => {
-      expect(parseWrCodes('WR-405148 - WR-405149')).toEqual(['WR-405148', 'WR-405149']);
+    it('preserva prefijos de tipo WR- sin fragmentarlos y normaliza a 11 chars', () => {
+      expect(parseWrCodes('WR-405148 - WR-405149')).toEqual(['WR000405148', 'WR000405149']);
+      expect(parseWrCodes('WR-405148 - WR-405149', { normalize: false })).toEqual(['WR-405148', 'WR-405149']);
       expect(parseWrCodes('WR000474478 / WR000474479')).toEqual(['WR000474478', 'WR000474479']);
     });
 
     it('formatea la lista de WRs a una cadena estándar limpia con slash', () => {
-      expect(formatNormalizedWrs(['405148', '405149'])).toBe('405148 / 405149');
+      expect(formatNormalizedWrs(['WR000405148', 'WR000405149'])).toBe('WR000405148 / WR000405149');
     });
 
     it('autocalcula bultos a partir de la cantidad de WRs detectados', () => {
       const single = parseWrAndBultos('405148');
       expect(single.count).toBe(1);
       expect(single.bultos).toBe('1 CJ');
-      expect(single.normalizedWrs).toBe('405148');
+      expect(single.normalizedWrs).toBe('WR000405148');
 
       const duo = parseWrAndBultos('405148 - 405149');
       expect(duo.count).toBe(2);
       expect(duo.bultos).toBe('2 CJS');
-      expect(duo.normalizedWrs).toBe('405148 / 405149');
+      expect(duo.normalizedWrs).toBe('WR000405148 / WR000405149');
 
       const trio = parseWrAndBultos('405148 / 405149 / 405150');
       expect(trio.count).toBe(3);
@@ -237,8 +243,41 @@ describe('Módulo de Despacho y Rutas: Utilidades y Flujo de Chofer', () => {
 
     it('respeta descripciones explícitas de bultos presentes en el texto', () => {
       const explicit = parseWrAndBultos('404403- MAS 8 CJS');
-      expect(explicit.wrs).toEqual(['404403']);
+      expect(explicit.wrs).toEqual(['WR000404403']);
       expect(explicit.bultos).toBe('8 CJS');
+    });
+
+    it('soporta pegado de columna de puros códigos WR sin columnas adicionales', () => {
+      const wrColumnText = [
+        'WR000485000',
+        'WR000485001',
+        '405148-405149',
+        '405150 / 405151'
+      ].join('\n');
+
+      const paradas = parseQuickPasteRows(wrColumnText);
+      expect(paradas).toHaveLength(4);
+      expect(paradas[0].wrCodes).toBe('WR000485000');
+      expect(paradas[0].bultos).toBe('1 CJ');
+      expect(paradas[1].wrCodes).toBe('WR000485001');
+      expect(paradas[1].bultos).toBe('1 CJ');
+      expect(paradas[2].wrCodes).toBe('WR000405148 / WR000405149');
+      expect(paradas[2].bultos).toBe('2 CJS');
+      expect(paradas[3].wrCodes).toBe('WR000405150 / WR000405151');
+      expect(paradas[3].bultos).toBe('2 CJS');
+    });
+
+    it('soporta pegado de 2 columnas reconociendo si el WR está en col 0 o col 1', () => {
+      const formatoDestWr = 'DANIEL VALDIVIA\t405148';
+      const p1 = parseQuickPasteRows(formatoDestWr);
+      expect(p1[0].destinatario).toBe('DANIEL VALDIVIA');
+      expect(p1[0].wrCodes).toBe('WR000405148');
+
+      const formatoWrDest = '405149 - 405150\tLISS CASTILLO';
+      const p2 = parseQuickPasteRows(formatoWrDest);
+      expect(p2[0].destinatario).toBe('LISS CASTILLO');
+      expect(p2[0].wrCodes).toBe('WR000405149 / WR000405150');
+      expect(p2[0].bultos).toBe('2 CJS');
     });
   });
 
