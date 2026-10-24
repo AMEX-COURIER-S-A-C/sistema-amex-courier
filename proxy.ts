@@ -50,7 +50,11 @@ export async function proxy(request: NextRequest) {
     return response;
   }
 
-  const isLoginPage = pathname.startsWith('/login');
+  const hostname = request.headers.get('host') || '';
+  const isClientsSubdomain = hostname.startsWith('clientes.') || request.nextUrl.searchParams.get('portal') === 'clientes';
+  const isClientPortal = pathname.startsWith('/clientes');
+  const isClientPublicRoute = pathname.startsWith('/clientes/login') || pathname.startsWith('/clientes/registro');
+  const isLoginPage = pathname.startsWith('/login') && !isClientPortal;
   const isApiRoute = pathname.startsWith('/api');
   const isPublicAuthRoute =
     pathname.startsWith('/api/auth/login') ||
@@ -169,6 +173,35 @@ export async function proxy(request: NextRequest) {
   }
 
   // Si está en login y ya está autenticado con sesión vigente, redirigir al panel
+  // Subdominio de clientes: aislar totalmente del ERP interno
+  if (isClientsSubdomain) {
+    if (!pathname.startsWith('/clientes') && !pathname.startsWith('/api')) {
+      if (pathname === '/login') {
+        return setRequestIdHeader(NextResponse.redirect(new URL('/clientes/login', request.url)));
+      }
+      if (pathname === '/registro') {
+        return setRequestIdHeader(NextResponse.redirect(new URL('/clientes/registro', request.url)));
+      }
+      // Cualquier otra ruta en clientes.sistemaamexcourier.online se reescribe al portal
+      return setRequestIdHeader(NextResponse.rewrite(new URL('/clientes', request.url)));
+    }
+  }
+
+  // Comportamiento del portal de clientes
+  if (isClientPortal) {
+    if (isClientPublicRoute) {
+      if (user && pathname === '/clientes/login') {
+        return setRequestIdHeader(NextResponse.redirect(new URL('/clientes', request.url)));
+      }
+      return response;
+    }
+    if (!user) {
+      return setRequestIdHeader(NextResponse.redirect(new URL('/clientes/login', request.url)));
+    }
+    return response;
+  }
+
+  // Si está en login interno y ya está autenticado con sesión vigente, redirigir al panel
   if (isLoginPage && user) {
     return setRequestIdHeader(NextResponse.redirect(new URL('/dashboard', request.url)));
   }

@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { SESSION_START_COOKIE, isSessionExpired } from '@/lib/auth/constants';
 
 const ADMIN_ROLES = new Set(['admin', 'administrador', 'gerente general', 'gerente_general']);
+export const MASTER_SUPERADMIN_EMAILS = new Set(['sistemaamexcourier@gmail.com']);
 
 function normalizeRole(value: unknown): string {
   return String(value || '').trim().toLowerCase();
@@ -37,6 +38,9 @@ export async function getAuthenticatedUser(): Promise<User | null> {
  * user_metadata no se utiliza para decisiones de autorización porque es editable por el usuario.
  */
 export async function hasAdminRole(user: User): Promise<boolean> {
+  const userEmail = (user.email || '').trim().toLowerCase();
+  if (MASTER_SUPERADMIN_EMAILS.has(userEmail)) return true;
+
   const appRole = normalizeRole(user.app_metadata?.rol);
   if (ADMIN_ROLES.has(appRole)) return true;
 

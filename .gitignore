@@ -79,3 +79,4 @@ playwright-report/
 
 # Local backups
 backup_*.json
+scratch/
