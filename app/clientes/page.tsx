@@ -314,10 +314,14 @@ export default function ClienteDashboardTIB() {
     }
   }, []);
 
-  // Cargar sesión del usuario
+  // Cargar sesión del usuario una sola vez
+  const isInitialFilterMount = React.useRef(true);
   useEffect(() => {
+    let isMounted = true;
+
     async function loadSession() {
       const { data: { session } } = await supabasePortal.auth.getSession();
+      if (!isMounted) return;
       if (!session) {
         router.push('/clientes/login');
         return;
@@ -331,23 +335,34 @@ export default function ClienteDashboardTIB() {
     }
     loadSession();
 
-    const { data: { subscription } } = supabasePortal.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
+    const { data: { subscription } } = supabasePortal.auth.onAuthStateChange((event, session) => {
+      if (!isMounted) return;
+      if (event === 'SIGNED_OUT' || !session) {
+        setUser(null);
         router.push('/clientes/login');
-      } else {
+      } else if (event === 'SIGNED_IN') {
+        setUser((prev: any) => {
+          // Solo recargar si no había usuario o cambió de cuenta
+          if (!prev || prev.id !== session.user.id) {
+            fetchTotalSystemCount(session.user.email);
+            fetchPaquetes(session.user.email, 1);
+            if (session.user.email?.toLowerCase() === 'sistemaamexcourier@gmail.com') {
+              fetchClientsList();
+            }
+          }
+          return session.user;
+        });
+      } else if (event === 'TOKEN_REFRESHED') {
+        // En renovación silenciosa de token (al cambiar de ventana/foco), solo actualizar estado en memoria sin recargar la tabla
         setUser(session.user);
-        fetchTotalSystemCount(session.user.email);
-        fetchPaquetes(session.user.email, 1);
-        if (session.user.email?.toLowerCase() === 'sistemaamexcourier@gmail.com') {
-          fetchClientsList();
-        }
       }
     });
 
     return () => {
+      isMounted = false;
       subscription.unsubscribe();
     };
-  }, [router, fetchPaquetes, fetchClientsList]);
+  }, [router, fetchPaquetes, fetchTotalSystemCount, fetchClientsList]);
 
   // Manejo de refresh manual
   const handleManualRefresh = () => {
@@ -359,9 +374,13 @@ export default function ClienteDashboardTIB() {
     }
   };
 
-  // Búsqueda y filtrado automático con debounce
+  // Búsqueda y filtrado automático con debounce (ignora el montaje inicial ya cargado)
   useEffect(() => {
     if (!user?.email) return;
+    if (isInitialFilterMount.current) {
+      isInitialFilterMount.current = false;
+      return;
+    }
     const timer = setTimeout(() => {
       fetchPaquetes(user.email, currentPage);
     }, 350);
