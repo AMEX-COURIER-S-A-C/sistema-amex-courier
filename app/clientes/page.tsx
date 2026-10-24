@@ -466,12 +466,19 @@ export default function ClienteDashboardTIB() {
           
           {/* Logo y título + Tabs de Navegación Superadmin */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '18px', fontWeight: 900, letterSpacing: '-0.5px', color: '#ffffff' }}>
-                Amex<span style={{ color: '#ff5722' }}>+</span>
-              </span>
-              <span style={{ fontSize: '14px', fontWeight: 600, color: '#e5e7eb', borderLeft: '1px solid #4b5563', paddingLeft: '10px' }}>
-                Gestor de Almacén
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/images/logo-amex-clean.png"
+                alt="AMEX Courier"
+                style={{
+                  height: '30px',
+                  width: 'auto',
+                  objectFit: 'contain',
+                }}
+              />
+              <span style={{ fontSize: '13.5px', fontWeight: 700, color: '#f3f4f6', borderLeft: '1px solid #4b5563', paddingLeft: '12px', letterSpacing: '-0.2px' }}>
+                Gestor de Almacén AMEX Courier
               </span>
             </div>
             
