@@ -31,8 +31,15 @@ export async function POST(req: Request) {
     const cleanEmail = email.trim().toLowerCase();
     const cleanNombre = nombre_completo.trim().toUpperCase();
 
-    // Palabras clave para matching (incluye el nombre completo por defecto)
+    // Palabras clave para matching (incluye el nombre completo por defecto y sus variantes)
     const keywords: string[] = [cleanNombre];
+    
+    // Variante sin prefijo AMEX si lo tuviera (ej: "AMEX / JANIRA" -> "JANIRA")
+    const sinAmex = cleanNombre.replace(/^AMEX\s*[\/\-:]?\s*/i, '').trim();
+    if (sinAmex && sinAmex !== cleanNombre && !keywords.includes(sinAmex)) {
+      keywords.push(sinAmex);
+    }
+
     if (Array.isArray(alias_palabras_clave)) {
       alias_palabras_clave.forEach((k: string) => {
         const trimmed = String(k).trim().toUpperCase();
@@ -83,51 +90,76 @@ export async function POST(req: Request) {
       console.error('[CrearCliente] Error al crear perfil clientes_portal:', profileErr);
     }
 
-    // 3. Auto-cruce de paquetes existentes en el ERP principal
-    let syncedCount = 0;
+    // 3. Auto-cruce de paquetes existentes:
+    // a) Actualizar paquetes que ya residen en public.paquetes_portal (Oregon Supabase)
+    try {
+      for (const kw of keywords) {
+        if (!kw || kw.length < 3) continue;
+        await portalAdmin
+          .from('paquetes_portal')
+          .update({ usuario_email: cleanEmail })
+          .ilike('nombre_consignatario', `%${kw}%`);
+      }
+    } catch (portalUpdateErr) {
+      console.warn('[CrearCliente] Aviso al actualizar paquetes_portal:', portalUpdateErr);
+    }
+
+    // b) Buscar en el ERP principal y sincronizar
     try {
       const erpAdmin = getSupabaseAdmin();
 
-      // Buscar paquetes en el ERP cuyo consignatario coincida con el cliente
-      const { data: erpPaquetes } = await erpAdmin
-        .from('paquetes')
-        .select(`
-          id,
-          numero_recibo_bodega,
-          tracking,
-          nombre_consignatario,
-          tipo_empaque,
-          peso_kg,
-          estado_tib,
-          estado_amex,
-          tib_imagen_url,
-          tib_ticket_pdf_url,
-          ubicacion_actual,
-          creado_en
-        `)
-        .ilike('nombre_consignatario', `%${cleanNombre}%`)
-        .order('creado_en', { ascending: false });
+      for (const kw of keywords) {
+        if (!kw || kw.length < 3) continue;
 
-      if (erpPaquetes && erpPaquetes.length > 0) {
-        // Enlazar los paquetes en el ERP con el correo del cliente
-        await erpAdmin
+        const { data: erpPaquetes } = await erpAdmin
           .from('paquetes')
-          .update({ usuario_email: cleanEmail })
-          .ilike('nombre_consignatario', `%${cleanNombre}%`);
+          .select(`
+            id,
+            numero_recibo_bodega,
+            tracking,
+            nombre_consignatario,
+            tipo_empaque,
+            peso_kg,
+            estado_tib,
+            estado_amex,
+            tib_imagen_url,
+            tib_ticket_pdf_url,
+            ubicacion_actual,
+            creado_en
+          `)
+          .ilike('nombre_consignatario', `%${kw}%`)
+          .order('creado_en', { ascending: false });
 
-        // Sincronizarlos al portal de clientes
-        const syncRes = await syncPackagesToClientPortal(
-          erpPaquetes.map(p => ({
-            ...p,
-            usuario_email: cleanEmail,
-            ubicacion_almacen: p.ubicacion_actual || null,
-          }))
-        );
-        syncedCount = syncRes.count || 0;
+        if (erpPaquetes && erpPaquetes.length > 0) {
+          // Enlazar los paquetes en el ERP con el correo del cliente
+          await erpAdmin
+            .from('paquetes')
+            .update({ usuario_email: cleanEmail })
+            .ilike('nombre_consignatario', `%${kw}%`);
+
+          // Sincronizarlos al portal de clientes
+          await syncPackagesToClientPortal(
+            erpPaquetes.map(p => ({
+              ...p,
+              usuario_email: cleanEmail,
+              ubicacion_almacen: p.ubicacion_actual || null,
+            }))
+          );
+        }
       }
     } catch (crossErr) {
-      console.warn('[CrearCliente] Aviso en cruce inicial de paquetes:', crossErr);
+      console.warn('[CrearCliente] Aviso en cruce inicial de paquetes ERP:', crossErr);
     }
+
+    // Contar total de paquetes asignados a este correo en el portal
+    let totalLinked = 0;
+    try {
+      const { count } = await portalAdmin
+        .from('paquetes_portal')
+        .select('*', { count: 'exact', head: true })
+        .eq('usuario_email', cleanEmail);
+      totalLinked = count || 0;
+    } catch (_) {}
 
     return NextResponse.json({
       success: true,
@@ -137,7 +169,7 @@ export async function POST(req: Request) {
         nombre_completo: cleanNombre,
         telefono: telefono || null,
       },
-      paquetes_vinculados: syncedCount,
+      paquetes_vinculados: totalLinked,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error interno al crear usuario cliente';

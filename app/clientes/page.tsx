@@ -59,6 +59,7 @@ export default function ClienteDashboardTIB() {
   const router = useRouter();
 
   const [user, setUser] = useState<any | null>(null);
+  const isSuperadmin = user?.email?.toLowerCase() === 'sistemaamexcourier@gmail.com';
   const [paquetes, setPaquetes] = useState<PaqueteTIB[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -94,6 +95,20 @@ export default function ClienteDashboardTIB() {
   const [isCreatingClient, setIsCreatingClient] = useState(false);
   const [createClientSuccess, setCreateClientSuccess] = useState<string | null>(null);
   const [createClientError, setCreateClientError] = useState<string | null>(null);
+
+  // Estados para el Buscador / Autocompletado de Consignatarios TIB (3,360)
+  const [tibSearchResults, setTibSearchResults] = useState<any[]>([]);
+  const [isSearchingTib, setIsSearchingTib] = useState(false);
+  const [isTibDropdownOpen, setIsTibDropdownOpen] = useState(false);
+  const [selectedTibClient, setSelectedTibClient] = useState<any | null>(null);
+
+  // Estados para la pestaña de Catálogo TIB en Configuración
+  const [configSubTab, setConfigSubTab] = useState<'usuarios' | 'tib'>('usuarios');
+  const [tibCatalogSearch, setTibCatalogSearch] = useState('');
+  const [tibCatalogList, setTibCatalogList] = useState<any[]>([]);
+  const [tibCatalogTotal, setTibCatalogTotal] = useState(0);
+  const [isLoadingTibCatalog, setIsLoadingTibCatalog] = useState(false);
+  const [tibCatalogPage, setTibCatalogPage] = useState(1);
 
   // Sincronización masiva de inventario
   const [isSyncingAll, setIsSyncingAll] = useState(false);
@@ -294,6 +309,7 @@ export default function ClienteDashboardTIB() {
 
       // Limpiar formulario
       setNewClientNombre('');
+      setSelectedTibClient(null);
       setNewClientEmail('');
       setNewClientPassword('');
       setNewClientTelefono('');
@@ -311,6 +327,76 @@ export default function ClienteDashboardTIB() {
       setIsCreatingClient(false);
     }
   };
+
+  // Buscador en vivo de Consignatarios TIB (3,360)
+  const searchTibClients = useCallback(async (query: string) => {
+    setIsSearchingTib(true);
+    try {
+      const res = await fetch(`/api/clientes/listado-amex?search=${encodeURIComponent(query.trim())}&limit=8`);
+      const json = await res.json();
+      if (res.ok && Array.isArray(json.clientes)) {
+        setTibSearchResults(json.clientes);
+        setIsTibDropdownOpen(true);
+      }
+    } catch (err) {
+      console.warn('Error al buscar consignatarios TIB:', err);
+    } finally {
+      setIsSearchingTib(false);
+    }
+  }, []);
+
+  const handleSelectTibClient = (client: any) => {
+    setNewClientNombre(client.nombre);
+    setSelectedTibClient(client);
+    setIsTibDropdownOpen(false);
+
+    // Auto-generar alias inteligentes sin el prefijo AMEX
+    const raw = String(client.nombre || '').trim();
+    const sinAmex = raw.replace(/^AMEX\s*[\/\-:]?\s*/i, '').trim();
+    const variants = new Set<string>();
+
+    if (sinAmex && sinAmex !== raw) {
+      variants.add(sinAmex);
+    }
+
+    const parts = sinAmex.split(' ').filter((p: string) => p.length > 2);
+    if (parts.length >= 2) {
+      variants.add(`${parts[0]} ${parts[parts.length - 1]}`);
+    }
+
+    if (!newClientKeywords.trim()) {
+      setNewClientKeywords(Array.from(variants).join(', '));
+    }
+
+    if (client.email && !newClientEmail.trim()) {
+      setNewClientEmail(client.email);
+    }
+  };
+
+  // Cargar Catálogo TIB para la pestaña de Configuración
+  const fetchTibCatalog = useCallback(async (searchQuery = '', page = 1) => {
+    setIsLoadingTibCatalog(true);
+    try {
+      const limit = 15;
+      const offset = (page - 1) * limit;
+      const res = await fetch(`/api/clientes/listado-amex?search=${encodeURIComponent(searchQuery.trim())}&limit=${limit}&offset=${offset}`);
+      const json = await res.json();
+      if (res.ok) {
+        setTibCatalogList(json.clientes || []);
+        setTibCatalogTotal(json.total || 0);
+      }
+    } catch (err) {
+      console.warn('Error al cargar catálogo TIB:', err);
+    } finally {
+      setIsLoadingTibCatalog(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'configuracion' && isSuperadmin && configSubTab === 'tib') {
+      fetchTibCatalog(tibCatalogSearch, tibCatalogPage);
+    }
+  }, [activeTab, isSuperadmin, configSubTab, tibCatalogSearch, tibCatalogPage, fetchTibCatalog]);
 
   // Filtrado de paquetes en memoria
   const filteredPaquetes = useMemo(() => {
@@ -444,8 +530,6 @@ export default function ClienteDashboardTIB() {
     if (pkg.estado_tib === 'Enviado') return 'EN VUELO';
     return 'RECIBIDO MIAMI';
   };
-
-  const isSuperadmin = user?.email?.toLowerCase() === 'sistemaamexcourier@gmail.com';
 
   return (
     <div 
@@ -1210,30 +1294,16 @@ export default function ClienteDashboardTIB() {
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  {/* Buscador de clientes */}
-                  <div style={{ position: 'relative', minWidth: '240px' }}>
-                    <Search style={{ width: '14px', height: '14px', color: '#9ca3af', position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
-                    <input
-                      type="text"
-                      value={clientSearchQuery}
-                      onChange={(e) => setClientSearchQuery(e.target.value)}
-                      placeholder="Buscar cliente, correo, DNI..."
-                      style={{
-                        width: '100%',
-                        height: '38px',
-                        paddingLeft: '32px',
-                        paddingRight: '10px',
-                        borderRadius: '6px',
-                        border: '1px solid #d1d5db',
-                        fontSize: '12.5px',
-                        outline: 'none',
-                      }}
-                    />
-                  </div>
-
                   <button
                     type="button"
                     onClick={() => {
+                      setSelectedTibClient(null);
+                      setNewClientNombre('');
+                      setNewClientEmail('');
+                      setNewClientPassword('');
+                      setNewClientTelefono('');
+                      setNewClientDni('');
+                      setNewClientKeywords('');
                       setCreateClientSuccess(null);
                       setCreateClientError(null);
                       setIsAddClientOpen(true);
@@ -1259,83 +1329,339 @@ export default function ClienteDashboardTIB() {
                 </div>
               </div>
 
-              {/* Tabla de Clientes en Configuración */}
-              <div style={{ overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
-                  <thead>
-                    <tr style={{ backgroundColor: '#f8f9fa', borderBottom: '1px solid #e5e7eb' }}>
-                      <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Consignatario / Nombre</th>
-                      <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Correo (Login)</th>
-                      <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Casillero</th>
-                      <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Teléfono / Documento</th>
-                      <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Palabras Clave (Matching)</th>
-                      <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Estado</th>
-                      <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Fecha Registro</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {isLoadingClients ? (
-                      <tr>
-                        <td colSpan={7} style={{ padding: '36px', textAlign: 'center', color: '#6b7280' }}>
-                          <div style={{ width: '22px', height: '22px', border: '2px solid #ff5722', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 8px' }} />
-                          <span>Cargando directorio de clientes...</span>
-                        </td>
-                      </tr>
-                    ) : filteredClientsList.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
-                          <Users style={{ width: '36px', height: '36px', color: '#d1d5db', margin: '0 auto 8px' }} />
-                          <p style={{ fontWeight: 700, color: '#374151', margin: 0 }}>No hay clientes que coincidan</p>
-                          <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>Crea un cliente nuevo con el botón "+ Agregar Cliente".</p>
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredClientsList.map((c, idx) => (
-                        <tr key={c.id} style={{ borderBottom: '1px solid #f3f4f6', backgroundColor: idx % 2 === 0 ? '#ffffff' : '#fafbfc' }}>
-                          <td style={{ padding: '12px 14px', fontWeight: 700, color: '#111827' }}>
-                            {c.nombre_completo}
-                          </td>
-                          <td style={{ padding: '12px 14px', color: '#4b5563', fontFamily: 'monospace', fontSize: '12px' }}>
-                            {c.email}
-                          </td>
-                          <td style={{ padding: '12px 14px' }}>
-                            <span style={{ backgroundColor: '#f3f4f6', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 700, color: '#374151', fontFamily: 'monospace' }}>
-                              {c.casillero_codigo || `AMX-${String(idx + 1).padStart(3, '0')}`}
-                            </span>
-                          </td>
-                          <td style={{ padding: '12px 14px', color: '#4b5563' }}>
-                            <div>{c.telefono || '—'}</div>
-                            {c.documento_identidad && (
-                              <div style={{ fontSize: '11px', color: '#9ca3af' }}>Doc: {c.documento_identidad}</div>
-                            )}
-                          </td>
-                          <td style={{ padding: '12px 14px', color: '#6b7280', fontSize: '11.5px', maxWidth: '240px' }}>
-                            {Array.isArray(c.alias_palabras_clave) && c.alias_palabras_clave.length > 0 ? (
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                                {c.alias_palabras_clave.map((k, ki) => (
-                                  <span key={ki} style={{ backgroundColor: '#e0f2fe', color: '#0369a1', padding: '1px 6px', borderRadius: '3px', fontSize: '10.5px', fontWeight: 600 }}>
-                                    {k}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : (
-                              <span>Nombre exacto</span>
-                            )}
-                          </td>
-                          <td style={{ padding: '12px 14px' }}>
-                            <span style={{ backgroundColor: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 700 }}>
-                              Activo
-                            </span>
-                          </td>
-                          <td style={{ padding: '12px 14px', color: '#6b7280', fontSize: '11.5px' }}>
-                            {formatDateTimeTIB(c.creado_en).date}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+              {/* Sub-pestañas: Usuarios Creados vs Catálogo TIB */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid #e5e7eb', paddingBottom: '12px', marginBottom: '16px' }}>
+                <button
+                  type="button"
+                  onClick={() => setConfigSubTab('usuarios')}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    backgroundColor: configSubTab === 'usuarios' ? '#ff5722' : '#f3f4f6',
+                    color: configSubTab === 'usuarios' ? '#ffffff' : '#4b5563',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <Users style={{ width: '15px', height: '15px' }} />
+                  <span>Usuarios Creados en Portal ({clientsList.length})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfigSubTab('tib');
+                    if (tibCatalogList.length === 0) {
+                      fetchTibCatalog(tibCatalogSearch, 1);
+                    }
+                  }}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    backgroundColor: configSubTab === 'tib' ? '#ff5722' : '#f3f4f6',
+                    color: configSubTab === 'tib' ? '#ffffff' : '#4b5563',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <Package style={{ width: '15px', height: '15px' }} />
+                  <span>Catálogo Consignatarios TIB ({tibCatalogTotal || 3360})</span>
+                </button>
               </div>
+
+              {/* Contenido Sub-Pestaña 1: Usuarios Creados */}
+              {configSubTab === 'usuarios' && (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                    <div style={{ position: 'relative', width: '320px', maxWidth: '100%' }}>
+                      <Search style={{ width: '14px', height: '14px', color: '#9ca3af', position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+                      <input
+                        type="text"
+                        value={clientSearchQuery}
+                        onChange={(e) => setClientSearchQuery(e.target.value)}
+                        placeholder="Buscar cliente, correo, DNI..."
+                        style={{
+                          width: '100%',
+                          height: '38px',
+                          paddingLeft: '32px',
+                          paddingRight: '10px',
+                          borderRadius: '6px',
+                          border: '1px solid #d1d5db',
+                          fontSize: '12.5px',
+                          outline: 'none',
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ backgroundColor: '#f8f9fa', borderBottom: '1px solid #e5e7eb' }}>
+                          <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Consignatario / Nombre</th>
+                          <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Correo (Login)</th>
+                          <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Casillero</th>
+                          <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Teléfono / Documento</th>
+                          <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Palabras Clave (Matching)</th>
+                          <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Estado</th>
+                          <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Fecha Registro</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {isLoadingClients ? (
+                          <tr>
+                            <td colSpan={7} style={{ padding: '36px', textAlign: 'center', color: '#6b7280' }}>
+                              <div style={{ width: '22px', height: '22px', border: '2px solid #ff5722', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 8px' }} />
+                              <span>Cargando directorio de clientes...</span>
+                            </td>
+                          </tr>
+                        ) : filteredClientsList.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
+                              <Users style={{ width: '36px', height: '36px', color: '#d1d5db', margin: '0 auto 8px' }} />
+                              <p style={{ fontWeight: 700, color: '#374151', margin: 0 }}>No hay clientes que coincidan</p>
+                              <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>Crea un cliente nuevo con el botón "+ Agregar Cliente".</p>
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredClientsList.map((c, idx) => (
+                            <tr key={c.id} style={{ borderBottom: '1px solid #f3f4f6', backgroundColor: idx % 2 === 0 ? '#ffffff' : '#fafbfc' }}>
+                              <td style={{ padding: '12px 14px', fontWeight: 700, color: '#111827' }}>
+                                {c.nombre_completo}
+                              </td>
+                              <td style={{ padding: '12px 14px', color: '#4b5563', fontFamily: 'monospace', fontSize: '12px' }}>
+                                {c.email}
+                              </td>
+                              <td style={{ padding: '12px 14px' }}>
+                                <span style={{ backgroundColor: '#f3f4f6', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 700, color: '#374151', fontFamily: 'monospace' }}>
+                                  {c.casillero_codigo || `AMX-${String(idx + 1).padStart(3, '0')}`}
+                                </span>
+                              </td>
+                              <td style={{ padding: '12px 14px', color: '#4b5563' }}>
+                                <div>{c.telefono || '—'}</div>
+                                {c.documento_identidad && (
+                                  <div style={{ fontSize: '11px', color: '#9ca3af' }}>Doc: {c.documento_identidad}</div>
+                                )}
+                              </td>
+                              <td style={{ padding: '12px 14px', color: '#6b7280', fontSize: '11.5px', maxWidth: '240px' }}>
+                                {Array.isArray(c.alias_palabras_clave) && c.alias_palabras_clave.length > 0 ? (
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                    {c.alias_palabras_clave.map((k, ki) => (
+                                      <span key={ki} style={{ backgroundColor: '#e0f2fe', color: '#0369a1', padding: '1px 6px', borderRadius: '3px', fontSize: '10.5px', fontWeight: 600 }}>
+                                        {k}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span>Nombre exacto</span>
+                                )}
+                              </td>
+                              <td style={{ padding: '12px 14px' }}>
+                                <span style={{ backgroundColor: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 700 }}>
+                                  Activo
+                                </span>
+                              </td>
+                              <td style={{ padding: '12px 14px', color: '#6b7280', fontSize: '11.5px' }}>
+                                {formatDateTimeTIB(c.creado_en).date}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Contenido Sub-Pestaña 2: Catálogo Consignatarios TIB (3,360) */}
+              {configSubTab === 'tib' && (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
+                    <div style={{ position: 'relative', width: '360px', maxWidth: '100%' }}>
+                      <Search style={{ width: '14px', height: '14px', color: '#9ca3af', position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+                      <input
+                        type="text"
+                        value={tibCatalogSearch}
+                        onChange={(e) => {
+                          setTibCatalogSearch(e.target.value);
+                          setTibCatalogPage(1);
+                          fetchTibCatalog(e.target.value, 1);
+                        }}
+                        placeholder="Buscar en los 3,360 consignatarios TIB..."
+                        style={{
+                          width: '100%',
+                          height: '38px',
+                          paddingLeft: '32px',
+                          paddingRight: '10px',
+                          borderRadius: '6px',
+                          border: '1px solid #d1d5db',
+                          fontSize: '12.5px',
+                          outline: 'none',
+                        }}
+                      />
+                    </div>
+                    <span style={{ fontSize: '12px', color: '#6b7280', fontWeight: 600 }}>
+                      Mostrando {tibCatalogList.length} de {tibCatalogTotal} consignatarios
+                    </span>
+                  </div>
+
+                  <div style={{ overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ backgroundColor: '#f8f9fa', borderBottom: '1px solid #e5e7eb' }}>
+                          <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Consignatario (Nombre en TIB)</th>
+                          <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>ID TIB</th>
+                          <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563', textAlign: 'center' }}>Total Paquetes</th>
+                          <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563', textAlign: 'center' }}>En Bodega</th>
+                          <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563', textAlign: 'center' }}>En Tránsito</th>
+                          <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563', textAlign: 'center' }}>Entregados</th>
+                          <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Último WR</th>
+                          <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563', textAlign: 'right' }}>Acción</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {isLoadingTibCatalog ? (
+                          <tr>
+                            <td colSpan={8} style={{ padding: '36px', textAlign: 'center', color: '#6b7280' }}>
+                              <div style={{ width: '22px', height: '22px', border: '2px solid #ff5722', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 8px' }} />
+                              <span>Cargando consignatarios de TIB...</span>
+                            </td>
+                          </tr>
+                        ) : tibCatalogList.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
+                              <Package style={{ width: '36px', height: '36px', color: '#d1d5db', margin: '0 auto 8px' }} />
+                              <p style={{ fontWeight: 700, color: '#374151', margin: 0 }}>No hay consignatarios que coincidan</p>
+                              <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>Prueba buscando otro nombre.</p>
+                            </td>
+                          </tr>
+                        ) : (
+                          tibCatalogList.map((client, idx) => (
+                            <tr key={client.id || idx} style={{ borderBottom: '1px solid #f3f4f6', backgroundColor: idx % 2 === 0 ? '#ffffff' : '#fafbfc' }}>
+                              <td style={{ padding: '12px 14px', fontWeight: 700, color: '#111827' }}>
+                                {client.nombre}
+                              </td>
+                              <td style={{ padding: '12px 14px', color: '#6b7280', fontFamily: 'monospace', fontSize: '12px' }}>
+                                #{client.iclient || 'S/ID'}
+                              </td>
+                              <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                                <span style={{ backgroundColor: '#ffedd5', color: '#c2410c', padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 800 }}>
+                                  {client.total_paquetes}
+                                </span>
+                              </td>
+                              <td style={{ padding: '12px 14px', textAlign: 'center', color: client.recibidos > 0 ? '#ea580c' : '#9ca3af', fontWeight: client.recibidos > 0 ? 800 : 500 }}>
+                                {client.recibidos}
+                              </td>
+                              <td style={{ padding: '12px 14px', textAlign: 'center', color: client.enviados > 0 ? '#2563eb' : '#9ca3af', fontWeight: client.enviados > 0 ? 800 : 500 }}>
+                                {client.enviados}
+                              </td>
+                              <td style={{ padding: '12px 14px', textAlign: 'center', color: '#6b7280' }}>
+                                {client.entregados}
+                              </td>
+                              <td style={{ padding: '12px 14px', color: '#6b7280', fontFamily: 'monospace', fontSize: '11px' }}>
+                                {client.ultimo_wr || '—'}
+                              </td>
+                              <td style={{ padding: '12px 14px', textAlign: 'right' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleSelectTibClient(client);
+                                    setCreateClientSuccess(null);
+                                    setCreateClientError(null);
+                                    setIsAddClientOpen(true);
+                                  }}
+                                  style={{
+                                    backgroundColor: '#ff5722',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    borderRadius: '5px',
+                                    padding: '5px 10px',
+                                    fontSize: '11.5px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    boxShadow: '0 1px 3px rgba(255,87,34,0.2)'
+                                  }}
+                                >
+                                  <UserPlus style={{ width: '12px', height: '12px' }} />
+                                  <span>+ Asignar Portal</span>
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Paginación Catálogo TIB */}
+                  {tibCatalogTotal > 15 && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '12px', fontSize: '12px', color: '#6b7280' }}>
+                      <span>
+                        Página <strong>{tibCatalogPage}</strong> de <strong>{Math.ceil(tibCatalogTotal / 15)}</strong> ({tibCatalogTotal} clientes)
+                      </span>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button
+                          type="button"
+                          disabled={tibCatalogPage <= 1 || isLoadingTibCatalog}
+                          onClick={() => {
+                            const newP = Math.max(1, tibCatalogPage - 1);
+                            setTibCatalogPage(newP);
+                            fetchTibCatalog(tibCatalogSearch, newP);
+                          }}
+                          style={{
+                            padding: '6px 12px',
+                            borderRadius: '5px',
+                            border: '1px solid #d1d5db',
+                            backgroundColor: tibCatalogPage <= 1 ? '#f3f4f6' : '#ffffff',
+                            color: tibCatalogPage <= 1 ? '#9ca3af' : '#374151',
+                            cursor: tibCatalogPage <= 1 ? 'not-allowed' : 'pointer',
+                            fontSize: '12px',
+                            fontWeight: 600
+                          }}
+                        >
+                          Anterior
+                        </button>
+                        <button
+                          type="button"
+                          disabled={tibCatalogPage >= Math.ceil(tibCatalogTotal / 15) || isLoadingTibCatalog}
+                          onClick={() => {
+                            const newP = tibCatalogPage + 1;
+                            setTibCatalogPage(newP);
+                            fetchTibCatalog(tibCatalogSearch, newP);
+                          }}
+                          style={{
+                            padding: '6px 12px',
+                            borderRadius: '5px',
+                            border: '1px solid #d1d5db',
+                            backgroundColor: tibCatalogPage >= Math.ceil(tibCatalogTotal / 15) ? '#f3f4f6' : '#ffffff',
+                            color: tibCatalogPage >= Math.ceil(tibCatalogTotal / 15) ? '#9ca3af' : '#374151',
+                            cursor: tibCatalogPage >= Math.ceil(tibCatalogTotal / 15) ? 'not-allowed' : 'pointer',
+                            fontSize: '12px',
+                            fontWeight: 600
+                          }}
+                        >
+                          Siguiente
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
             </div>
 
@@ -1451,22 +1777,252 @@ export default function ClienteDashboardTIB() {
 
             <form onSubmit={handleCreateClientSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               
-              {/* Nombre Completo / Consignatario */}
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151', marginBottom: '4px' }}>
-                  Nombre Completo o Empresa (Consignatario en Guías) *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newClientNombre}
-                  onChange={(e) => setNewClientNombre(e.target.value)}
-                  placeholder="Ej: AMEX JANIRA AMEX o JANIRA PAREDES"
-                  style={{ width: '100%', height: '40px', padding: '0 12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px', color: '#111827', outline: 'none' }}
-                />
-                <span style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px', display: 'block' }}>
-                  Debe coincidir con el nombre con el que llegan los paquetes a Miami/Lince.
-                </span>
+              {/* Nombre Completo / Consignatario con Selector TIB */}
+              <div style={{ position: 'relative' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151' }}>
+                    Nombre Completo o Empresa (Consignatario en Guías) *
+                  </label>
+                  <span style={{ fontSize: '11px', color: '#ff5722', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <Search style={{ width: '12px', height: '12px' }} />
+                    Buscador TIB (3,360 clientes)
+                  </span>
+                </div>
+
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="text"
+                    required
+                    value={newClientNombre}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setNewClientNombre(val);
+                      setSelectedTibClient(null);
+                      searchTibClients(val);
+                    }}
+                    onFocus={() => {
+                      searchTibClients(newClientNombre);
+                      setIsTibDropdownOpen(true);
+                    }}
+                    placeholder="Escribe para buscar... Ej: JANIRA, ANGELO, GABRIELA"
+                    style={{
+                      width: '100%',
+                      height: '40px',
+                      padding: '0 36px 0 12px',
+                      borderRadius: '6px',
+                      border: selectedTibClient ? '1.5px solid #10b981' : '1px solid #d1d5db',
+                      fontSize: '13px',
+                      color: '#111827',
+                      outline: 'none',
+                      backgroundColor: selectedTibClient ? '#f0fdf4' : '#ffffff'
+                    }}
+                  />
+
+                  {isSearchingTib ? (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        right: '12px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        width: '16px',
+                        height: '16px',
+                        border: '2px solid #ff5722',
+                        borderTopColor: 'transparent',
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite'
+                      }}
+                    />
+                  ) : (
+                    <Search
+                      style={{
+                        position: 'absolute',
+                        right: '12px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        width: '16px',
+                        height: '16px',
+                        color: selectedTibClient ? '#10b981' : '#9ca3af',
+                        pointerEvents: 'none'
+                      }}
+                    />
+                  )}
+
+                  {/* Dropdown flotante de resultados TIB */}
+                  {isTibDropdownOpen && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: 'calc(100% + 4px)',
+                        left: 0,
+                        right: 0,
+                        zIndex: 60,
+                        backgroundColor: '#ffffff',
+                        borderRadius: '8px',
+                        border: '1px solid #e5e7eb',
+                        boxShadow: '0 12px 28px -4px rgba(0,0,0,0.2), 0 4px 10px rgba(0,0,0,0.06)',
+                        maxHeight: '260px',
+                        overflowY: 'auto'
+                      }}
+                    >
+                      <div
+                        style={{
+                          padding: '8px 12px',
+                          backgroundColor: '#f9fafb',
+                          borderBottom: '1px solid #f3f4f6',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between'
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: 800,
+                            color: '#4b5563',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.4px'
+                          }}
+                        >
+                          Consignatarios TIB ({tibSearchResults.length} encontrados)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setIsTibDropdownOpen(false)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            fontSize: '11px',
+                            color: '#6b7280',
+                            cursor: 'pointer',
+                            padding: 0
+                          }}
+                        >
+                          Cerrar ✕
+                        </button>
+                      </div>
+
+                      {tibSearchResults.length === 0 ? (
+                        <div style={{ padding: '16px', textAlign: 'center', fontSize: '12px', color: '#6b7280' }}>
+                          No encontramos consignatarios con "{newClientNombre}". Puedes escribir el nombre directamente.
+                        </div>
+                      ) : (
+                        tibSearchResults.map((client) => (
+                          <div
+                            key={client.id}
+                            onClick={() => handleSelectTibClient(client)}
+                            style={{
+                              padding: '10px 12px',
+                              cursor: 'pointer',
+                              borderBottom: '1px solid #f3f4f6',
+                              transition: 'background-color 0.15s ease',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '10px'
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#fff7ed')}
+                            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#ffffff')}
+                          >
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div
+                                style={{
+                                  fontSize: '13px',
+                                  fontWeight: 700,
+                                  color: '#111827',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis'
+                                }}
+                              >
+                                {client.nombre}
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: '11px',
+                                  color: '#6b7280',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px',
+                                  marginTop: '2px'
+                                }}
+                              >
+                                <span>ID: #{client.iclient || 'S/ID'}</span>
+                                <span>•</span>
+                                <span style={{ color: client.recibidos > 0 ? '#ea580c' : '#6b7280' }}>
+                                  {client.recibidos} en bodega
+                                </span>
+                                <span>•</span>
+                                <span style={{ color: client.enviados > 0 ? '#2563eb' : '#6b7280' }}>
+                                  {client.enviados} en vuelo
+                                </span>
+                              </div>
+                            </div>
+                            <span
+                              style={{
+                                backgroundColor: '#ffedd5',
+                                color: '#c2410c',
+                                padding: '3px 8px',
+                                borderRadius: '12px',
+                                fontSize: '11px',
+                                fontWeight: 800,
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              {client.total_paquetes} paq.
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {selectedTibClient ? (
+                  <div
+                    style={{
+                      marginTop: '6px',
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      backgroundColor: '#ecfdf5',
+                      border: '1px solid #a7f3d0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '8px'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11.5px', color: '#065f46' }}>
+                      <CheckCircle2 style={{ width: '15px', height: '15px', flexShrink: 0, color: '#059669' }} />
+                      <span>
+                        Consignatario oficial TIB: <strong>{selectedTibClient.nombre}</strong> ({selectedTibClient.total_paquetes} paquetes). Todo paquete presente y futuro con este nombre se asignará automáticamente a este correo.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedTibClient(null);
+                        setNewClientNombre('');
+                        setNewClientKeywords('');
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#059669',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        padding: 0
+                      }}
+                    >
+                      ✕ Cambiar
+                    </button>
+                  </div>
+                ) : (
+                  <span style={{ fontSize: '11px', color: '#6b7280', marginTop: '3px', display: 'block' }}>
+                    Selecciona un consignatario de TIB o escribe uno personalizado. Todo paquete que llegue con este nombre se vinculará automáticamente.
+                  </span>
+                )}
               </div>
 
               {/* Email y Contraseña en 2 columnas */}
