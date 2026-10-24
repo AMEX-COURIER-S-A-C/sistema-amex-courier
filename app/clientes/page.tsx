@@ -243,42 +243,18 @@ export default function ClienteDashboardTIB() {
     }
   };
 
-  // Texto exacto de TIB con ubicación y estética profesional
+  // Texto exacto del estado (solo texto plano)
   const getEstadoTexto = (pkg: PaqueteTIB) => {
     if (pkg.estado_amex === 'entregado') {
-      return { 
-        texto: 'ENTREGADO', 
-        bg: '#f3f4f6', 
-        color: '#374151', 
-        border: '#d1d5db',
-        dot: '#6b7280'
-      };
+      return 'ENTREGADO';
     }
     if (pkg.estado_amex === 'en_almacen' || pkg.estado_amex === 'recibido') {
-      return { 
-        texto: 'EN ALMACÉN LINCE', 
-        bg: '#ecfdf5', 
-        color: '#065f46', 
-        border: '#a7f3d0',
-        dot: '#10b981'
-      };
+      return 'EN ALMACÉN LINCE';
     }
     if (pkg.estado_tib === 'Enviado') {
-      return { 
-        texto: 'EN VUELO', 
-        bg: '#eff6ff', 
-        color: '#1e40af', 
-        border: '#bfdbfe',
-        dot: '#3b82f6'
-      };
+      return 'EN VUELO';
     }
-    return { 
-      texto: 'RECIBIDO MIAMI', 
-      bg: '#fffbeb', 
-      color: '#92400e', 
-      border: '#fde68a',
-      dot: '#f59e0b'
-    };
+    return 'RECIBIDO MIAMI';
   };
 
   const isSuperadmin = user?.email?.toLowerCase() === 'sistemaamexcourier@gmail.com';
@@ -569,26 +545,9 @@ export default function ClienteDashboardTIB() {
                           {pkg.peso_kg != null ? Number(pkg.peso_kg).toFixed(2) : '—'}
                         </td>
 
-                        {/* Estado */}
-                        <td style={{ padding: '12px 16px', whiteSpace: 'nowrap' }}>
-                          <span
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                              padding: '4px 10px',
-                              borderRadius: '20px',
-                              fontSize: '11px',
-                              fontWeight: 800,
-                              letterSpacing: '0.3px',
-                              backgroundColor: estado.bg,
-                              color: estado.color,
-                              border: `1px solid ${estado.border}`,
-                            }}
-                          >
-                            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: estado.dot }} />
-                            {estado.texto}
-                          </span>
+                        {/* Estado: solo texto sin colores ni pastillas */}
+                        <td style={{ padding: '12px 16px', fontWeight: 700, color: '#1f2937', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                          {estado}
                         </td>
 
                         {/* Registrado (dos líneas como TIB) */}
