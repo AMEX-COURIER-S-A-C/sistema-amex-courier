@@ -54,14 +54,41 @@ body {
   overflow: hidden;
 }
 
-/* Permitir scroll vertical en la página de login y vistas móviles que lo requieran */
+/* Permitir scroll vertical en la página de login, portal de clientes y vistas que lo requieran */
+html.amex-client-portal,
+html:has(.amex-client-portal),
+html:has([data-portal="client"]) {
+  height: auto !important;
+  min-height: 100% !important;
+  overflow-y: auto !important;
+}
+
 body.login-page,
+body.amex-client-portal,
 body:has(.amex-login-shell),
-body:has(.amex-login-viewport) {
+body:has(.amex-login-viewport),
+body:has(.amex-client-portal),
+body:has([data-portal="client"]) {
   height: auto !important;
   min-height: 100dvh !important;
   overflow-y: auto !important;
   overflow-x: hidden !important;
+}
+
+/* Estilos de scrollbar elegante para el portal de clientes */
+.amex-client-portal ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.amex-client-portal ::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+.amex-client-portal ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+.amex-client-portal ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
 @media (max-width: 768px) {

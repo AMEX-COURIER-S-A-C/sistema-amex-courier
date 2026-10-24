@@ -289,7 +289,7 @@ function ClienteRegistroForm() {
 
 export default function ClienteRegistroPage() {
   return (
-    <div className="min-h-screen bg-[#070b14] text-slate-100 flex flex-col justify-between selection:bg-amber-500 selection:text-white">
+    <div className="amex-client-portal min-h-screen bg-[#070b14] text-slate-100 flex flex-col justify-between selection:bg-amber-500 selection:text-white" data-portal="client" data-lenis-prevent>
       {/* Background Glow */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute -top-40 -left-40 w-96 h-96 bg-amber-500/10 rounded-full blur-[120px]" />

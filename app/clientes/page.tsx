@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { 
@@ -13,7 +13,9 @@ import {
   ChevronDown, 
   Menu,
   ExternalLink,
-  Package
+  Package,
+  ShieldCheck,
+  FilterX
 } from 'lucide-react';
 
 interface PaqueteTIB {
@@ -54,21 +56,34 @@ export default function ClienteDashboardTIB() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 12;
 
-  // Cargar sesión del usuario
+  // 1. Garantizar scroll vertical libre y nativo en el navegador
   useEffect(() => {
-    async function loadSession() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        router.push('/clientes/login');
-        return;
-      }
-      setUser(session.user);
-      fetchPaquetes(session.user.email);
-    }
-    loadSession();
-  }, [router]);
+    document.documentElement.classList.add('amex-client-portal');
+    document.body.classList.add('amex-client-portal');
+    document.documentElement.style.overflowY = 'auto';
+    document.body.style.overflowY = 'auto';
+    document.body.style.height = 'auto';
 
-  const fetchPaquetes = async (email?: string | null) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSelectedPhoto(null);
+        setUserMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.documentElement.classList.remove('amex-client-portal');
+      document.body.classList.remove('amex-client-portal');
+      document.documentElement.style.overflowY = '';
+      document.body.style.overflowY = '';
+      document.body.style.height = '';
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
+  const fetchPaquetes = useCallback(async (email?: string | null) => {
     if (!email) return;
     setIsLoading(true);
     try {
@@ -104,7 +119,21 @@ export default function ClienteDashboardTIB() {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  };
+  }, []);
+
+  // Cargar sesión del usuario
+  useEffect(() => {
+    async function loadSession() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push('/clientes/login');
+        return;
+      }
+      setUser(session.user);
+      fetchPaquetes(session.user.email);
+    }
+    loadSession();
+  }, [router, fetchPaquetes]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -126,6 +155,15 @@ export default function ClienteDashboardTIB() {
     await supabase.auth.signOut();
     router.push('/clientes/login');
   };
+
+  // Conteo de filtros activos
+  const activeFiltersCount = [
+    Boolean(filterWr),
+    Boolean(filterTracking),
+    Boolean(filterConsignatario),
+    Boolean(filterTipo),
+    Boolean(filterEstado)
+  ].filter(Boolean).length;
 
   // Filtrado multicriterio exacto como TIB
   const filteredPaquetes = useMemo(() => {
@@ -173,25 +211,61 @@ export default function ClienteDashboardTIB() {
     }
   };
 
-  // Texto exacto de TIB con ubicación
+  // Texto exacto de TIB con ubicación y estética profesional
   const getEstadoTexto = (pkg: PaqueteTIB) => {
     if (pkg.estado_amex === 'entregado') {
-      return { texto: 'ENTREGADO', color: 'text-gray-700 font-bold' };
+      return { 
+        texto: 'ENTREGADO', 
+        bg: '#f3f4f6', 
+        color: '#374151', 
+        border: '#d1d5db',
+        dot: '#6b7280'
+      };
     }
     if (pkg.estado_amex === 'en_almacen' || pkg.estado_amex === 'recibido') {
-      return { texto: 'EN ALMACÉN LINCE', color: 'text-emerald-700 font-extrabold' };
+      return { 
+        texto: 'EN ALMACÉN LINCE', 
+        bg: '#ecfdf5', 
+        color: '#065f46', 
+        border: '#a7f3d0',
+        dot: '#10b981'
+      };
     }
     if (pkg.estado_tib === 'Enviado') {
-      return { texto: 'EN VUELO', color: 'text-blue-700 font-extrabold' };
+      return { 
+        texto: 'EN VUELO', 
+        bg: '#eff6ff', 
+        color: '#1e40af', 
+        border: '#bfdbfe',
+        dot: '#3b82f6'
+      };
     }
-    return { texto: 'RECIBIDO MIAMI', color: 'text-amber-600 font-extrabold' };
+    return { 
+      texto: 'RECIBIDO MIAMI', 
+      bg: '#fffbeb', 
+      color: '#92400e', 
+      border: '#fde68a',
+      dot: '#f59e0b'
+    };
   };
 
+  const isSuperadmin = user?.email?.toLowerCase() === 'sistemaamexcourier@gmail.com';
+
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f1f3f6', color: '#2c323f', display: 'flex', flexDirection: 'column', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+    <div 
+      className="amex-client-portal w-full flex-1 flex flex-col"
+      data-portal="client"
+      data-lenis-prevent
+      style={{ 
+        minHeight: '100vh', 
+        backgroundColor: '#f1f3f6', 
+        color: '#2c323f', 
+        fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' 
+      }}
+    >
       
       {/* 1. Header superior estilo TIB */}
-      <header style={{ backgroundColor: '#1e2229', color: '#ffffff', height: '56px', display: 'flex', alignItems: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.12)', position: 'sticky', top: 0, zIndex: 40 }}>
+      <header style={{ backgroundColor: '#1e2229', color: '#ffffff', height: '56px', display: 'flex', alignItems: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.15)', position: 'sticky', top: 0, zIndex: 40 }}>
         <div style={{ maxWidth: '1720px', width: '100%', margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           
           {/* Logo y título */}
@@ -199,28 +273,35 @@ export default function ClienteDashboardTIB() {
             <Menu style={{ width: '20px', height: '20px', color: '#9ca3af', cursor: 'pointer' }} />
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '18px', fontWeight: 900, letterSpacing: '-0.5px', color: '#ffffff' }}>
-                Amex<span style={{ color: '#f59e0b' }}>+</span>
+                Amex<span style={{ color: '#ff5722' }}>+</span>
               </span>
               <span style={{ fontSize: '14px', fontWeight: 600, color: '#e5e7eb', borderLeft: '1px solid #4b5563', paddingLeft: '10px' }}>
                 Gestor de Almacén
               </span>
             </div>
+            {isSuperadmin && (
+              <span style={{ backgroundColor: '#ff5722', color: '#ffffff', fontSize: '11px', fontWeight: 800, padding: '2px 8px', borderRadius: '4px', letterSpacing: '0.4px', textTransform: 'uppercase', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                <ShieldCheck style={{ width: '12px', height: '12px' }} />
+                <span>Superadmin</span>
+              </span>
+            )}
           </div>
 
           {/* Usuario / Dropdown a la derecha */}
           <div style={{ position: 'relative' }}>
             <button
               onClick={() => setUserMenuOpen(!userMenuOpen)}
-              style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600, color: '#f3f4f6', cursor: 'pointer', padding: '6px 10px', borderRadius: '4px' }}
+              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600, color: '#f3f4f6', cursor: 'pointer', padding: '6px 12px', borderRadius: '6px' }}
             >
               <span>Hola! {user?.user_metadata?.nombre_completo || user?.email?.split('@')[0]?.toUpperCase() || 'USUARIO'}</span>
               <ChevronDown style={{ width: '14px', height: '14px', color: '#9ca3af' }} />
             </button>
 
             {userMenuOpen && (
-              <div style={{ position: 'absolute', right: 0, marginTop: '6px', width: '220px', backgroundColor: '#ffffff', borderRadius: '6px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)', border: '1px solid #e5e7eb', padding: '6px 0', zIndex: 50 }}>
+              <div style={{ position: 'absolute', right: 0, marginTop: '6px', width: '240px', backgroundColor: '#ffffff', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)', border: '1px solid #e5e7eb', padding: '6px 0', zIndex: 50 }}>
                 <div style={{ padding: '8px 14px', borderBottom: '1px solid #f3f4f6', fontSize: '12px', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {user?.email}
+                  <div style={{ fontWeight: 700, color: '#111827', fontSize: '13px' }}>Cuenta Conectada</div>
+                  <div>{user?.email}</div>
                 </div>
                 <button
                   onClick={handleLogout}
@@ -239,13 +320,26 @@ export default function ClienteDashboardTIB() {
       <main style={{ maxWidth: '1720px', width: '100%', margin: '0 auto', padding: '24px', flex: 1, display: 'flex', flexDirection: 'column', gap: '18px' }}>
         
         {/* Título de la sección estilo TIB */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h1 style={{ fontSize: '24px', fontWeight: 800, color: '#ff5722', margin: 0, letterSpacing: '-0.3px' }}>
-            Listado Warehouse
-          </h1>
-          <span style={{ fontSize: '13px', color: '#6b7280' }}>
-            Total en sistema: <strong style={{ color: '#111827', fontWeight: 800 }}>{paquetes.length}</strong>
-          </span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+          <div>
+            <h1 style={{ fontSize: '24px', fontWeight: 800, color: '#ff5722', margin: 0, letterSpacing: '-0.3px' }}>
+              Listado Warehouse
+            </h1>
+            <p style={{ margin: '2px 0 0', fontSize: '12.5px', color: '#6b7280' }}>
+              Control y seguimiento de paquetes recibidos en el almacén de Miami y despachos a Lima.
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span style={{ fontSize: '13px', color: '#6b7280', backgroundColor: '#ffffff', padding: '6px 14px', borderRadius: '6px', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
+              Total en sistema: <strong style={{ color: '#111827', fontWeight: 800 }}>{paquetes.length}</strong>
+            </span>
+            {activeFiltersCount > 0 && (
+              <span style={{ fontSize: '12px', color: '#ff5722', backgroundColor: '#fff3e0', border: '1px solid #ffccbc', padding: '6px 12px', borderRadius: '6px', fontWeight: 700 }}>
+                {filteredPaquetes.length} coincidencia(s)
+              </span>
+            )}
+          </div>
         </div>
 
         {/* 3. Tarjeta de Filtros Estilo TIB */}
@@ -264,6 +358,9 @@ export default function ClienteDashboardTIB() {
                   setFilterWr(e.target.value);
                   setCurrentPage(1);
                 }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') setCurrentPage(1);
+                }}
                 placeholder="# Warehouse"
                 style={{ width: '100%', height: '42px', paddingLeft: '38px', paddingRight: '12px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13.5px', color: '#1f2937', outline: 'none' }}
               />
@@ -279,6 +376,9 @@ export default function ClienteDashboardTIB() {
                   setFilterTracking(e.target.value);
                   setCurrentPage(1);
                 }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') setCurrentPage(1);
+                }}
                 placeholder="# Tracking"
                 style={{ width: '100%', height: '42px', paddingLeft: '38px', paddingRight: '12px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13.5px', color: '#1f2937', outline: 'none' }}
               />
@@ -293,6 +393,9 @@ export default function ClienteDashboardTIB() {
                 onChange={(e) => {
                   setFilterConsignatario(e.target.value);
                   setCurrentPage(1);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') setCurrentPage(1);
                 }}
                 placeholder="Consignatario"
                 style={{ width: '100%', height: '42px', paddingLeft: '38px', paddingRight: '12px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13.5px', color: '#1f2937', outline: 'none', textTransform: 'uppercase' }}
@@ -334,7 +437,7 @@ export default function ClienteDashboardTIB() {
           </div>
 
           {/* Fila 3: Botones de Acción Estilo TIB */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px', paddingTop: '6px' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px', paddingTop: '6px', borderTop: '1px solid #f1f5f9' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <button
                 type="button"
@@ -346,9 +449,10 @@ export default function ClienteDashboardTIB() {
               <button
                 type="button"
                 onClick={handleClearFilters}
-                style={{ backgroundColor: '#2b303c', color: '#ffffff', padding: '10px 24px', borderRadius: '6px', fontSize: '13px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.6px', border: 'none', cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }}
+                style={{ backgroundColor: '#4b5563', color: '#ffffff', padding: '10px 22px', borderRadius: '6px', fontSize: '13px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.6px', border: 'none', cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
               >
-                Limpiar Filtros
+                <FilterX style={{ width: '14px', height: '14px' }} />
+                <span>Limpiar Filtros</span>
               </button>
             </div>
 
@@ -366,8 +470,8 @@ export default function ClienteDashboardTIB() {
 
         {/* 4. Tabla de Datos Réplica Exacta de TIB */}
         <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '12.5px' }}>
+          <div style={{ overflowX: 'auto', width: '100%' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '12.5px', minWidth: '980px' }}>
               <thead>
                 <tr style={{ backgroundColor: '#f8f9fa', borderBottom: '1px solid #e2e8f0' }}>
                   <th style={{ padding: '14px 16px', fontWeight: 800, color: '#4b5563', textTransform: 'uppercase', fontSize: '11.5px', letterSpacing: '0.5px' }}>WR</th>
@@ -409,51 +513,66 @@ export default function ClienteDashboardTIB() {
                         style={{ borderBottom: '1px solid #f1f3f6', backgroundColor: idx % 2 === 0 ? '#ffffff' : '#fafbfc' }}
                       >
                         {/* WR */}
-                        <td style={{ padding: '14px 16px', fontWeight: 800, fontFamily: 'monospace', fontSize: '13.5px', color: '#111827', whiteSpace: 'nowrap' }}>
+                        <td style={{ padding: '12px 16px', fontWeight: 800, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '13px', color: '#111827', whiteSpace: 'nowrap' }}>
                           {pkg.numero_recibo_bodega}
                         </td>
 
                         {/* Tracking */}
-                        <td style={{ padding: '14px 16px', fontFamily: 'monospace', fontSize: '12.5px', color: '#4b5563', whiteSpace: 'nowrap' }}>
+                        <td style={{ padding: '12px 16px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '12.5px', color: '#4b5563', whiteSpace: 'nowrap' }}>
                           {pkg.tracking || '—'}
                         </td>
 
                         {/* Cliente / Consignatario */}
-                        <td style={{ padding: '14px 16px', fontWeight: 700, textTransform: 'uppercase', color: '#1f2937', whiteSpace: 'nowrap' }}>
+                        <td style={{ padding: '12px 16px', fontWeight: 700, textTransform: 'uppercase', color: '#1f2937', whiteSpace: 'nowrap' }}>
                           {pkg.nombre_consignatario || 'SIN ASIGNAR'}
                         </td>
 
                         {/* Tipo */}
-                        <td style={{ padding: '14px 16px', fontWeight: 600, textTransform: 'uppercase', color: '#4b5563', whiteSpace: 'nowrap' }}>
+                        <td style={{ padding: '12px 16px', fontWeight: 600, textTransform: 'uppercase', color: '#4b5563', whiteSpace: 'nowrap' }}>
                           {pkg.tipo_empaque || 'CAJA'}
                         </td>
 
                         {/* Peso */}
-                        <td style={{ padding: '14px 16px', fontWeight: 800, color: '#111827', whiteSpace: 'nowrap' }}>
+                        <td style={{ padding: '12px 16px', fontWeight: 800, color: '#111827', whiteSpace: 'nowrap' }}>
                           {pkg.peso_kg != null ? Number(pkg.peso_kg).toFixed(2) : '—'}
                         </td>
 
                         {/* Estado */}
-                        <td style={{ padding: '14px 16px', whiteSpace: 'nowrap' }}>
-                          <span className={estado.color} style={{ fontSize: '12px', letterSpacing: '0.3px' }}>
+                        <td style={{ padding: '12px 16px', whiteSpace: 'nowrap' }}>
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              padding: '4px 10px',
+                              borderRadius: '20px',
+                              fontSize: '11px',
+                              fontWeight: 800,
+                              letterSpacing: '0.3px',
+                              backgroundColor: estado.bg,
+                              color: estado.color,
+                              border: `1px solid ${estado.border}`,
+                            }}
+                          >
+                            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: estado.dot }} />
                             {estado.texto}
                           </span>
                         </td>
 
                         {/* Registrado (dos líneas como TIB) */}
-                        <td style={{ padding: '14px 16px', color: '#374151', fontSize: '12px', whiteSpace: 'nowrap', lineHeight: 1.35 }}>
+                        <td style={{ padding: '12px 16px', color: '#374151', fontSize: '12px', whiteSpace: 'nowrap', lineHeight: 1.35 }}>
                           <div style={{ fontWeight: 600 }}>{reg.date}</div>
-                          <div style={{ color: '#9ca3af', fontFamily: 'monospace', fontSize: '11px' }}>{reg.time}</div>
+                          <div style={{ color: '#9ca3af', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '11px' }}>{reg.time}</div>
                         </td>
 
                         {/* Modificado (dos líneas como TIB) */}
-                        <td style={{ padding: '14px 16px', color: '#374151', fontSize: '12px', whiteSpace: 'nowrap', lineHeight: 1.35 }}>
+                        <td style={{ padding: '12px 16px', color: '#374151', fontSize: '12px', whiteSpace: 'nowrap', lineHeight: 1.35 }}>
                           <div style={{ fontWeight: 600 }}>{mod.date}</div>
-                          <div style={{ color: '#9ca3af', fontFamily: 'monospace', fontSize: '11px' }}>{mod.time}</div>
+                          <div style={{ color: '#9ca3af', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '11px' }}>{mod.time}</div>
                         </td>
 
-                        {/* Documentos (Ticket + Foto en botones cuadrados grises idénticos a TIB) */}
-                        <td style={{ padding: '14px 16px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                        {/* Documentos (Ticket + Foto en botones cuadrados idénticos a TIB) */}
+                        <td style={{ padding: '12px 16px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
                             
                             {/* Ticket PDF */}
@@ -462,16 +581,16 @@ export default function ClienteDashboardTIB() {
                                 href={pkg.tib_ticket_pdf_url}
                                 target="_blank"
                                 rel="noreferrer"
-                                title="Ver Ticket PDF"
-                                style={{ width: '34px', height: '34px', borderRadius: '4px', border: '1px solid #ced4da', backgroundColor: '#e9ecef', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#495057', textDecoration: 'none', cursor: 'pointer' }}
+                                title="Ver Ticket PDF de Bodega"
+                                style={{ width: '34px', height: '34px', borderRadius: '5px', border: '1px solid #ced4da', backgroundColor: '#e9ecef', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#495057', textDecoration: 'none', cursor: 'pointer', transition: 'all 0.15s ease' }}
                               >
                                 <FileText style={{ width: '16px', height: '16px' }} />
                               </a>
                             ) : (
                               <button
                                 disabled
-                                title="Sin Ticket PDF"
-                                style={{ width: '34px', height: '34px', borderRadius: '4px', border: '1px solid #e9ecef', backgroundColor: '#f8f9fa', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#adb5bd', cursor: 'not-allowed' }}
+                                title="Sin Ticket PDF disponible"
+                                style={{ width: '34px', height: '34px', borderRadius: '5px', border: '1px solid #e9ecef', backgroundColor: '#f8f9fa', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#ced4da', cursor: 'not-allowed' }}
                               >
                                 <FileText style={{ width: '16px', height: '16px' }} />
                               </button>
@@ -480,17 +599,18 @@ export default function ClienteDashboardTIB() {
                             {/* Foto Cámara */}
                             {pkg.tib_imagen_url ? (
                               <button
+                                type="button"
                                 onClick={() => setSelectedPhoto({ url: pkg.tib_imagen_url!, wr: pkg.numero_recibo_bodega })}
-                                title="Ver Foto Miami"
-                                style={{ width: '34px', height: '34px', borderRadius: '4px', border: '1px solid #ffccbc', backgroundColor: '#fff3e0', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#e65100', cursor: 'pointer' }}
+                                title="Ver Fotografía de Recepción Miami"
+                                style={{ width: '34px', height: '34px', borderRadius: '5px', border: '1px solid #ffccbc', backgroundColor: '#fff3e0', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#e65100', cursor: 'pointer', transition: 'all 0.15s ease' }}
                               >
                                 <Camera style={{ width: '16px', height: '16px' }} />
                               </button>
                             ) : (
                               <button
                                 disabled
-                                title="Sin Foto"
-                                style={{ width: '34px', height: '34px', borderRadius: '4px', border: '1px solid #e9ecef', backgroundColor: '#f8f9fa', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#adb5bd', cursor: 'not-allowed' }}
+                                title="Sin Fotografía registrada"
+                                style={{ width: '34px', height: '34px', borderRadius: '5px', border: '1px solid #e9ecef', backgroundColor: '#f8f9fa', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#ced4da', cursor: 'not-allowed' }}
                               >
                                 <Camera style={{ width: '16px', height: '16px' }} />
                               </button>
@@ -508,12 +628,13 @@ export default function ClienteDashboardTIB() {
           {/* 5. Paginación idéntica a TIB */}
           <div style={{ padding: '16px 20px', backgroundColor: '#f8f9fa', borderTop: '1px solid #e2e8f0', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px', fontSize: '13px', color: '#4b5563' }}>
             <div>
-              Mostrando <strong style={{ color: '#111827' }}>{(currentPage - 1) * itemsPerPage + 1}</strong> a <strong style={{ color: '#111827' }}>{Math.min(currentPage * itemsPerPage, filteredPaquetes.length)}</strong> de <strong style={{ color: '#111827' }}>{filteredPaquetes.length}</strong> registros
+              Mostrando <strong style={{ color: '#111827' }}>{filteredPaquetes.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}</strong> a <strong style={{ color: '#111827' }}>{Math.min(currentPage * itemsPerPage, filteredPaquetes.length)}</strong> de <strong style={{ color: '#111827' }}>{filteredPaquetes.length}</strong> registros
             </div>
 
             {totalPages > 1 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <button
+                  type="button"
                   onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                   disabled={currentPage === 1}
                   style={{ padding: '6px 12px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', opacity: currentPage === 1 ? 0.4 : 1, fontSize: '12px', fontWeight: 600 }}
@@ -532,6 +653,7 @@ export default function ClienteDashboardTIB() {
                     return (
                       <button
                         key={pageNum}
+                        type="button"
                         onClick={() => setCurrentPage(pageNum)}
                         style={{
                           width: '32px',
@@ -552,6 +674,7 @@ export default function ClienteDashboardTIB() {
                 </div>
 
                 <button
+                  type="button"
                   onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                   disabled={currentPage === totalPages}
                   style={{ padding: '6px 12px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', opacity: currentPage === totalPages ? 0.4 : 1, fontSize: '12px', fontWeight: 600 }}
@@ -566,41 +689,55 @@ export default function ClienteDashboardTIB() {
 
       {/* 6. Modal de Foto Flotante */}
       {selectedPhoto && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)' }}>
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', boxShadow: '0 20px 40px rgba(0,0,0,0.25)', maxWidth: '680px', width: '100%', padding: '20px', position: 'relative' }}>
+        <div 
+          onClick={() => setSelectedPhoto(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', backgroundColor: 'rgba(0,0,0,0.78)', backdropFilter: 'blur(4px)' }}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            style={{ backgroundColor: '#ffffff', borderRadius: '10px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)', maxWidth: '720px', width: '100%', padding: '20px', position: 'relative' }}
+          >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '12px', borderBottom: '1px solid #e5e7eb', marginBottom: '14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Camera style={{ width: '20px', height: '20px', color: '#ff5722' }} />
-                <h3 style={{ fontSize: '16px', fontWeight: 800, color: '#111827', margin: 0 }}>
-                  Foto de Recepción Miami — WR {selectedPhoto.wr}
-                </h3>
+                <div style={{ width: '32px', height: '32px', borderRadius: '6px', backgroundColor: '#fff3e0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Camera style={{ width: '18px', height: '18px', color: '#ff5722' }} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '15px', fontWeight: 800, color: '#111827', margin: 0 }}>
+                    Foto de Recepción Miami — WR {selectedPhoto.wr}
+                  </h3>
+                  <span style={{ fontSize: '11px', color: '#6b7280' }}>Evidencia fotográfica registrada en bodega Miami</span>
+                </div>
               </div>
               <button
+                type="button"
                 onClick={() => setSelectedPhoto(null)}
-                style={{ padding: '4px', borderRadius: '4px', border: 'none', background: 'none', color: '#9ca3af', cursor: 'pointer' }}
+                style={{ padding: '6px', borderRadius: '6px', border: 'none', backgroundColor: '#f3f4f6', color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
-                <X style={{ width: '20px', height: '20px' }} />
+                <X style={{ width: '18px', height: '18px' }} />
               </button>
             </div>
 
-            <div style={{ backgroundColor: '#f3f4f6', borderRadius: '6px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', maxHeight: '65vh', border: '1px solid #e5e7eb' }}>
+            <div style={{ backgroundColor: '#0f172a', borderRadius: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', maxHeight: '65vh', border: '1px solid #e2e8f0' }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={selectedPhoto.url}
                 alt={`Paquete ${selectedPhoto.wr}`}
-                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                style={{ maxWidth: '100%', maxHeight: '65vh', objectFit: 'contain' }}
               />
             </div>
 
-            <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: '12px', color: '#6b7280' }}>Fotografía tomada al ingresar a la bodega de Miami</span>
+            <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+              <span style={{ fontSize: '12px', color: '#6b7280' }}>
+                Presiona <kbd style={{ padding: '2px 6px', background: '#e2e8f0', borderRadius: '4px', fontSize: '11px', fontWeight: 700 }}>ESC</kbd> o haz clic afuera para cerrar
+              </span>
               <a
                 href={selectedPhoto.url}
                 target="_blank"
                 rel="noreferrer"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: '#ff5722', color: '#ffffff', fontWeight: 700, borderRadius: '4px', fontSize: '12px', textDecoration: 'none', cursor: 'pointer' }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: '#ff5722', color: '#ffffff', fontWeight: 700, borderRadius: '6px', fontSize: '12px', textDecoration: 'none', cursor: 'pointer', boxShadow: '0 2px 6px rgba(255,87,34,0.3)' }}
               >
-                <span>Abrir tamaño original</span>
+                <span>Ver tamaño original</span>
                 <ExternalLink style={{ width: '14px', height: '14px' }} />
               </a>
             </div>
