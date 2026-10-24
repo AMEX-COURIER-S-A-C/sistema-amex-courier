@@ -6,7 +6,6 @@ import { supabase } from '@/lib/supabase/client';
 import { 
   Search, 
   RotateCw, 
-  FileText, 
   Camera, 
   X, 
   LogOut, 
@@ -571,32 +570,9 @@ export default function ClienteDashboardTIB() {
                           <div style={{ color: '#9ca3af', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '11px' }}>{mod.time}</div>
                         </td>
 
-                        {/* Documentos (Ticket + Foto en botones cuadrados idénticos a TIB) */}
+                        {/* Columna Documentos: Solo botón de Foto / Imagen */}
                         <td style={{ padding: '12px 16px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
-                            
-                            {/* Ticket PDF */}
-                            {pkg.tib_ticket_pdf_url ? (
-                              <a
-                                href={pkg.tib_ticket_pdf_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                title="Ver Ticket PDF de Bodega"
-                                style={{ width: '34px', height: '34px', borderRadius: '5px', border: '1px solid #ced4da', backgroundColor: '#e9ecef', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#495057', textDecoration: 'none', cursor: 'pointer', transition: 'all 0.15s ease' }}
-                              >
-                                <FileText style={{ width: '16px', height: '16px' }} />
-                              </a>
-                            ) : (
-                              <button
-                                disabled
-                                title="Sin Ticket PDF disponible"
-                                style={{ width: '34px', height: '34px', borderRadius: '5px', border: '1px solid #e9ecef', backgroundColor: '#f8f9fa', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#ced4da', cursor: 'not-allowed' }}
-                              >
-                                <FileText style={{ width: '16px', height: '16px' }} />
-                              </button>
-                            )}
-
-                            {/* Foto Cámara */}
+                          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                             {pkg.tib_imagen_url ? (
                               <button
                                 type="button"
