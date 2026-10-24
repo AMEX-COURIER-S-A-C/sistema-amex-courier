@@ -41,6 +41,7 @@ export function getEstadoVisiblePortal(estadoAmex?: string | null, estadoTib?: s
 }
 
 const TIB_MEDIA_BASE_URL = 'https://www.tibcourier.com/global-courier/ajax/';
+export const ADMIN_MASTER_EMAIL = 'sistemaamexcourier@gmail.com';
 
 /**
  * Consulta la API oficial de TIB para un estado dado ('RECIBIDO', 'ENVIADO', 'ENTREGADO')
@@ -68,12 +69,18 @@ async function fetchTibStatus(url: string, email: string, password: string, stat
 
 /**
  * Sincroniza paquetes ÚNICA Y EXCLUSIVAMENTE desde la API oficial de TIB hacia paquetes_portal.
- * Desacoplado 100% del ERP interno de paquetes.
- * Regla de asignación: Coincidencia EXACTA estricta entre el nclient de TIB y las palabras clave / alias del cliente.
+ * 
+ * Reglas de asignación:
+ * 1. Prioridad: Coincidencia EXACTA con los clientes regulares registrados en clientes_portal
+ *    (nombre completo, palabras clave o casillero).
+ * 2. Regla Admin Master: Cualquier paquete que contenga "AMEX" o "amex" en consignatario o descripción
+ *    se asigna automáticamente al usuario Admin Master (sistemaamexcourier@gmail.com).
  */
 export async function syncTibPackagesToPortal(options?: { specificEmail?: string }) {
   const portalAdmin = getPortalAdmin();
   const credentials = getTibApiCredentials();
+  const isSpecificRegularClient =
+    options?.specificEmail && options.specificEmail.trim().toLowerCase() !== ADMIN_MASTER_EMAIL;
 
   // 1. Obtener los clientes registrados en clientes_portal
   let clientQuery = portalAdmin
@@ -81,8 +88,8 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
     .select('email, nombre_completo, alias_palabras_clave, casillero_codigo')
     .eq('activo', true);
 
-  if (options?.specificEmail) {
-    clientQuery = clientQuery.eq('email', options.specificEmail.trim().toLowerCase());
+  if (isSpecificRegularClient) {
+    clientQuery = clientQuery.eq('email', options!.specificEmail!.trim().toLowerCase());
   }
 
   const { data: clientes, error: cErr } = await clientQuery;
@@ -92,26 +99,21 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
   }
 
   const clientesList = clientes || [];
-  if (clientesList.length === 0) {
-    return { success: true, count: 0, message: 'No hay clientes registrados para sincronizar.' };
-  }
 
-  // 2. Construir mapas de coincidencia exacta estricta
-  // nclientExactMap: mapea "NOMBRE CONSIGNATARIO EXACTO" -> email
+  // 2. Construir mapas de coincidencia exacta estricta para clientes regulares
   const nclientExactMap = new Map<string, string>();
-  // iclientMap: mapea "31888" -> email
   const iclientMap = new Map<string, string>();
 
   for (const c of clientesList) {
     const targetEmail = c.email.trim().toLowerCase();
+    // Excluir al admin master de las coincidencias exactas para dar prioridad a los clientes regulares
+    if (targetEmail === ADMIN_MASTER_EMAIL) continue;
 
-    // Nombre completo exacto
     const cleanNombre = cleanExactString(c.nombre_completo);
     if (cleanNombre) {
       nclientExactMap.set(cleanNombre, targetEmail);
     }
 
-    // Palabras clave o alias exactos
     if (Array.isArray(c.alias_palabras_clave)) {
       for (const alias of c.alias_palabras_clave) {
         const cleanAlias = cleanExactString(alias);
@@ -121,7 +123,6 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
       }
     }
 
-    // Código de casillero / iclient si existiera
     if (c.casillero_codigo) {
       const cleanCasillero = cleanExactString(c.casillero_codigo);
       if (cleanCasillero) {
@@ -130,23 +131,33 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
     }
   }
 
-  // 3. Descargar en paralelo todos los estados de la API oficial de TIB
+  // 3. Descargar en paralelo los estados de la API oficial de TIB
   const [recibidos, enviados, entregados] = await Promise.all([
     fetchTibStatus(credentials.url, credentials.email, credentials.password, 'RECIBIDO'),
     fetchTibStatus(credentials.url, credentials.email, credentials.password, 'ENVIADO'),
     fetchTibStatus(credentials.url, credentials.email, credentials.password, 'ENTREGADO'),
   ]);
 
-  const allTibPackages = [...recibidos, ...enviados, ...entregados];
+  // Si se sincroniza para un cliente regular específico, se escanea todo el inventario.
+  // Si es sincronización general / Admin Master, tomamos todo RECIBIDO (bodega Miami activa),
+  // y las tandas más recientes de ENVIADOS y ENTREGADOS para alta velocidad y evitar timeouts.
+  let allTibPackages: RawTibItem[] = [];
+  if (isSpecificRegularClient) {
+    allTibPackages = [...recibidos, ...enviados, ...entregados];
+  } else {
+    const recentEnviados = enviados.slice(0, 2000);
+    const recentEntregados = entregados.slice(0, 500);
+    allTibPackages = [...recibidos, ...recentEnviados, ...recentEntregados];
+  }
 
-  // 4. Filtrar y procesar solo aquellos paquetes que coincidan EXACTAMENTE con un cliente
+  // 4. Filtrar y procesar según las reglas de asignación
   const recordsToUpsert = [];
 
   for (const item of allTibPackages) {
     const cleanConsignee = cleanExactString(item.nclient);
     const cleanIclient = cleanExactString(item.iclient);
 
-    // Búsqueda de coincidencia exacta estricta
+    // Regla 1: Coincidencia con cliente regular
     let matchedEmail: string | undefined = undefined;
 
     if (cleanConsignee && nclientExactMap.has(cleanConsignee)) {
@@ -155,7 +166,24 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
       matchedEmail = iclientMap.get(cleanIclient);
     }
 
-    // Si coincide exactamente con un cliente, estructurar para paquetes_portal
+    // Regla 2: Asignación automática al Admin Master para todo lo que contenga "AMEX" o "amex"
+    if (!matchedEmail) {
+      const consigneeUpper = (item.nclient || '').toUpperCase();
+      const descUpper = (item.description || '').toUpperCase();
+      if (consigneeUpper.includes('AMEX') || descUpper.includes('AMEX')) {
+        matchedEmail = ADMIN_MASTER_EMAIL;
+      }
+    }
+
+    // Si se solicitó para un email específico, omitir si no coincide
+    if (options?.specificEmail) {
+      const target = options.specificEmail.trim().toLowerCase();
+      if (matchedEmail !== target) {
+        continue;
+      }
+    }
+
+    // Si tiene un destinatario asignado, estructurar para paquetes_portal
     if (matchedEmail) {
       const canonicalWr = normalizeTibWr(item.wr, item.seqwr);
       if (!canonicalWr) continue;
@@ -202,12 +230,12 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
       success: true,
       count: 0,
       totalTib: allTibPackages.length,
-      message: 'No se encontraron paquetes en TIB que coincidan con las palabras clave exactas.',
+      message: 'No se encontraron paquetes en TIB para sincronizar.',
     };
   }
 
-  // 5. Upsert por lotes en paquetes_portal
-  const CHUNK_SIZE = 100;
+  // 5. Upsert optimizado por lotes (500 por lote) en paquetes_portal
+  const CHUNK_SIZE = 500;
   let insertedCount = 0;
 
   for (let i = 0; i < recordsToUpsert.length; i += CHUNK_SIZE) {
