@@ -81,7 +81,7 @@ export default function ClienteDashboardTIB() {
     if (!email) return;
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('paquetes')
         .select(`
           id, 
@@ -97,8 +97,14 @@ export default function ClienteDashboardTIB() {
           creado_en, 
           actualizado_en
         `)
-        .eq('usuario_email', email)
         .order('creado_en', { ascending: false });
+
+      // Si es cliente regular, filtrar solo los suyos; si es superadmin AMEX, permitir ver todo para supervisión y pruebas
+      if (email.toLowerCase() !== 'sistemaamexcourier@gmail.com') {
+        query = query.eq('usuario_email', email);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       setPaquetes(data || []);
