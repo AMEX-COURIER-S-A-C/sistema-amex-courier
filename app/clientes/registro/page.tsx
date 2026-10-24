@@ -3,7 +3,7 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { supabase } from '@/lib/supabase/client';
+import { supabasePortal } from '@/lib/supabase/portal-client';
 import { 
   ShieldCheck, 
   User, 
@@ -60,8 +60,8 @@ function ClienteRegistroForm() {
     setIsLoading(true);
 
     try {
-      // 1. Crear usuario en Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      // 1. Crear usuario en Supabase Auth del Portal
+      const { data: authData, error: authError } = await supabasePortal.auth.signUp({
         email: email.trim().toLowerCase(),
         password,
         options: {
@@ -76,18 +76,16 @@ function ClienteRegistroForm() {
 
       if (authError) throw authError;
 
-      // 2. Registrar en la tabla clientes (para vincular paquetes y consignatario)
+      // 2. Registrar en la tabla clientes_portal
       if (authData.user) {
-        await supabase.from('clientes').upsert({
+        await supabasePortal.from('clientes_portal').upsert({
           id: authData.user.id,
-          nombre: nombre.trim(),
+          nombre_completo: nombre.trim().toUpperCase(),
           email: email.trim().toLowerCase(),
           telefono: telefono.trim(),
           documento_identidad: documentoIdentidad.trim(),
-          direccion_entrega: direccion.trim(),
-          departamento: 'LIMA',
-          provincia: 'LIMA',
-          distrito: 'LIMA',
+          alias_palabras_clave: [nombre.trim().toUpperCase()],
+          activo: true,
         });
       }
 

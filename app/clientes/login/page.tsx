@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase/client';
+import { supabasePortal } from '@/lib/supabase/portal-client';
 import { 
   Package, 
   Search, 
@@ -43,7 +43,7 @@ export default function ClienteLoginPage() {
     setErrorMessage(null);
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabasePortal.auth.signInWithPassword({
         email: email.trim().toLowerCase(),
         password,
       });
@@ -74,10 +74,10 @@ export default function ClienteLoginPage() {
     setTrackingResult(null);
 
     try {
-      // Buscar paquete por WR o Tracking
-      const { data, error } = await supabase
-        .from('paquetes')
-        .select('id, numero_recibo_bodega, tracking, peso_kg, estado_tib, estado_amex, tib_imagen_url, creado_en')
+      // Buscar paquete por WR o Tracking en la base de datos exclusiva del portal
+      const { data, error } = await supabasePortal
+        .from('paquetes_portal')
+        .select('id, numero_recibo_bodega, tracking, peso_kg, estado_tib, estado_amex, estado_visible, tib_imagen_url, creado_en')
         .or(`numero_recibo_bodega.ilike.%${code}%,tracking.ilike.%${code}%`)
         .order('creado_en', { ascending: false })
         .limit(1)

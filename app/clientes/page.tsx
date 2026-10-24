@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase/client';
+import { supabasePortal } from '@/lib/supabase/portal-client';
 import { 
   Search, 
   RotateCw, 
@@ -13,7 +13,17 @@ import {
   ExternalLink,
   Package,
   ShieldCheck,
-  FilterX
+  FilterX,
+  UserPlus,
+  Users,
+  RefreshCw,
+  Mail,
+  Lock,
+  Phone,
+  FileText,
+  Tag,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 
 interface PaqueteTIB {
@@ -25,10 +35,23 @@ interface PaqueteTIB {
   peso_kg: number | null;
   estado_tib: string | null;
   estado_amex: string | null;
+  estado_visible?: string | null;
   tib_imagen_url: string | null;
   tib_ticket_pdf_url: string | null;
   creado_en: string;
   actualizado_en: string | null;
+}
+
+interface ClientePortalItem {
+  id: string;
+  nombre_completo: string;
+  email: string;
+  telefono: string | null;
+  documento_identidad: string | null;
+  casillero_codigo: string | null;
+  alias_palabras_clave: string[] | null;
+  activo: boolean;
+  creado_en: string;
 }
 
 export default function ClienteDashboardTIB() {
@@ -50,6 +73,26 @@ export default function ClienteDashboardTIB() {
   // Modal para ver foto
   const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; wr: string } | null>(null);
 
+  // Estados de los Módulos de Superadmin: Agregar Cliente y Lista de Clientes
+  const [isAddClientOpen, setIsAddClientOpen] = useState(false);
+  const [isClientsListOpen, setIsClientsListOpen] = useState(false);
+  const [clientsList, setClientsList] = useState<ClientePortalItem[]>([]);
+  const [isLoadingClients, setIsLoadingClients] = useState(false);
+
+  // Formulario de nuevo cliente
+  const [newClientNombre, setNewClientNombre] = useState('');
+  const [newClientEmail, setNewClientEmail] = useState('');
+  const [newClientPassword, setNewClientPassword] = useState('');
+  const [newClientTelefono, setNewClientTelefono] = useState('');
+  const [newClientDni, setNewClientDni] = useState('');
+  const [newClientKeywords, setNewClientKeywords] = useState('');
+  const [isCreatingClient, setIsCreatingClient] = useState(false);
+  const [createClientSuccess, setCreateClientSuccess] = useState<string | null>(null);
+  const [createClientError, setCreateClientError] = useState<string | null>(null);
+
+  // Sincronización masiva de inventario
+  const [isSyncingAll, setIsSyncingAll] = useState(false);
+
   // Paginación estilo TIB
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 12;
@@ -66,6 +109,8 @@ export default function ClienteDashboardTIB() {
       if (e.key === 'Escape') {
         setSelectedPhoto(null);
         setUserMenuOpen(false);
+        setIsAddClientOpen(false);
+        setIsClientsListOpen(false);
       }
     };
 
@@ -85,8 +130,8 @@ export default function ClienteDashboardTIB() {
     if (!email) return;
     setIsLoading(true);
     try {
-      let query = supabase
-        .from('paquetes')
+      let query = supabasePortal
+        .from('paquetes_portal')
         .select(`
           id, 
           numero_recibo_bodega, 
@@ -96,6 +141,7 @@ export default function ClienteDashboardTIB() {
           peso_kg, 
           estado_tib, 
           estado_amex, 
+          estado_visible,
           tib_imagen_url, 
           tib_ticket_pdf_url,
           creado_en, 
@@ -119,24 +165,48 @@ export default function ClienteDashboardTIB() {
     }
   }, []);
 
+  // Cargar lista de clientes registrados en el portal
+  const fetchClientsList = useCallback(async () => {
+    setIsLoadingClients(true);
+    try {
+      const { data, error } = await supabasePortal
+        .from('clientes_portal')
+        .select('*')
+        .order('creado_en', { ascending: false });
+
+      if (error) throw error;
+      setClientsList(data || []);
+    } catch (err) {
+      console.error('Error al cargar clientes_portal:', err);
+    } finally {
+      setIsLoadingClients(false);
+    }
+  }, []);
+
   // Cargar sesión del usuario
   useEffect(() => {
     async function loadSession() {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session } } = await supabasePortal.auth.getSession();
       if (!session) {
         router.push('/clientes/login');
         return;
       }
       setUser(session.user);
       fetchPaquetes(session.user.email);
+      if (session.user.email?.toLowerCase() === 'sistemaamexcourier@gmail.com') {
+        fetchClientsList();
+      }
     }
     loadSession();
-  }, [router, fetchPaquetes]);
+  }, [router, fetchPaquetes, fetchClientsList]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
     if (user?.email) {
       fetchPaquetes(user.email);
+      if (user.email.toLowerCase() === 'sistemaamexcourier@gmail.com') {
+        fetchClientsList();
+      }
     }
   };
 
@@ -150,8 +220,85 @@ export default function ClienteDashboardTIB() {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await supabasePortal.auth.signOut();
     router.push('/clientes/login');
+  };
+
+  // Sincronizar todos los paquetes aprobados desde el ERP hacia la base de clientes
+  const handleSyncAllFromErp = async () => {
+    if (!user?.email) return;
+    setIsSyncingAll(true);
+    try {
+      const res = await fetch('/api/clientes/sync-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error al sincronizar');
+      
+      alert(`Sincronización completa: ${data.sincronizados} paquetes sincronizados a la base de datos de clientes.`);
+      fetchPaquetes(user.email);
+    } catch (err: any) {
+      alert(`Error en sincronización: ${err.message}`);
+    } finally {
+      setIsSyncingAll(false);
+    }
+  };
+
+  // Crear nuevo usuario cliente
+  const handleCreateClientSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsCreatingClient(true);
+    setCreateClientError(null);
+    setCreateClientSuccess(null);
+
+    try {
+      const keywordsArray = newClientKeywords
+        .split(',')
+        .map(k => k.trim())
+        .filter(Boolean);
+
+      const res = await fetch('/api/clientes/crear-usuario', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nombre_completo: newClientNombre,
+          email: newClientEmail,
+          password: newClientPassword,
+          telefono: newClientTelefono,
+          documento_identidad: newClientDni,
+          alias_palabras_clave: keywordsArray,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al crear el usuario cliente');
+      }
+
+      setCreateClientSuccess(
+        `¡Cliente ${data.user.nombre_completo} creado con éxito! Se vincularon ${data.paquetes_vinculados} paquetes de almacén a su cuenta.`
+      );
+
+      // Limpiar formulario
+      setNewClientNombre('');
+      setNewClientEmail('');
+      setNewClientPassword('');
+      setNewClientTelefono('');
+      setNewClientDni('');
+      setNewClientKeywords('');
+
+      // Recargar listas
+      fetchClientsList();
+      if (user?.email) {
+        fetchPaquetes(user.email);
+      }
+    } catch (err: any) {
+      setCreateClientError(err.message || 'Error al crear cliente');
+    } finally {
+      setIsCreatingClient(false);
+    }
   };
 
   // Conteo de filtros activos
@@ -179,10 +326,11 @@ export default function ClienteDashboardTIB() {
         return false;
       }
       if (filterEstado) {
-        if (filterEstado === 'LINCE' && pkg.estado_amex !== 'en_almacen') return false;
-        if (filterEstado === 'VUELO' && (pkg.estado_tib !== 'Enviado' || pkg.estado_amex === 'en_almacen')) return false;
-        if (filterEstado === 'MIAMI' && (pkg.estado_amex === 'en_almacen' || pkg.estado_tib === 'Enviado')) return false;
-        if (filterEstado === 'ENTREGADO' && pkg.estado_amex !== 'entregado') return false;
+        const est = (pkg.estado_visible || '').toUpperCase();
+        if (filterEstado === 'LINCE' && !est.includes('LINCE')) return false;
+        if (filterEstado === 'VUELO' && !est.includes('VUELO')) return false;
+        if (filterEstado === 'MIAMI' && !est.includes('MIAMI')) return false;
+        if (filterEstado === 'ENTREGADO' && !est.includes('ENTREGADO')) return false;
       }
       return true;
     });
@@ -244,15 +392,10 @@ export default function ClienteDashboardTIB() {
 
   // Texto exacto del estado (solo texto plano)
   const getEstadoTexto = (pkg: PaqueteTIB) => {
-    if (pkg.estado_amex === 'entregado') {
-      return 'ENTREGADO';
-    }
-    if (pkg.estado_amex === 'en_almacen' || pkg.estado_amex === 'recibido') {
-      return 'EN ALMACÉN LINCE';
-    }
-    if (pkg.estado_tib === 'Enviado') {
-      return 'EN VUELO';
-    }
+    if (pkg.estado_visible) return pkg.estado_visible;
+    if (pkg.estado_amex === 'entregado') return 'ENTREGADO';
+    if (pkg.estado_amex === 'en_almacen' || pkg.estado_amex === 'recibido') return 'EN ALMACÉN LINCE';
+    if (pkg.estado_tib === 'Enviado') return 'EN VUELO';
     return 'RECIBIDO MIAMI';
   };
 
@@ -308,6 +451,9 @@ export default function ClienteDashboardTIB() {
                 <div style={{ padding: '8px 14px', borderBottom: '1px solid #f3f4f6', fontSize: '12px', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   <div style={{ fontWeight: 700, color: '#111827', fontSize: '13px' }}>Cuenta Conectada</div>
                   <div>{user?.email}</div>
+                  <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>
+                    Servidor: us-west-2 (Oregon)
+                  </div>
                 </div>
                 <button
                   onClick={handleLogout}
@@ -325,7 +471,7 @@ export default function ClienteDashboardTIB() {
       {/* 2. Contenedor de Contenido Principal */}
       <main style={{ maxWidth: '1720px', width: '100%', margin: '0 auto', padding: '24px', flex: 1, display: 'flex', flexDirection: 'column', gap: '18px' }}>
         
-        {/* Título de la sección estilo TIB */}
+        {/* Título de la sección estilo TIB + Acciones de Superadmin */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
           <div>
             <h1 style={{ fontSize: '24px', fontWeight: 800, color: '#ff5722', margin: 0, letterSpacing: '-0.3px' }}>
@@ -336,12 +482,92 @@ export default function ClienteDashboardTIB() {
             </p>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span style={{ fontSize: '13px', color: '#6b7280', backgroundColor: '#ffffff', padding: '6px 14px', borderRadius: '6px', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            {isSuperadmin && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreateClientSuccess(null);
+                    setCreateClientError(null);
+                    setIsAddClientOpen(true);
+                  }}
+                  style={{
+                    backgroundColor: '#ff5722',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '8px 16px',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 4px rgba(255,87,34,0.25)',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <UserPlus style={{ width: '16px', height: '16px' }} />
+                  <span>+ Agregar Cliente</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsClientsListOpen(true);
+                    fetchClientsList();
+                  }}
+                  style={{
+                    backgroundColor: '#ffffff',
+                    color: '#374151',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    padding: '8px 14px',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    cursor: 'pointer',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                  }}
+                >
+                  <Users style={{ width: '15px', height: '15px', color: '#6b7280' }} />
+                  <span>Clientes ({clientsList.length})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSyncAllFromErp}
+                  disabled={isSyncingAll}
+                  style={{
+                    backgroundColor: '#ffffff',
+                    color: '#374151',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    padding: '8px 14px',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    cursor: 'pointer',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                  }}
+                  title="Sincronizar paquetes aprobados del ERP hacia el portal de clientes"
+                >
+                  <RefreshCw style={{ width: '14px', height: '14px', color: '#ff5722', animation: isSyncingAll ? 'spin 1s linear infinite' : 'none' }} />
+                  <span>{isSyncingAll ? 'Sincronizando...' : 'Sincronizar Almacén'}</span>
+                </button>
+              </>
+            )}
+
+            <span style={{ fontSize: '13px', color: '#6b7280', backgroundColor: '#ffffff', padding: '8px 14px', borderRadius: '6px', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
               Total en sistema: <strong style={{ color: '#111827', fontWeight: 800 }}>{paquetes.length}</strong>
             </span>
             {activeFiltersCount > 0 && (
-              <span style={{ fontSize: '12px', color: '#ff5722', backgroundColor: '#fff3e0', border: '1px solid #ffccbc', padding: '6px 12px', borderRadius: '6px', fontWeight: 700 }}>
+              <span style={{ fontSize: '12px', color: '#ff5722', backgroundColor: '#fff3e0', border: '1px solid #ffccbc', padding: '8px 12px', borderRadius: '6px', fontWeight: 700 }}>
                 {filteredPaquetes.length} coincidencia(s)
               </span>
             )}
@@ -504,7 +730,29 @@ export default function ClienteDashboardTIB() {
                     <td colSpan={9} style={{ padding: '60px 16px', textAlign: 'center', color: '#6b7280' }}>
                       <Package style={{ width: '42px', height: '42px', color: '#d1d5db', margin: '0 auto 12px' }} />
                       <p style={{ fontSize: '14px', fontWeight: 700, color: '#374151', margin: '0 0 4px' }}>No se encontraron registros de Warehouse</p>
-                      <p style={{ fontSize: '12px', color: '#9ca3af', margin: 0 }}>Verifica los filtros o espera a que se registren nuevas cajas en Miami.</p>
+                      <p style={{ fontSize: '12px', color: '#9ca3af', margin: '0 0 14px' }}>
+                        {isSuperadmin 
+                          ? 'Puedes agregar un nuevo cliente con el botón naranja o sincronizar paquetes del almacén.' 
+                          : 'Tus paquetes aparecerán aquí en cuanto ingresen al almacén.'}
+                      </p>
+                      {isSuperadmin && (
+                        <button
+                          type="button"
+                          onClick={() => setIsAddClientOpen(true)}
+                          style={{
+                            backgroundColor: '#ff5722',
+                            color: '#ffffff',
+                            border: 'none',
+                            padding: '8px 18px',
+                            borderRadius: '6px',
+                            fontSize: '12.5px',
+                            fontWeight: 700,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          + Agregar Primer Cliente
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ) : (
@@ -728,6 +976,293 @@ export default function ClienteDashboardTIB() {
                 <span>Ver tamaño original</span>
                 <ExternalLink style={{ width: '14px', height: '14px' }} />
               </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 7. Modal de Agregar Usuario Cliente (Solo Superadmin) */}
+      {isAddClientOpen && (
+        <div 
+          onClick={() => setIsAddClientOpen(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            style={{ backgroundColor: '#ffffff', borderRadius: '12px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)', maxWidth: '580px', width: '100%', padding: '24px', position: 'relative' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '14px', borderBottom: '1px solid #e5e7eb', marginBottom: '18px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: '#ff5722', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff' }}>
+                  <UserPlus style={{ width: '20px', height: '20px' }} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '17px', fontWeight: 800, color: '#111827', margin: 0 }}>
+                    Agregar Usuario Cliente al Portal
+                  </h3>
+                  <span style={{ fontSize: '12px', color: '#6b7280' }}>
+                    Crea el acceso y vincula automáticamente sus paquetes de bodega.
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddClientOpen(false)}
+                style={{ padding: '6px', borderRadius: '6px', border: 'none', backgroundColor: '#f3f4f6', color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <X style={{ width: '18px', height: '18px' }} />
+              </button>
+            </div>
+
+            {createClientSuccess && (
+              <div style={{ marginBottom: '16px', padding: '12px', borderRadius: '8px', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', color: '#065f46', fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <CheckCircle2 style={{ width: '18px', height: '18px', flexShrink: 0 }} />
+                <span>{createClientSuccess}</span>
+              </div>
+            )}
+
+            {createClientError && (
+              <div style={{ marginBottom: '16px', padding: '12px', borderRadius: '8px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <AlertCircle style={{ width: '18px', height: '18px', flexShrink: 0 }} />
+                <span>{createClientError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleCreateClientSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              
+              {/* Nombre Completo / Consignatario */}
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151', marginBottom: '4px' }}>
+                  Nombre Completo o Empresa (Consignatario en Guías) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newClientNombre}
+                  onChange={(e) => setNewClientNombre(e.target.value)}
+                  placeholder="Ej: AMEX JANIRA AMEX o JANIRA PAREDES"
+                  style={{ width: '100%', height: '40px', padding: '0 12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px', color: '#111827', outline: 'none' }}
+                />
+                <span style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px', display: 'block' }}>
+                  Debe coincidir con el nombre con el que llegan los paquetes a Miami/Lince.
+                </span>
+              </div>
+
+              {/* Email y Contraseña en 2 columnas */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151', marginBottom: '4px' }}>
+                    Correo Electrónico (Login) *
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={newClientEmail}
+                    onChange={(e) => setNewClientEmail(e.target.value)}
+                    placeholder="cliente@gmail.com"
+                    style={{ width: '100%', height: '40px', padding: '0 12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px', color: '#111827', outline: 'none' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151', marginBottom: '4px' }}>
+                    Contraseña de Acceso *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    minLength={6}
+                    value={newClientPassword}
+                    onChange={(e) => setNewClientPassword(e.target.value)}
+                    placeholder="Mínimo 6 caracteres"
+                    style={{ width: '100%', height: '40px', padding: '0 12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px', color: '#111827', outline: 'none' }}
+                  />
+                </div>
+              </div>
+
+              {/* Teléfono y DNI en 2 columnas */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151', marginBottom: '4px' }}>
+                    Teléfono / WhatsApp
+                  </label>
+                  <input
+                    type="tel"
+                    value={newClientTelefono}
+                    onChange={(e) => setNewClientTelefono(e.target.value)}
+                    placeholder="Ej: 987654321"
+                    style={{ width: '100%', height: '40px', padding: '0 12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px', color: '#111827', outline: 'none' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151', marginBottom: '4px' }}>
+                    DNI o RUC
+                  </label>
+                  <input
+                    type="text"
+                    value={newClientDni}
+                    onChange={(e) => setNewClientDni(e.target.value)}
+                    placeholder="Ej: 71234567"
+                    style={{ width: '100%', height: '40px', padding: '0 12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px', color: '#111827', outline: 'none' }}
+                  />
+                </div>
+              </div>
+
+              {/* Alias / Palabras Clave */}
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151', marginBottom: '4px' }}>
+                  Variaciones o Palabras Clave (Opcional, separadas por coma)
+                </label>
+                <input
+                  type="text"
+                  value={newClientKeywords}
+                  onChange={(e) => setNewClientKeywords(e.target.value)}
+                  placeholder="Ej: JANIRA, JANIRA AMEX, AMEX JANIRA"
+                  style={{ width: '100%', height: '40px', padding: '0 12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px', color: '#111827', outline: 'none' }}
+                />
+                <span style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px', display: 'block' }}>
+                  Si una caja llega con cualquiera de estas variaciones, se asignará a este correo.
+                </span>
+              </div>
+
+              <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsAddClientOpen(false)}
+                  style={{ padding: '9px 18px', borderRadius: '6px', border: '1px solid #d1d5db', backgroundColor: '#ffffff', color: '#374151', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCreatingClient}
+                  style={{
+                    padding: '9px 22px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    backgroundColor: '#ff5722',
+                    color: '#ffffff',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    cursor: isCreatingClient ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 2px 4px rgba(255,87,34,0.3)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  {isCreatingClient ? (
+                    <>
+                      <div style={{ width: '14px', height: '14px', border: '2px solid #ffffff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                      <span>Creando cuenta...</span>
+                    </>
+                  ) : (
+                    <span>Guardar y Vincular Paquetes</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 8. Modal de Lista de Clientes Registrados */}
+      {isClientsListOpen && (
+        <div 
+          onClick={() => setIsClientsListOpen(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            style={{ backgroundColor: '#ffffff', borderRadius: '12px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)', maxWidth: '820px', width: '100%', padding: '24px', position: 'relative', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '14px', borderBottom: '1px solid #e5e7eb', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: '#2b303c', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff' }}>
+                  <Users style={{ width: '18px', height: '18px' }} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '17px', fontWeight: 800, color: '#111827', margin: 0 }}>
+                    Clientes Registrados en el Portal
+                  </h3>
+                  <span style={{ fontSize: '12px', color: '#6b7280' }}>
+                    Total: {clientsList.length} clientes en base de datos aislada (us-west-2 Oregon)
+                  </span>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsClientsListOpen(false);
+                    setIsAddClientOpen(true);
+                  }}
+                  style={{ padding: '6px 14px', backgroundColor: '#ff5722', color: '#ffffff', borderRadius: '6px', border: 'none', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
+                >
+                  + Agregar Cliente
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsClientsListOpen(false)}
+                  style={{ padding: '6px', borderRadius: '6px', border: 'none', backgroundColor: '#f3f4f6', color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <X style={{ width: '18px', height: '18px' }} />
+                </button>
+              </div>
+            </div>
+
+            <div style={{ overflowY: 'auto', flex: 1, border: '1px solid #e5e7eb', borderRadius: '6px' }}>
+              {isLoadingClients ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
+                  <div style={{ width: '24px', height: '24px', border: '2px solid #ff5722', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 8px' }} />
+                  <span>Cargando clientes...</span>
+                </div>
+              ) : clientsList.length === 0 ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
+                  <Users style={{ width: '36px', height: '36px', color: '#d1d5db', margin: '0 auto 8px' }} />
+                  <p style={{ fontWeight: 700, color: '#374151', margin: 0 }}>No hay clientes registrados aún</p>
+                  <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>Crea el primer usuario cliente con el botón naranja.</p>
+                </div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: '#f8f9fa', borderBottom: '1px solid #e5e7eb' }}>
+                      <th style={{ padding: '10px 14px', fontWeight: 700, color: '#4b5563' }}>Consignatario / Nombre</th>
+                      <th style={{ padding: '10px 14px', fontWeight: 700, color: '#4b5563' }}>Correo (Login)</th>
+                      <th style={{ padding: '10px 14px', fontWeight: 700, color: '#4b5563' }}>Teléfono</th>
+                      <th style={{ padding: '10px 14px', fontWeight: 700, color: '#4b5563' }}>DNI / RUC</th>
+                      <th style={{ padding: '10px 14px', fontWeight: 700, color: '#4b5563' }}>Registrado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {clientsList.map((c, i) => (
+                      <tr key={c.id} style={{ borderBottom: '1px solid #f3f4f6', backgroundColor: i % 2 === 0 ? '#ffffff' : '#fafbfc' }}>
+                        <td style={{ padding: '10px 14px', fontWeight: 700, color: '#111827' }}>
+                          <div>{c.nombre_completo}</div>
+                          {Array.isArray(c.alias_palabras_clave) && c.alias_palabras_clave.length > 1 && (
+                            <div style={{ fontSize: '10.5px', color: '#6b7280', marginTop: '2px' }}>
+                              Alias: {c.alias_palabras_clave.join(', ')}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ padding: '10px 14px', color: '#4b5563', fontFamily: 'monospace', fontSize: '12px' }}>
+                          {c.email}
+                        </td>
+                        <td style={{ padding: '10px 14px', color: '#4b5563' }}>
+                          {c.telefono || '—'}
+                        </td>
+                        <td style={{ padding: '10px 14px', color: '#4b5563' }}>
+                          {c.documento_identidad || '—'}
+                        </td>
+                        <td style={{ padding: '10px 14px', color: '#6b7280', fontSize: '11.5px' }}>
+                          {formatDateTimeTIB(c.creado_en).date}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
         </div>
