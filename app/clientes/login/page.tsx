@@ -1,35 +1,16 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabasePortal } from '@/lib/supabase/portal-client';
 import { getLoginThemeTokens } from '@/lib/themes/seasonalConfig';
 import { HalloweenBackdrop, HalloweenCornerWebs } from '@/components/themes/HalloweenBackdrop';
-import { 
-  Package, 
-  Search, 
-  Lock, 
-  Mail, 
-  ArrowRight, 
-  AlertCircle, 
-  Eye, 
-  EyeOff, 
-  ShieldCheck,
-  Building2,
-  Plane,
-  Clock,
-  Camera,
-  ExternalLink
-} from 'lucide-react';
 
 export default function ClienteLoginPage() {
   const router = useRouter();
   const theme = getLoginThemeTokens();
 
-  const [activeTab, setActiveTab] = useState<'login' | 'tracking'>('login');
-
-  // Login form state
+  // Estados de autenticación
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -38,14 +19,26 @@ export default function ClienteLoginPage() {
   const [isTransitioningIn, setIsTransitioningIn] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Quick Tracking state
+  // Estados de rastreo rápido modal
+  const [showTrackingModal, setShowTrackingModal] = useState(false);
   const [searchWr, setSearchWr] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [trackingResult, setTrackingResult] = useState<any | null>(null);
   const [trackingError, setTrackingError] = useState<string | null>(null);
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
 
-  // Si ya tiene sesión activa en el portal, redirigir automáticamente
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.body.classList.add('login-page');
+    }
+    return () => {
+      if (typeof document !== 'undefined') {
+        document.body.classList.remove('login-page');
+      }
+    };
+  }, []);
+
+  // Redirigir automáticamente si ya existe una sesión activa en el portal
   useEffect(() => {
     supabasePortal.auth.getSession().then(({ data: { session } }) => {
       if (session) {
@@ -54,7 +47,9 @@ export default function ClienteLoginPage() {
     });
   }, [router]);
 
-  const handleCapsLockCheck = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleCapsLockCheck = (
+    e: React.KeyboardEvent<HTMLInputElement> | React.MouseEvent<HTMLInputElement>
+  ) => {
     if (typeof e.getModifierState === 'function') {
       setIsCapsLockOn(e.getModifierState('CapsLock'));
     }
@@ -91,12 +86,13 @@ export default function ClienteLoginPage() {
         setIsTransitioningIn(true);
         setTimeout(() => {
           router.push('/clientes');
-        }, 450);
+        }, 400);
         return;
       }
 
       throw new Error('No se pudo establecer la sesión.');
-    } catch (err: any) {
+    } catch (err: unknown) {
+      // Intento fallback directo con el cliente Supabase del Portal
       try {
         const { data: directAuth, error: directError } = await supabasePortal.auth.signInWithPassword({
           email: cleanEmail,
@@ -107,17 +103,17 @@ export default function ClienteLoginPage() {
           setIsTransitioningIn(true);
           setTimeout(() => {
             router.push('/clientes');
-          }, 450);
+          }, 400);
           return;
         }
       } catch (_) {}
 
+      const msg = err instanceof Error ? err.message : 'Error al iniciar sesión';
       setErrorMessage(
-        err.message === 'Invalid login credentials'
+        msg === 'Invalid login credentials'
           ? 'Correo o contraseña incorrectos. Revisa tus datos.'
-          : err.message || 'Error al iniciar sesión'
+          : msg
       );
-    } finally {
       setIsLoading(false);
     }
   };
@@ -145,14 +141,15 @@ export default function ClienteLoginPage() {
       }
 
       throw new Error(`No encontramos ningún paquete con el código "${code}".`);
-    } catch (err: any) {
-      setTrackingError(err.message || 'Error al consultar tracking');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al consultar tracking';
+      setTrackingError(msg);
     } finally {
       setIsSearching(false);
     }
   };
 
-  // Cortina de entrada tras login exitoso
+  // ==================== CORTINA DE ENTRADA AL INICIAR SESIÓN ====================
   if (isTransitioningIn) {
     return (
       <div
@@ -187,24 +184,24 @@ export default function ClienteLoginPage() {
             zIndex: 2,
             padding: '28px 36px',
             borderRadius: 20,
-            background: 'rgba(15, 23, 42, 0.88)',
+            background: 'rgba(15, 23, 42, 0.85)',
             backdropFilter: 'blur(16px)',
             border: theme.shellBorder,
             boxShadow: theme.shellShadow,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            maxWidth: 400,
+            maxWidth: 380,
             width: '100%',
             textAlign: 'center',
-            animation: 'amexEntryCardIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+            animation: 'amexEntryCardIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards',
           }}
         >
           <div
             style={{
-              padding: '12px 22px',
+              padding: '12px 20px',
               borderRadius: 14,
-              background: 'rgba(9, 13, 22, 0.9)',
+              background: 'rgba(9, 13, 22, 0.88)',
               border: theme.logoBoxBorder,
               display: 'flex',
               alignItems: 'center',
@@ -215,14 +212,14 @@ export default function ClienteLoginPage() {
             <img
               src="/images/logo-amex-clean.png"
               alt="AMEX Courier"
-              style={{ height: 38, width: 'auto', objectFit: 'contain', filter: theme.logoDropShadow }}
+              style={{ height: 40, width: 'auto', objectFit: 'contain', filter: theme.logoDropShadow }}
             />
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 6 }}>
-            <i className="fa-solid fa-ghost fa-bounce" style={{ color: theme.spinnerColor, fontSize: 16 }} />
-            <span style={{ fontSize: 15, fontWeight: 800, letterSpacing: '-0.2px', color: '#f8fafc' }}>
-              Abriendo tu Casillero AMEX
+            <i className="fa-solid fa-circle-notch fa-spin" style={{ color: theme.spinnerColor, fontSize: 15 }} />
+            <span style={{ fontSize: 14.5, fontWeight: 800, letterSpacing: '-0.2px', color: '#f8fafc' }}>
+              Abriendo Casillero de Clientes
             </span>
           </div>
           <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 18px 0', lineHeight: 1.45 }}>
@@ -234,7 +231,7 @@ export default function ClienteLoginPage() {
               width: '100%',
               height: 4,
               borderRadius: 999,
-              background: 'rgba(255, 255, 255, 0.08)',
+              background: 'rgba(255, 255, 255, 0.07)',
               overflow: 'hidden',
               position: 'relative',
             }}
@@ -245,7 +242,7 @@ export default function ClienteLoginPage() {
                 height: '100%',
                 borderRadius: 999,
                 background: theme.progressGradient,
-                animation: 'amexProgressSlide 1.1s cubic-bezier(0.4, 0, 0.2, 1) infinite',
+                animation: 'amexProgressSlide 1.15s cubic-bezier(0.4, 0, 0.2, 1) infinite',
               }}
             />
           </div>
@@ -255,58 +252,86 @@ export default function ClienteLoginPage() {
   }
 
   return (
-    <div 
-      className="amex-client-portal min-h-screen text-slate-100 flex flex-col justify-between selection:bg-orange-500 selection:text-slate-950 font-sans relative overflow-x-hidden"
-      data-portal="client" 
-      data-lenis-prevent
+    <div
+      className="amex-login-viewport"
       style={{
-        background: theme.pageBackground,
         minHeight: '100dvh',
+        width: '100%',
+        background: theme.pageBackground,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '24px 16px',
+        fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+        position: 'relative',
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        WebkitOverflowScrolling: 'touch',
       }}
     >
-      {/* Escena Dinámica Halloween (Luna de cosecha, brujas, murciélagos, calabazas, chispas) */}
       {theme.isHalloween && <HalloweenBackdrop />}
 
       <style>{`
-        @keyframes amexShellIn {
-          from { opacity: 0; transform: translateY(12px) scale(0.99); }
+        @keyframes amexLoginShellIn {
+          from { opacity: 0; transform: translateY(10px) scale(0.992); }
           to { opacity: 1; transform: translateY(0) scale(1); }
         }
-        .amex-portal-shell {
+        .amex-login-shell {
           position: relative;
           z-index: 2;
           width: 100%;
-          max-width: 960px;
-          border-radius: 24px;
+          max-width: 980px;
+          display: grid;
+          grid-template-columns: 1.08fr 1fr;
+          border-radius: 22px;
           overflow: hidden;
-          background: rgba(15, 23, 42, 0.82);
+          background: rgba(15, 23, 42, 0.8);
           backdrop-filter: blur(20px);
           border: ${theme.shellBorder};
           box-shadow: ${theme.shellShadow};
-          animation: amexShellIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          animation: amexLoginShellIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
           --spot-x: 50%;
           --spot-y: 50%;
           --spot-opacity: 0;
         }
-        .amex-portal-shell::before {
+        .amex-login-shell::before {
           content: '';
           position: absolute;
           inset: 0;
           pointer-events: none;
           z-index: 4;
           background: radial-gradient(
-            440px circle at var(--spot-x) var(--spot-y),
-            rgba(249, 115, 22, 0.12),
+            420px circle at var(--spot-x) var(--spot-y),
+            ${theme.isHalloween ? 'rgba(249, 115, 22, 0.11)' : 'rgba(56, 189, 248, 0.08)'},
             transparent 65%
           );
           opacity: var(--spot-opacity);
           transition: opacity 0.25s ease;
         }
-        .amex-portal-input {
+        .amex-login-left {
+          position: relative;
+          padding: 42px 38px;
+          background: ${theme.leftPanelBackground};
+          border-right: 1px solid rgba(255, 255, 255, 0.07);
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          gap: 28px;
+        }
+        .amex-login-right {
+          position: relative;
+          padding: 42px 38px;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          background: rgba(15, 23, 42, 0.58);
+          color: #f8fafc;
+        }
+        .amex-input-field {
           width: 100%;
-          padding: 12px 14px 12px 40px;
-          border-radius: 12px;
-          background: rgba(9, 13, 22, 0.8);
+          padding: 12px 14px 12px 38px;
+          border-radius: 10px;
+          background: rgba(9, 13, 22, 0.72);
           border: 1px solid rgba(255, 255, 255, 0.12);
           color: #f8fafc;
           font-size: 13.5px;
@@ -314,436 +339,865 @@ export default function ClienteLoginPage() {
           box-sizing: border-box;
           transition: all 0.18s ease;
         }
-        .amex-portal-input:focus {
+        .amex-input-field:focus {
           border-color: ${theme.inputFocusBorder};
           box-shadow: ${theme.inputFocusShadow};
-          background: rgba(9, 13, 22, 0.94);
+          background: rgba(9, 13, 22, 0.92);
         }
-        .amex-halloween-btn {
+        .amex-submit-btn {
+          margin-top: 6px;
+          padding: 13px 16px;
+          min-height: 48px;
+          border-radius: 10px;
           background: ${theme.submitBtnBackground};
+          color: #ffffff;
           border: ${theme.submitBtnBorder};
+          font-weight: 800;
+          font-size: 14px;
+          letter-spacing: 0.2px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 9px;
           box-shadow: ${theme.submitBtnShadow};
           transition: all 0.18s ease;
+          width: 100%;
+          touch-action: manipulation;
         }
-        .amex-halloween-btn:hover:not(:disabled) {
+        .amex-submit-btn:hover:not(:disabled) {
           transform: translateY(-1px);
           box-shadow: ${theme.submitBtnHoverShadow};
-          filter: brightness(1.08);
+          filter: brightness(1.06);
+        }
+        .amex-submit-btn:disabled {
+          opacity: 0.65;
+          cursor: not-allowed;
+        }
+        @media (max-width: 860px) {
+          .amex-login-viewport {
+            padding: 16px 12px 32px 12px !important;
+            align-items: center !important;
+          }
+          .amex-login-shell {
+            grid-template-columns: 1fr;
+            max-width: 480px;
+            margin: auto;
+          }
+          .amex-login-left {
+            padding: 22px 20px;
+            border-right: none;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            gap: 16px;
+          }
+          .amex-login-right {
+            padding: 24px 20px 28px 20px;
+          }
+        }
+        @media (max-width: 640px) {
+          .amex-login-viewport {
+            padding: 10px 8px 36px 8px !important;
+            min-height: 100dvh !important;
+            display: flex !important;
+            align-items: flex-start !important;
+          }
+          .amex-login-shell {
+            border-radius: 16px !important;
+            max-width: 100% !important;
+            margin-top: 6px !important;
+            margin-bottom: 20px !important;
+          }
+          .amex-login-left {
+            padding: 14px 16px 10px 16px !important;
+            gap: 8px !important;
+          }
+          .amex-login-left-badge {
+            margin-bottom: 8px !important;
+            font-size: 10px !important;
+            padding: 4px 10px !important;
+          }
+          .amex-login-left-logo-box {
+            padding: 10px 14px !important;
+            margin-bottom: 8px !important;
+            border-radius: 12px !important;
+          }
+          .amex-login-left-logo-img {
+            max-width: 190px !important;
+            max-height: 36px !important;
+          }
+          .amex-login-left-desc {
+            display: none !important;
+          }
+          .amex-login-left-footer {
+            display: none !important;
+          }
+          .amex-login-right {
+            padding: 16px 16px 22px 16px !important;
+          }
+          .amex-login-right-head {
+            margin-bottom: 14px !important;
+          }
+          .amex-login-right-title {
+            font-size: 19px !important;
+          }
+          .amex-login-right-desc {
+            font-size: 11.5px !important;
+            margin-top: 3px !important;
+          }
+          .amex-input-field {
+            font-size: 14px !important;
+            padding: 11px 12px 11px 36px !important;
+          }
+          .amex-submit-btn {
+            min-height: 48px !important;
+            padding: 13px 16px !important;
+            font-size: 14px !important;
+            margin-top: 10px !important;
+            margin-bottom: 4px !important;
+          }
+          .amex-login-mobile-footer {
+            display: block !important;
+            margin-top: 14px;
+            text-align: center;
+            font-size: 11px;
+            color: #64748b;
+          }
         }
       `}</style>
 
-      {/* Top Header - Limpio con Logo Oficial */}
-      <header className="relative z-10 border-b border-orange-500/20 bg-slate-950/75 backdrop-blur-xl px-5 sm:px-8 py-3.5">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <img
-              src="/images/logo-amex-clean.png"
-              alt="AMEX Courier"
-              className="h-8 w-auto object-contain drop-shadow-[0_2px_8px_rgba(249,115,22,0.35)]"
-            />
+      <div
+        className="amex-login-shell"
+        onMouseMove={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          e.currentTarget.style.setProperty('--spot-x', `${e.clientX - rect.left}px`);
+          e.currentTarget.style.setProperty('--spot-y', `${e.clientY - rect.top}px`);
+          e.currentTarget.style.setProperty('--spot-opacity', '1');
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.setProperty('--spot-opacity', '0');
+        }}
+      >
+        {theme.isHalloween && <HalloweenCornerWebs />}
+
+        {/* ==================== PANEL CORPORATIVO IZQUIERDO ==================== */}
+        <div className="amex-login-left">
+          {/* Top Badge & Logo Oficial */}
+          <div>
+            <div
+              className="amex-login-left-badge"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '5px 12px',
+                borderRadius: '999px',
+                background: theme.badgeBackground,
+                border: theme.badgeBorder,
+                color: theme.badgeColor,
+                fontSize: '11px',
+                fontWeight: 800,
+                letterSpacing: '0.7px',
+                textTransform: 'uppercase',
+                marginBottom: '22px',
+              }}
+            >
+              <i className={theme.badgeIcon} style={{ fontSize: '11px' }} />
+              <span>{theme.isHalloween ? 'Edición Halloween • Casillero Postal' : 'Casillero Postal Miami – Lima'}</span>
+            </div>
+
+            {/* Contenedor del Logo Oficial AMEX Courier */}
+            <div
+              className="amex-login-left-logo-box"
+              style={{
+                background: 'linear-gradient(145deg, rgba(15, 23, 42, 0.9) 0%, rgba(7, 11, 20, 0.95) 100%)',
+                border: theme.logoBoxBorder,
+                borderRadius: '16px',
+                padding: '22px 24px',
+                marginBottom: '18px',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 12px 30px rgba(0,0,0,0.4)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <img
+                className="amex-login-left-logo-img"
+                src="/images/logo-amex-clean.png"
+                alt="AMEX Courier Logo Oficial"
+                style={{
+                  width: '100%',
+                  maxWidth: '290px',
+                  height: 'auto',
+                  objectFit: 'contain',
+                  filter: theme.logoDropShadow,
+                }}
+              />
+            </div>
+
+            <p
+              className="amex-login-left-desc"
+              style={{
+                fontSize: '13.5px',
+                color: '#94a3b8',
+                margin: 0,
+                lineHeight: 1.55,
+              }}
+            >
+              Plataforma oficial para clientes de AMEX Courier: casillero postal Miami – Lima, seguimiento de Warehouse (WR) y fotos de bodega en tiempo real.
+            </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <a
-              href="https://wa.me/51924811106?text=Hola%20AMEX%20Courier,%20necesito%20asistencia%20con%20mi%20casillero"
-              target="_blank"
-              rel="noreferrer"
-              className="hidden sm:inline-flex items-center gap-1.5 text-xs text-slate-300 hover:text-orange-400 bg-slate-900/90 hover:bg-slate-800/90 px-3.5 py-1.5 rounded-full border border-orange-500/30 transition-colors"
-            >
-              <i className="fa-brands fa-whatsapp text-emerald-400 text-sm" />
-              <span>Soporte WhatsApp</span>
-            </a>
-
-            <div className="flex items-center gap-1.5 text-xs text-slate-300 bg-slate-900/90 px-3 py-1.5 rounded-full border border-slate-800">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="hidden xs:inline">Conexión</span> Segura
-            </div>
+          {/* Pie Institucional */}
+          <div
+            className="amex-login-left-footer"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '8px',
+              paddingTop: '14px',
+              borderTop: '1px solid rgba(255, 255, 255, 0.07)',
+              fontSize: '11.5px',
+              color: '#64748b',
+            }}
+          >
+            <span>AMEX Courier S.A.C. • RUC 20607649082</span>
           </div>
         </div>
-      </header>
 
-      {/* Main Container */}
-      <main className="relative z-10 flex-1 flex items-center justify-center p-4 sm:p-6 md:p-8 my-auto">
-        <div 
-          className="amex-portal-shell grid grid-cols-1 lg:grid-cols-12 min-h-[520px]"
-          onMouseMove={(e) => {
-            const rect = e.currentTarget.getBoundingClientRect();
-            e.currentTarget.style.setProperty('--spot-x', `${e.clientX - rect.left}px`);
-            e.currentTarget.style.setProperty('--spot-y', `${e.clientY - rect.top}px`);
-            e.currentTarget.style.setProperty('--spot-opacity', '1');
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.setProperty('--spot-opacity', '0');
-          }}
-        >
-          {/* Telarañas de esquina */}
-          {theme.isHalloween && <HalloweenCornerWebs />}
-          
-          {/* ================= LEFT COLUMN: CLEAN BRANDING ================= */}
-          <div 
-            className="lg:col-span-5 p-8 sm:p-12 border-b lg:border-b-0 lg:border-r border-orange-500/25 flex flex-col justify-center relative overflow-hidden"
-            style={{ background: theme.leftPanelBackground }}
-          >
-            <div className="space-y-6 max-w-sm mx-auto lg:mx-0">
-              {/* Logo Box Oficial */}
-              <div 
-                className="rounded-2xl p-6 flex items-center justify-center"
-                style={{
-                  background: 'linear-gradient(145deg, rgba(15, 23, 42, 0.9) 0%, rgba(7, 4, 15, 0.95) 100%)',
-                  border: theme.logoBoxBorder,
-                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 12px 30px rgba(0,0,0,0.5)',
-                }}
-              >
-                <img
-                  src="/images/logo-amex-clean.png"
-                  alt="AMEX Courier Logo Oficial"
-                  className="w-full max-w-[240px] h-auto object-contain"
-                  style={{ filter: theme.logoDropShadow }}
-                />
-              </div>
-
-              <div>
-                <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight leading-snug">
-                  Tu Casillero en Miami & Lima
-                </h2>
-                <p className="text-xs sm:text-sm text-slate-300/80 mt-2 leading-relaxed">
-                  Rastrea tus compras en tiempo real y revisa la evidencia fotográfica registrada en bodega.
-                </p>
-              </div>
+        {/* ==================== PANEL DE AUTENTICACIÓN DERECHO ==================== */}
+        <div className="amex-login-right">
+          {/* Cabecera del Formulario: PORTAL DE CLIENTES (No Operaciones) */}
+          <div className="amex-login-right-head" style={{ marginBottom: '26px' }}>
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '11.5px',
+                fontWeight: 700,
+                color: theme.portalLabelColor,
+                marginBottom: '6px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+              }}
+            >
+              <i className={theme.portalIcon} />
+              <span>Portal de Clientes</span>
             </div>
+            <h1
+              className="amex-login-right-title"
+              style={{
+                fontSize: '23px',
+                fontWeight: 900,
+                margin: 0,
+                letterSpacing: '-0.3px',
+                color: '#ffffff',
+              }}
+            >
+              Iniciar Sesión
+            </h1>
+            <p
+              className="amex-login-right-desc"
+              style={{ fontSize: '13px', color: '#94a3b8', marginTop: '6px', marginBottom: 0 }}
+            >
+              Ingresa tus credenciales autorizadas de AMEX Courier.
+            </p>
           </div>
 
-          {/* ================= RIGHT COLUMN: INTERACTIVE FORM & TABS ================= */}
-          <div className="lg:col-span-7 p-6 sm:p-10 flex flex-col justify-center bg-slate-900/60 relative z-10">
-            
-            {/* Elegant Tab Switcher */}
-            <div className="grid grid-cols-2 gap-1.5 bg-slate-950/85 p-1.5 rounded-2xl border border-orange-500/25 mb-8 max-w-md mx-auto w-full shadow-lg">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('login');
-                  setErrorMessage(null);
-                }}
-                className={`py-2.5 px-4 text-xs sm:text-sm font-extrabold rounded-xl transition-all duration-200 flex items-center justify-center gap-2 ${
-                  activeTab === 'login'
-                    ? 'amex-halloween-btn text-white'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-900/60'
-                }`}
-              >
-                <Lock className="w-3.5 h-3.5" />
-                <span>Acceso a Casillero</span>
-              </button>
+          {errorMessage && (
+            <div
+              style={{
+                background: 'rgba(239, 68, 68, 0.15)',
+                border: '1px solid rgba(239, 68, 68, 0.35)',
+                color: '#fca5a5',
+                padding: '12px 14px',
+                borderRadius: '10px',
+                fontSize: '13px',
+                marginBottom: '18px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+              }}
+            >
+              <i className="fa-solid fa-circle-exclamation" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
 
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('tracking');
-                  setTrackingError(null);
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+            <div>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  color: '#cbd5e1',
+                  marginBottom: '6px',
                 }}
-                className={`py-2.5 px-4 text-xs sm:text-sm font-extrabold rounded-xl transition-all duration-200 flex items-center justify-center gap-2 ${
-                  activeTab === 'tracking'
-                    ? 'amex-halloween-btn text-white'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-900/60'
-                }`}
               >
-                <Search className="w-3.5 h-3.5" />
-                <span>Rastreo Rápido</span>
-              </button>
+                Correo Electrónico
+              </label>
+              <div style={{ position: 'relative' }}>
+                <i
+                  className="fa-solid fa-envelope"
+                  style={{
+                    position: 'absolute',
+                    left: '13px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    color: '#64748b',
+                    fontSize: '14px',
+                  }}
+                />
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="tu-correo@ejemplo.com"
+                  className="amex-input-field"
+                />
+              </div>
             </div>
 
-            {/* -------------------- TAB 1: LOGIN -------------------- */}
-            {activeTab === 'login' && (
-              <div className="max-w-md mx-auto w-full">
-                <div className="mb-6 text-center sm:text-left">
-                  <h1 className="text-2xl font-black text-white tracking-tight">
-                    Iniciar Sesión
-                  </h1>
+            <div>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '6px',
+                }}
+              >
+                <label style={{ fontSize: '12px', fontWeight: 700, color: '#cbd5e1' }}>
+                  Contraseña
+                </label>
+                <a
+                  href="https://wa.me/51924811106?text=Hola%20AMEX%20Courier,%20necesito%20asistencia%20con%20la%20clave%20de%20mi%20casillero"
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#fbbf24',
+                    fontSize: '11.5px',
+                    fontWeight: 700,
+                    textDecoration: 'none',
+                    cursor: 'pointer',
+                    padding: 0,
+                    transition: 'color 0.2s ease',
+                  }}
+                >
+                  ¿Olvidaste tu contraseña?
+                </a>
+              </div>
+              <div style={{ position: 'relative' }}>
+                <i
+                  className="fa-solid fa-lock"
+                  style={{
+                    position: 'absolute',
+                    left: '13px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    color: '#64748b',
+                    fontSize: '14px',
+                  }}
+                />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={handleCapsLockCheck}
+                  onKeyUp={handleCapsLockCheck}
+                  onClick={handleCapsLockCheck}
+                  onBlur={() => setIsCapsLockOn(false)}
+                  placeholder="••••••••"
+                  className="amex-input-field"
+                  style={{ paddingRight: '40px' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    color: showPassword ? '#fbbf24' : '#64748b',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    padding: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  tabIndex={-1}
+                  title={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                >
+                  <i className={showPassword ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'} />
+                </button>
+              </div>
+
+              {/* Aviso de Bloq Mayús (Caps Lock) Activo */}
+              {isCapsLockOn && (
+                <div
+                  role="status"
+                  style={{
+                    marginTop: '8px',
+                    padding: '7px 11px',
+                    borderRadius: '8px',
+                    background: 'rgba(245, 158, 11, 0.14)',
+                    border: '1px solid rgba(245, 158, 11, 0.35)',
+                    color: '#fcd34d',
+                    fontSize: '11.5px',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '7px',
+                  }}
+                >
+                  <i className="fa-solid fa-triangle-exclamation" style={{ color: '#f59e0b' }} />
+                  <span>Bloq Mayús (Caps Lock) está activado</span>
                 </div>
+              )}
+            </div>
 
-                {errorMessage && (
-                  <div className="mb-5 p-3.5 rounded-2xl bg-red-500/15 border border-red-500/40 text-red-300 text-xs flex items-start gap-2.5">
-                    <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-                    <span className="leading-relaxed font-semibold">{errorMessage}</span>
-                  </div>
-                )}
+            <button type="submit" disabled={isLoading} className="amex-submit-btn">
+              {isLoading ? (
+                <>
+                  <i className="fa-solid fa-spinner fa-spin" />
+                  <span>Validando credenciales...</span>
+                </>
+              ) : (
+                <>
+                  <i className="fa-solid fa-arrow-right-to-bracket" />
+                  <span>Ingresar a mi Casillero</span>
+                </>
+              )}
+            </button>
+          </form>
 
-                <form onSubmit={handleLogin} className="space-y-4">
-                  {/* Field Email */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
-                      Correo Electrónico
-                    </label>
-                    <div className="relative">
-                      <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      <input
-                        type="email"
-                        required
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="tu-correo@ejemplo.com"
-                        className="amex-portal-input"
-                      />
-                    </div>
-                  </div>
+          {/* Enlaces de soporte y rastreo rápido */}
+          <div
+            style={{
+              marginTop: '22px',
+              paddingTop: '18px',
+              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+              textAlign: 'center',
+            }}
+          >
+            <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>
+              ¿Aún no tienes casillero en Miami?{' '}
+              <a
+                href="https://wa.me/51924811106?text=Hola%20AMEX%20Courier,%20deseo%20abrir%20un%20casillero%20postal%20en%20Miami"
+                target="_blank"
+                rel="noreferrer"
+                style={{ color: '#fb923c', fontWeight: 800, textDecoration: 'none' }}
+              >
+                Solicítalo gratis aquí
+              </a>
+            </p>
 
-                  {/* Field Password */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
-                        Contraseña
-                      </label>
-                      <a
-                        href="https://wa.me/51924811106?text=Hola%20AMEX%20Courier,%20olvide%20mi%20contraseña%20de%20mi%20casillero"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-[11px] text-orange-400 hover:text-orange-300 font-semibold transition-colors"
-                      >
-                        ¿Olvidaste tu contraseña?
-                      </a>
-                    </div>
-                    <div className="relative">
-                      <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        required
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        onKeyUp={handleCapsLockCheck}
-                        onKeyDown={handleCapsLockCheck}
-                        placeholder="••••••••"
-                        className="amex-portal-input pr-11"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors p-1"
-                        tabIndex={-1}
-                      >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
+            <button
+              type="button"
+              onClick={() => setShowTrackingModal(true)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#38bdf8',
+                fontSize: '12px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                padding: '4px',
+              }}
+            >
+              <i className="fa-solid fa-magnifying-glass" style={{ fontSize: '11px' }} />
+              <span>Rastreo rápido de guía sin iniciar sesión</span>
+            </button>
+          </div>
 
-                    {isCapsLockOn && (
-                      <div className="mt-1.5 text-[11px] text-amber-400 flex items-center gap-1.5 bg-amber-500/15 px-2.5 py-1 rounded-lg border border-amber-500/30">
-                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                        <span>Bloq Mayús está activado</span>
-                      </div>
-                    )}
-                  </div>
+          {/* Pie Institucional visible solo en Móviles al final del formulario */}
+          <div className="amex-login-mobile-footer" style={{ display: 'none' }}>
+            <span>AMEX Courier S.A.C. • RUC 20607649082</span>
+          </div>
+        </div>
+      </div>
 
-                  {/* Submit Button */}
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="w-full mt-3 amex-halloween-btn text-white font-black py-3.5 rounded-xl text-sm transition-all flex items-center justify-center gap-2.5 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer uppercase tracking-wider"
-                  >
-                    {isLoading ? (
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        <span>Verificando credenciales...</span>
-                      </div>
-                    ) : (
-                      <>
-                        <span>Ingresar a mi Casillero</span>
-                        <ArrowRight className="w-4 h-4" />
-                      </>
-                    )}
-                  </button>
-                </form>
-
-                {/* Additional Guidance */}
-                <div className="mt-6 pt-5 border-t border-slate-800/80 text-center">
-                  <p className="text-xs text-slate-400">
-                    ¿Aún no tienes casillero en Miami?{' '}
-                    <a 
-                      href="https://wa.me/51924811106?text=Hola%20AMEX%20Courier,%20deseo%20abrir%20un%20casillero%20postal%20en%20Miami"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-orange-400 font-bold hover:underline"
-                    >
-                      Solicítalo gratis aquí
-                    </a>
+      {/* ==================== MODAL DE RASTREO RÁPIDO ==================== */}
+      {showTrackingModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 50,
+            background: 'rgba(5, 3, 10, 0.85)',
+            backdropFilter: 'blur(12px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowTrackingModal(false);
+          }}
+        >
+          <div
+            style={{
+              position: 'relative',
+              width: '100%',
+              maxWidth: '560px',
+              borderRadius: '20px',
+              background: 'rgba(15, 23, 42, 0.95)',
+              border: theme.shellBorder,
+              boxShadow: theme.shellShadow,
+              padding: '28px 24px',
+              color: '#f8fafc',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '18px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div
+                  style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '10px',
+                    background: 'rgba(249, 115, 22, 0.15)',
+                    border: '1px solid rgba(249, 115, 22, 0.35)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#fb923c',
+                  }}
+                >
+                  <i className="fa-solid fa-box-open" />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 900 }}>
+                    Rastreo Rápido de Paquetes
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '11.5px', color: '#94a3b8' }}>
+                    Consulta tu Warehouse (WR) o tracking USA en tiempo real
                   </p>
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={() => setShowTrackingModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#94a3b8',
+                  fontSize: '18px',
+                  cursor: 'pointer',
+                  padding: '6px',
+                }}
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            <form onSubmit={handleQuickTracking} style={{ marginBottom: '18px' }}>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <i
+                    className="fa-solid fa-barcode"
+                    style={{
+                      position: 'absolute',
+                      left: '13px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      color: '#64748b',
+                    }}
+                  />
+                  <input
+                    type="text"
+                    required
+                    value={searchWr}
+                    onChange={(e) => setSearchWr(e.target.value)}
+                    placeholder="Ej: WR000486257 o TBA..."
+                    className="amex-input-field"
+                    style={{ textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 700 }}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={isSearching}
+                  style={{
+                    padding: '0 20px',
+                    borderRadius: '10px',
+                    background: theme.submitBtnBackground,
+                    border: theme.submitBtnBorder,
+                    color: '#ffffff',
+                    fontWeight: 800,
+                    fontSize: '13px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {isSearching ? (
+                    <i className="fa-solid fa-spinner fa-spin" />
+                  ) : (
+                    <>
+                      <i className="fa-solid fa-magnifying-glass" />
+                      <span>Buscar</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+
+            {trackingError && (
+              <div
+                style={{
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  border: '1px solid rgba(239, 68, 68, 0.35)',
+                  color: '#fca5a5',
+                  padding: '12px 14px',
+                  borderRadius: '10px',
+                  fontSize: '12.5px',
+                  marginBottom: '14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                <i className="fa-solid fa-circle-exclamation" />
+                <span>{trackingError}</span>
+              </div>
             )}
 
-            {/* -------------------- TAB 2: QUICK TRACKING -------------------- */}
-            {activeTab === 'tracking' && (
-              <div className="max-w-md mx-auto w-full">
-                <div className="mb-6 text-center sm:text-left">
-                  <h2 className="text-2xl font-black text-white tracking-tight">
-                    Consulta tu Envío
-                  </h2>
+            {trackingResult && (
+              <div
+                style={{
+                  background: 'rgba(9, 13, 22, 0.85)',
+                  border: '1px solid rgba(249, 115, 22, 0.25)',
+                  borderRadius: '14px',
+                  padding: '16px',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: '12px',
+                    paddingBottom: '10px',
+                    borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+                  }}
+                >
+                  <div>
+                    <span
+                      style={{
+                        fontFamily: 'monospace',
+                        fontWeight: 900,
+                        fontSize: '15px',
+                        color: '#fb923c',
+                      }}
+                    >
+                      {trackingResult.wr}
+                    </span>
+                    {trackingResult.tracking && (
+                      <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                        Tracking: {trackingResult.tracking}
+                      </div>
+                    )}
+                  </div>
+                  <span
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: '999px',
+                      fontSize: '11px',
+                      fontWeight: 800,
+                      background:
+                        trackingResult.estado === 'ENTREGADO'
+                          ? 'rgba(16, 185, 129, 0.2)'
+                          : 'rgba(249, 115, 22, 0.2)',
+                      color:
+                        trackingResult.estado === 'ENTREGADO' ? '#6ee7b7' : '#fdba74',
+                      border: `1px solid ${
+                        trackingResult.estado === 'ENTREGADO'
+                          ? 'rgba(16, 185, 129, 0.4)'
+                          : 'rgba(249, 115, 22, 0.4)'
+                      }`,
+                    }}
+                  >
+                    {trackingResult.estado || 'EN PROCESO'}
+                  </span>
                 </div>
 
-                <form onSubmit={handleQuickTracking} className="space-y-4">
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(2, 1fr)',
+                    gap: '10px',
+                    fontSize: '12px',
+                    marginBottom: '14px',
+                  }}
+                >
                   <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
-                      Número de Guía o Tracking USA
-                    </label>
-                    <div className="relative">
-                      <Package className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      <input
-                        type="text"
-                        required
-                        value={searchWr}
-                        onChange={(e) => setSearchWr(e.target.value)}
-                        placeholder="Ej: WR000486257 o TBA..."
-                        className="amex-portal-input uppercase font-mono font-semibold"
+                    <span style={{ color: '#64748b', display: 'block' }}>Contenido:</span>
+                    <strong style={{ color: '#e2e8f0' }}>
+                      {trackingResult.descripcion || 'Sin descripción'}
+                    </strong>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748b', display: 'block' }}>Peso / Piezas:</span>
+                    <strong style={{ color: '#e2e8f0' }}>
+                      {trackingResult.peso_kg ? `${trackingResult.peso_kg} kg` : 'N/D'} •{' '}
+                      {trackingResult.piezas || 1} pza(s)
+                    </strong>
+                  </div>
+                  {trackingResult.consignatario && (
+                    <div>
+                      <span style={{ color: '#64748b', display: 'block' }}>Consignatario:</span>
+                      <strong style={{ color: '#e2e8f0' }}>
+                        {trackingResult.consignatario}
+                      </strong>
+                    </div>
+                  )}
+                  {trackingResult.transportista && (
+                    <div>
+                      <span style={{ color: '#64748b', display: 'block' }}>Transportista:</span>
+                      <strong style={{ color: '#e2e8f0' }}>
+                        {trackingResult.transportista}
+                      </strong>
+                    </div>
+                  )}
+                </div>
+
+                {trackingResult.foto_url && (
+                  <div>
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        color: '#94a3b8',
+                        display: 'block',
+                        marginBottom: '6px',
+                        fontWeight: 700,
+                      }}
+                    >
+                      Evidencia en Bodega Miami:
+                    </span>
+                    <div
+                      onClick={() => setPreviewPhoto(trackingResult.foto_url)}
+                      style={{
+                        position: 'relative',
+                        width: '100%',
+                        height: '140px',
+                        borderRadius: '10px',
+                        overflow: 'hidden',
+                        cursor: 'pointer',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                      }}
+                    >
+                      <img
+                        src={trackingResult.foto_url}
+                        alt="Evidencia"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={isSearching}
-                    className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3.5 rounded-xl text-sm transition-all border border-orange-500/30 shadow-md flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
-                  >
-                    {isSearching ? (
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        <span>Buscando en bodega...</span>
-                      </div>
-                    ) : (
-                      <>
-                        <Search className="w-4 h-4 text-orange-400" />
-                        <span>Consultar Estado del Paquete</span>
-                      </>
-                    )}
-                  </button>
-                </form>
-
-                {trackingError && (
-                  <div className="mt-5 p-4 rounded-2xl bg-orange-500/10 border border-orange-500/35 text-orange-300 text-xs flex items-start gap-2.5">
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-orange-400" />
-                    <span className="leading-relaxed">{trackingError}</span>
-                  </div>
-                )}
-
-                {trackingResult && (
-                  <div className="mt-6 p-5 rounded-2xl bg-slate-950/90 border border-orange-500/30 shadow-2xl space-y-4">
-                    
-                    {/* Header info */}
-                    <div className="flex items-center justify-between border-b border-slate-800/90 pb-3">
-                      <div>
-                        <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Recibo Warehouse</span>
-                        <p className="text-lg font-black text-orange-400 font-mono tracking-tight">
-                          {trackingResult.numero_recibo_bodega}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Peso Registrado</span>
-                        <p className="text-sm font-bold text-slate-100">
-                          {trackingResult.peso_kg ? `${trackingResult.peso_kg} kg` : 'Por pesar'}
-                        </p>
+                      <div
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          background: 'rgba(0,0,0,0.3)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                          color: '#fff',
+                          fontSize: '12px',
+                          fontWeight: 700,
+                        }}
+                      >
+                        <i className="fa-solid fa-magnifying-glass-plus" />
+                        <span>Ver foto completa</span>
                       </div>
                     </div>
-
-                    {/* Tracking details */}
-                    <div className="text-xs space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-400">Tracking USA:</span>
-                        <span className="text-slate-200 font-mono font-medium truncate max-w-[200px]">
-                          {trackingResult.tracking || 'No especificado'}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-400">Consignatario:</span>
-                        <span className="text-slate-200 font-medium truncate max-w-[200px]">
-                          {trackingResult.nombre_consignatario || 'Cliente AMEX'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Status Box */}
-                    <div className="pt-2 border-t border-slate-800/80">
-                      <span className="text-[10px] uppercase font-bold text-slate-500 block mb-2">Estado Logístico</span>
-                      {trackingResult.estado_amex === 'en_almacen' ? (
-                        <div className="p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-2.5">
-                          <Building2 className="w-4 h-4 shrink-0" />
-                          <span>¡En Almacén Lince! (Listo para entrega)</span>
-                        </div>
-                      ) : trackingResult.estado_tib === 'Enviado' ? (
-                        <div className="p-3 rounded-xl bg-blue-500/15 border border-blue-500/30 text-blue-400 text-xs font-bold flex items-center gap-2.5">
-                          <Plane className="w-4 h-4 shrink-0" />
-                          <span>En Vuelo Internacional Miami ➔ Lima</span>
-                        </div>
-                      ) : (
-                        <div className="p-3 rounded-xl bg-orange-500/15 border border-orange-500/35 text-orange-300 text-xs font-bold flex items-center gap-2.5">
-                          <Clock className="w-4 h-4 shrink-0 text-orange-400" />
-                          <span>Recibido en Bodega Miami (TIB)</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Photo Action */}
-                    {trackingResult.tib_imagen_url && (
-                      <div className="pt-1">
-                        <button
-                          type="button"
-                          onClick={() => setPreviewPhoto(trackingResult.tib_imagen_url)}
-                          className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 border border-orange-500/40 rounded-xl text-xs font-bold text-orange-300 flex items-center justify-center gap-2 transition-colors cursor-pointer"
-                        >
-                          <Camera className="w-3.5 h-3.5" />
-                          <span>📷 Ver Foto Tomada en Miami</span>
-                        </button>
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
             )}
-
-          </div>
-
-        </div>
-      </main>
-
-      {/* Modal para ver Foto del Paquete */}
-      {previewPhoto && (
-        <div 
-          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4"
-          onClick={() => setPreviewPhoto(null)}
-        >
-          <div 
-            className="relative bg-slate-900 border border-orange-500/30 rounded-3xl p-4 max-w-lg w-full max-h-[90vh] flex flex-col items-center shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="w-full flex items-center justify-between pb-3 border-b border-slate-800">
-              <span className="text-xs font-bold text-slate-200">Foto registrada en Bodega Miami</span>
-              <button 
-                type="button"
-                onClick={() => setPreviewPhoto(null)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="my-3 overflow-auto max-h-[65vh] rounded-xl border border-slate-800 bg-slate-950">
-              <img
-                src={previewPhoto}
-                alt="Foto del paquete en bodega"
-                className="w-full h-auto object-contain"
-              />
-            </div>
-            <a
-              href={previewPhoto}
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs text-orange-400 hover:underline flex items-center gap-1 font-semibold"
-            >
-              <span>Abrir imagen en alta resolución</span>
-              <ExternalLink className="w-3 h-3" />
-            </a>
           </div>
         </div>
       )}
 
-      {/* Footer Limpio */}
-      <footer className="relative z-10 border-t border-orange-500/20 py-4 px-6 text-center text-xs text-slate-400 bg-slate-950/60">
-        <p>© {new Date().getFullYear()} AMEX COURIER PERÚ — Todos los derechos reservados.</p>
-      </footer>
+      {/* Modal Zoom Foto */}
+      {previewPhoto && (
+        <div
+          role="dialog"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 60,
+            background: 'rgba(0,0,0,0.92)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+          }}
+          onClick={() => setPreviewPhoto(null)}
+        >
+          <div style={{ position: 'relative', maxWidth: '800px', maxHeight: '85vh' }}>
+            <img
+              src={previewPhoto}
+              alt="Foto bodega"
+              style={{
+                width: '100%',
+                maxHeight: '85vh',
+                objectFit: 'contain',
+                borderRadius: '12px',
+                border: '1px solid rgba(249, 115, 22, 0.4)',
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => setPreviewPhoto(null)}
+              style={{
+                position: 'absolute',
+                top: '-14px',
+                right: '-14px',
+                background: '#ea580c',
+                color: '#fff',
+                border: 'none',
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                cursor: 'pointer',
+                fontSize: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <i className="fa-solid fa-xmark" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
