@@ -4,9 +4,12 @@ import { Resend } from 'resend';
 const apiKey = process.env.RESEND_API_KEY || process.env.API_KEY_RESEND || '';
 export const resend = apiKey ? new Resend(apiKey) : null;
 
-export const DEFAULT_FROM_EMAIL = 
-  process.env.RESEND_FROM_EMAIL || 
-  'AMEX Courier <notificaciones@sistemaamexcourier.online>';
+// Dominio único verificado en Resend para envíos: sistemaamexcourier.online
+const envFrom = process.env.RESEND_FROM_EMAIL || '';
+export const DEFAULT_FROM_EMAIL =
+  envFrom.includes('sistemaamexcourier.online')
+    ? envFrom
+    : 'AMEX Courier <notificaciones@sistemaamexcourier.online>';
 
 export interface SendEmailOptions {
   to: string | string[];
@@ -30,11 +33,23 @@ export async function sendEmail(options: SendEmailOptions) {
     return { success: false, error: 'RESEND_API_KEY no configurada' };
   }
 
+  // Asegurar que el remitente siempre use el dominio verificado en Resend
+  let fromAddress = DEFAULT_FROM_EMAIL;
+  if (!fromAddress.includes('sistemaamexcourier.online')) {
+    fromAddress = 'AMEX Courier <notificaciones@sistemaamexcourier.online>';
+  }
+
+  // Asegurar que replyTo no contenga un dominio no verificado
+  const replyToAddress =
+    options.replyTo && options.replyTo.includes('sistemaamexcourier.online')
+      ? options.replyTo
+      : 'notificaciones@sistemaamexcourier.online';
+
   try {
     const { data, error } = await resend.emails.send({
-      from: DEFAULT_FROM_EMAIL,
+      from: fromAddress,
       to: Array.isArray(options.to) ? options.to : [options.to],
-      replyTo: options.replyTo || 'notificaciones@sistemaamexcourier.online',
+      replyTo: replyToAddress,
       subject: options.subject,
       html: options.html,
       text: options.text,

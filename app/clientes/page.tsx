@@ -340,7 +340,8 @@ export default function ClienteDashboardTIB() {
       }
 
       setCreateClientSuccess(
-        `¡Cliente ${data.user.nombre_completo} creado con éxito! Se vincularon ${data.paquetes_vinculados} paquetes de almacén a su cuenta.`
+        data.mensaje ||
+          `¡Cliente ${data.user.nombre_completo} registrado con éxito! Se vincularon ${data.paquetes_vinculados} paquetes y se envió el correo de activación.`
       );
 
       // Limpiar formulario
