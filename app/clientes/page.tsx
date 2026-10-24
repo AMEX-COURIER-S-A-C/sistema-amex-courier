@@ -10,7 +10,6 @@ import {
   X, 
   LogOut, 
   ChevronDown, 
-  Menu,
   ExternalLink,
   Package,
   ShieldCheck,
@@ -278,7 +277,6 @@ export default function ClienteDashboardTIB() {
           
           {/* Logo y título */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <Menu style={{ width: '20px', height: '20px', color: '#9ca3af', cursor: 'pointer' }} />
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '18px', fontWeight: 900, letterSpacing: '-0.5px', color: '#ffffff' }}>
                 Amex<span style={{ color: '#ff5722' }}>+</span>
