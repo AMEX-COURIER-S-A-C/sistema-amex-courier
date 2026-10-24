@@ -51,9 +51,15 @@ export async function proxy(request: NextRequest) {
   }
 
   const hostname = request.headers.get('host') || '';
-  const isClientsSubdomain = hostname.startsWith('clientes.') || request.nextUrl.searchParams.get('portal') === 'clientes';
+  const isClientsSubdomain =
+    hostname.startsWith('clientes.') ||
+    hostname.startsWith('cliente.') ||
+    request.nextUrl.searchParams.get('portal') === 'clientes';
   const isClientPortal = pathname.startsWith('/clientes');
-  const isClientPublicRoute = pathname.startsWith('/clientes/login') || pathname.startsWith('/clientes/registro');
+  const isClientPublicRoute =
+    pathname.startsWith('/clientes/login') ||
+    pathname.startsWith('/clientes/registro') ||
+    pathname.startsWith('/clientes/establecer-password');
   const isLoginPage = pathname.startsWith('/login') && !isClientPortal;
   const isApiRoute = pathname.startsWith('/api');
   const isPublicAuthRoute =
@@ -184,7 +190,8 @@ export async function proxy(request: NextRequest) {
         return setRequestIdHeader(NextResponse.redirect(new URL('/clientes/registro', request.url)));
       }
       // Cualquier otra ruta en clientes.sistemaamexcourier.online se reescribe al portal
-      return setRequestIdHeader(NextResponse.rewrite(new URL('/clientes', request.url)));
+      const targetPath = pathname === '/' || pathname === '' ? '/clientes' : `/clientes${pathname}`;
+      return setRequestIdHeader(NextResponse.rewrite(new URL(targetPath, request.url)));
     }
   }
 

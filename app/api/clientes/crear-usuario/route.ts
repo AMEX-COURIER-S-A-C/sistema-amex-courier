@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getPortalAdmin } from '@/lib/supabase/portal-admin';
-import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { syncPackagesToClientPortal } from '@/lib/portal/syncPackageToPortal';
+import { syncTibPackagesToPortal } from '@/lib/portal/syncTibToPortal';
+import { sendWelcomeClientEmail } from '@/lib/email/welcomeClient';
+import { getPortalBaseUrl } from '@/lib/portal/portal-urls';
 
 export async function POST(req: Request) {
   try {
@@ -9,7 +10,6 @@ export async function POST(req: Request) {
     const {
       nombre_completo,
       email,
-      password,
       telefono,
       documento_identidad,
       casillero_codigo,
@@ -24,23 +24,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Ingresa un correo electrónico válido.' }, { status: 400 });
     }
 
-    if (!password || password.length < 6) {
-      return NextResponse.json({ error: 'La contraseña debe tener al menos 6 caracteres.' }, { status: 400 });
-    }
-
     const cleanEmail = email.trim().toLowerCase();
     const cleanNombre = nombre_completo.trim().toUpperCase();
 
-    // Palabras clave para matching (incluye el nombre completo por defecto y sus variantes)
-    const keywords: string[] = [cleanNombre];
-    
-    // Variante sin prefijo AMEX si lo tuviera (ej: "AMEX / JANIRA" -> "JANIRA")
-    const sinAmex = cleanNombre.replace(/^AMEX\s*[\/\-:]?\s*/i, '').trim();
-    if (sinAmex && sinAmex !== cleanNombre && !keywords.includes(sinAmex)) {
-      keywords.push(sinAmex);
-    }
-
-    if (Array.isArray(alias_palabras_clave)) {
+    // Palabras clave para matching: guardar ÚNICAMENTE lo seleccionado/ingresado
+    let keywords: string[] = [];
+    if (Array.isArray(alias_palabras_clave) && alias_palabras_clave.length > 0) {
       alias_palabras_clave.forEach((k: string) => {
         const trimmed = String(k).trim().toUpperCase();
         if (trimmed && !keywords.includes(trimmed)) {
@@ -49,31 +38,69 @@ export async function POST(req: Request) {
       });
     }
 
-    const portalAdmin = getPortalAdmin();
+    // Solo si no se especificó ninguna palabra clave, usar el nombre del formulario como respaldo
+    if (keywords.length === 0 && cleanNombre) {
+      keywords.push(cleanNombre);
+    }
 
-    // 1. Crear usuario en Supabase Auth del Portal de Clientes (Oregon us-west-2)
-    const { data: authData, error: authErr } = await portalAdmin.auth.admin.createUser({
+    const portalAdmin = getPortalAdmin();
+    const baseUrl = getPortalBaseUrl(req);
+    const redirectTo = `${baseUrl}/clientes/establecer-password`;
+
+    // 1. Generar enlace de invitación y crear usuario en Supabase Auth (Oregon us-west-2)
+    // El Superadmin ya NO define contraseña; el cliente la establece desde el enlace recibido por correo.
+    let authUser: any = null;
+    let actionLink: string | null = null;
+
+    const { data: inviteData, error: inviteErr } = await portalAdmin.auth.admin.generateLink({
+      type: 'invite',
       email: cleanEmail,
-      password: password,
-      email_confirm: true,
-      user_metadata: {
-        nombre_completo: cleanNombre,
-        telefono: telefono?.trim() || null,
-        documento_identidad: documento_identidad?.trim() || null,
-        rol: 'cliente',
+      options: {
+        redirectTo,
+        data: {
+          nombre_completo: cleanNombre,
+          telefono: telefono?.trim() || null,
+          documento_identidad: documento_identidad?.trim() || null,
+          rol: 'cliente',
+          password_establecido: false,
+        },
       },
     });
 
-    if (authErr) {
-      if (authErr.message.includes('already been registered')) {
-        return NextResponse.json({ error: 'Este correo electrónico ya está registrado en el portal.' }, { status: 400 });
+    if (inviteErr) {
+      if (inviteErr.message.includes('already been registered') || inviteErr.message.includes('already registered')) {
+        // Si el usuario ya existía previamente en auth, generamos enlace de recuperación para establecer su contraseña
+        const { data: recoveryData, error: recoveryErr } = await portalAdmin.auth.admin.generateLink({
+          type: 'recovery',
+          email: cleanEmail,
+          options: {
+            redirectTo,
+          },
+        });
+
+        if (recoveryErr) {
+          return NextResponse.json(
+            { error: `Este correo ya está registrado y no se pudo generar el enlace: ${recoveryErr.message}` },
+            { status: 400 }
+          );
+        }
+
+        authUser = recoveryData?.user;
+        actionLink = recoveryData?.properties?.action_link || null;
+      } else {
+        return NextResponse.json({ error: `Error de autenticación: ${inviteErr.message}` }, { status: 500 });
       }
-      return NextResponse.json({ error: `Error de autenticación: ${authErr.message}` }, { status: 500 });
+    } else {
+      authUser = inviteData?.user;
+      actionLink = inviteData?.properties?.action_link || null;
     }
 
-    const newUserId = authData.user.id;
+    const newUserId = authUser?.id;
+    if (!newUserId) {
+      return NextResponse.json({ error: 'No se pudo obtener el identificador de usuario creado.' }, { status: 500 });
+    }
 
-    // 2. Registrar en la tabla public.clientes_portal
+    // 2. Registrar o actualizar en la tabla public.clientes_portal
     const { error: profileErr } = await portalAdmin.from('clientes_portal').upsert({
       id: newUserId,
       nombre_completo: cleanNombre,
@@ -90,76 +117,32 @@ export async function POST(req: Request) {
       console.error('[CrearCliente] Error al crear perfil clientes_portal:', profileErr);
     }
 
-    // 3. Auto-cruce de paquetes existentes:
-    // a) Actualizar paquetes que ya residen en public.paquetes_portal (Oregon Supabase)
-    try {
-      for (const kw of keywords) {
-        if (!kw || kw.length < 3) continue;
-        await portalAdmin
-          .from('paquetes_portal')
-          .update({ usuario_email: cleanEmail })
-          .ilike('nombre_consignatario', `%${kw}%`);
+    // 3. Enviar correo de activación mediante Resend
+    let emailSent = false;
+    let emailError: string | null = null;
+
+    if (actionLink) {
+      const emailRes = await sendWelcomeClientEmail({
+        email: cleanEmail,
+        nombreCompleto: cleanNombre,
+        activationLink: actionLink,
+      });
+
+      emailSent = emailRes.success;
+      if (!emailRes.success) {
+        emailError = emailRes.error || 'No se pudo enviar el correo';
+        console.warn('[CrearCliente] Aviso de envío de correo:', emailError);
       }
-    } catch (portalUpdateErr) {
-      console.warn('[CrearCliente] Aviso al actualizar paquetes_portal:', portalUpdateErr);
     }
 
-    // b) Buscar en el ERP principal y sincronizar
-    try {
-      const erpAdmin = getSupabaseAdmin();
-
-      for (const kw of keywords) {
-        if (!kw || kw.length < 3) continue;
-
-        const { data: erpPaquetes } = await erpAdmin
-          .from('paquetes')
-          .select(`
-            id,
-            numero_recibo_bodega,
-            tracking,
-            nombre_consignatario,
-            tipo_empaque,
-            peso_kg,
-            estado_tib,
-            estado_amex,
-            tib_imagen_url,
-            tib_ticket_pdf_url,
-            ubicacion_actual,
-            creado_en
-          `)
-          .ilike('nombre_consignatario', `%${kw}%`)
-          .order('creado_en', { ascending: false });
-
-        if (erpPaquetes && erpPaquetes.length > 0) {
-          // Enlazar los paquetes en el ERP con el correo del cliente
-          await erpAdmin
-            .from('paquetes')
-            .update({ usuario_email: cleanEmail })
-            .ilike('nombre_consignatario', `%${kw}%`);
-
-          // Sincronizarlos al portal de clientes
-          await syncPackagesToClientPortal(
-            erpPaquetes.map(p => ({
-              ...p,
-              usuario_email: cleanEmail,
-              ubicacion_almacen: p.ubicacion_actual || null,
-            }))
-          );
-        }
-      }
-    } catch (crossErr) {
-      console.warn('[CrearCliente] Aviso en cruce inicial de paquetes ERP:', crossErr);
-    }
-
-    // Contar total de paquetes asignados a este correo en el portal
+    // 4. Auto-cruce de paquetes exclusivamente desde la API oficial de TIB
     let totalLinked = 0;
     try {
-      const { count } = await portalAdmin
-        .from('paquetes_portal')
-        .select('*', { count: 'exact', head: true })
-        .eq('usuario_email', cleanEmail);
-      totalLinked = count || 0;
-    } catch (_) {}
+      const syncRes = await syncTibPackagesToPortal({ specificEmail: cleanEmail });
+      totalLinked = syncRes.count || 0;
+    } catch (tibErr) {
+      console.warn('[CrearCliente] Aviso al sincronizar paquetes desde TIB API:', tibErr);
+    }
 
     return NextResponse.json({
       success: true,
@@ -169,7 +152,12 @@ export async function POST(req: Request) {
         nombre_completo: cleanNombre,
         telefono: telefono || null,
       },
+      email_enviado: emailSent,
+      email_error: emailError,
       paquetes_vinculados: totalLinked,
+      mensaje: emailSent
+        ? `Cliente registrado exitosamente. Se ha enviado el enlace de activación a ${cleanEmail}.`
+        : `Cliente registrado. (Nota de correo: ${emailError || 'Verificar servicio Resend'}).`,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error interno al crear usuario cliente';

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { supabasePortal } from '@/lib/supabase/portal-client';
 import { 
   Search, 
@@ -24,7 +25,8 @@ import {
   Tag,
   CheckCircle2,
   AlertCircle,
-  Settings
+  Settings,
+  Pencil
 } from 'lucide-react';
 
 interface PaqueteTIB {
@@ -40,6 +42,7 @@ interface PaqueteTIB {
   tib_imagen_url: string | null;
   tib_ticket_pdf_url: string | null;
   creado_en: string;
+
   actualizado_en: string | null;
 }
 
@@ -52,7 +55,11 @@ interface ClientePortalItem {
   casillero_codigo: string | null;
   alias_palabras_clave: string[] | null;
   activo: boolean;
+  password_establecido?: boolean;
+  ultimo_acceso?: string | null;
+  invitado_en?: string | null;
   creado_en: string;
+
 }
 
 export default function ClienteDashboardTIB() {
@@ -88,13 +95,25 @@ export default function ClienteDashboardTIB() {
   // Formulario de nuevo cliente
   const [newClientNombre, setNewClientNombre] = useState('');
   const [newClientEmail, setNewClientEmail] = useState('');
-  const [newClientPassword, setNewClientPassword] = useState('');
+  const [resendingEmail, setResendingEmail] = useState<string | null>(null);
+  const [resendNotice, setResendNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [newClientTelefono, setNewClientTelefono] = useState('');
   const [newClientDni, setNewClientDni] = useState('');
   const [newClientKeywords, setNewClientKeywords] = useState('');
   const [isCreatingClient, setIsCreatingClient] = useState(false);
   const [createClientSuccess, setCreateClientSuccess] = useState<string | null>(null);
   const [createClientError, setCreateClientError] = useState<string | null>(null);
+
+  // Estados para Editar Cliente / Configurar Palabras Clave y Matching
+  const [editingClient, setEditingClient] = useState<ClientePortalItem | null>(null);
+  const [editNombre, setEditNombre] = useState('');
+  const [editTelefono, setEditTelefono] = useState('');
+  const [editDni, setEditDni] = useState('');
+  const [editCasillero, setEditCasillero] = useState('');
+  const [editKeywords, setEditKeywords] = useState('');
+  const [isUpdatingClient, setIsUpdatingClient] = useState(false);
+  const [editClientSuccess, setEditClientSuccess] = useState<string | null>(null);
+  const [editClientError, setEditClientError] = useState<string | null>(null);
 
   // Estados para el Buscador / Autocompletado de Consignatarios TIB (3,360)
   const [tibSearchResults, setTibSearchResults] = useState<any[]>([]);
@@ -131,10 +150,19 @@ export default function ClienteDashboardTIB() {
         setUserMenuOpen(false);
         setIsAddClientOpen(false);
         setIsClientsListOpen(false);
+        setEditingClient(null);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
+
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search).get('tab');
+      if (p === 'configuracion') {
+        setActiveTab('configuracion');
+        fetchClientsList();
+      }
+    }
 
     return () => {
       document.documentElement.classList.remove('amex-client-portal');
@@ -189,6 +217,14 @@ export default function ClienteDashboardTIB() {
   const fetchClientsList = useCallback(async () => {
     setIsLoadingClients(true);
     try {
+      const res = await fetch('/api/clientes/listar-portal');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.clientes) {
+          setClientsList(json.clientes);
+          return;
+        }
+      }
       const { data, error } = await supabasePortal
         .from('clientes_portal')
         .select('*')
@@ -251,7 +287,7 @@ export default function ClienteDashboardTIB() {
   };
 
   // Sincronizar todos los paquetes aprobados desde el ERP hacia la base de clientes
-  const handleSyncAllFromErp = async () => {
+  const handleSyncAllFromTib = async () => {
     if (!user?.email) return;
     setIsSyncingAll(true);
     try {
@@ -263,7 +299,7 @@ export default function ClienteDashboardTIB() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error al sincronizar');
       
-      alert(`Sincronización completa: ${data.sincronizados} paquetes sincronizados a la base de datos de clientes.`);
+      alert(`Sincronización TIB completa: ${data.sincronizados} paquetes asignados a sus clientes con coincidencia exacta.`);
       fetchPaquetes(user.email);
     } catch (err: any) {
       alert(`Error en sincronización: ${err.message}`);
@@ -291,7 +327,7 @@ export default function ClienteDashboardTIB() {
         body: JSON.stringify({
           nombre_completo: newClientNombre,
           email: newClientEmail,
-          password: newClientPassword,
+
           telefono: newClientTelefono,
           documento_identidad: newClientDni,
           alias_palabras_clave: keywordsArray,
@@ -311,7 +347,7 @@ export default function ClienteDashboardTIB() {
       setNewClientNombre('');
       setSelectedTibClient(null);
       setNewClientEmail('');
-      setNewClientPassword('');
+
       setNewClientTelefono('');
       setNewClientDni('');
       setNewClientKeywords('');
@@ -325,6 +361,97 @@ export default function ClienteDashboardTIB() {
       setCreateClientError(err.message || 'Error al crear cliente');
     } finally {
       setIsCreatingClient(false);
+    }
+  };
+
+  // Reenviar enlace de activación y contraseña al cliente
+  const handleResendActivation = async (clientEmail: string) => {
+    if (resendingEmail) return;
+    setResendingEmail(clientEmail);
+    setResendNotice(null);
+
+    try {
+      const res = await fetch('/api/clientes/reenviar-activacion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: clientEmail }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al reenviar enlace');
+      }
+      setResendNotice({
+        type: 'success',
+        message: data.message || `Enlace de activación reenviado a ${clientEmail}`,
+      });
+      setTimeout(() => setResendNotice(null), 5000);
+    } catch (err: any) {
+      setResendNotice({
+        type: 'error',
+        message: err.message || 'Error al reenviar enlace de activación',
+      });
+      setTimeout(() => setResendNotice(null), 5000);
+    } finally {
+      setResendingEmail(null);
+    }
+  };
+
+  // Abrir modal de edición de cliente y configuración de matching
+  const handleOpenEditClient = (c: ClientePortalItem) => {
+    setEditingClient(c);
+    setEditNombre(c.nombre_completo || '');
+    setEditTelefono(c.telefono || '');
+    setEditDni(c.documento_identidad || '');
+    setEditCasillero(c.casillero_codigo || '');
+    setEditKeywords(Array.isArray(c.alias_palabras_clave) ? c.alias_palabras_clave.join(', ') : '');
+    setEditClientSuccess(null);
+    setEditClientError(null);
+  };
+
+  // Guardar cambios del cliente y re-vincular paquetes TIB
+  const handleUpdateClientSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingClient) return;
+    setIsUpdatingClient(true);
+    setEditClientError(null);
+    setEditClientSuccess(null);
+
+    try {
+      const keywordsArray = editKeywords
+        .split(',')
+        .map(k => k.trim())
+        .filter(Boolean);
+
+      const res = await fetch('/api/clientes/actualizar-usuario', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingClient.id,
+          nombre_completo: editNombre,
+          telefono: editTelefono,
+          documento_identidad: editDni,
+          casillero_codigo: editCasillero,
+          alias_palabras_clave: keywordsArray,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al actualizar el usuario cliente');
+      }
+
+      setEditClientSuccess(
+        data.message || `¡Cliente ${data.client?.nombre_completo || ''} actualizado con éxito! Se vincularon ${data.paquetes_vinculados} paquetes de TIB.`
+      );
+
+      fetchClientsList();
+      if (user?.email) {
+        fetchPaquetes(user.email);
+      }
+    } catch (err: any) {
+      setEditClientError(err.message || 'Error al actualizar cliente');
+    } finally {
+      setIsUpdatingClient(false);
     }
   };
 
@@ -366,7 +493,7 @@ export default function ClienteDashboardTIB() {
     }
 
     // Agregar la versión limpia sin "AMEX /" si aplica
-    const sinAmex = raw.replace(/^AMEX\s*[\/\-:]?\s*/i, '').trim();
+    const sinAmex = raw;
     if (sinAmex && sinAmex !== raw && !existing.includes(sinAmex)) {
       existing.push(sinAmex);
     }
@@ -387,7 +514,7 @@ export default function ClienteDashboardTIB() {
 
   const handleSelectTibClient = (client: any) => {
     const raw = String(client.nombre || '').trim();
-    const sinAmex = raw.replace(/^AMEX\s*[\/\-:]?\s*/i, '').trim();
+    const sinAmex = raw;
 
     // En el campo superior: Nombre del cliente
     setNewClientNombre(sinAmex || raw);
@@ -403,7 +530,7 @@ export default function ClienteDashboardTIB() {
       variants.add(`${parts[0]} ${parts[parts.length - 1]}`);
     }
 
-    setNewClientKeywords(Array.from(variants).join(', '));
+    setNewClientKeywords(raw);
     setIsTibDropdownOpen(false);
 
     if (client.email && !newClientEmail.trim()) {
@@ -611,67 +738,7 @@ export default function ClienteDashboardTIB() {
               </span>
             )}
 
-            {/* Pestañas de Vista para Superadmin (Aísla Configuración de Listado WR) */}
-            {isSuperadmin && (
-              <nav style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: 'rgba(255,255,255,0.08)', padding: '3px', borderRadius: '8px', marginLeft: '12px' }}>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('warehouse')}
-                  style={{
-                    backgroundColor: activeTab === 'warehouse' ? '#ff5722' : 'transparent',
-                    color: activeTab === 'warehouse' ? '#ffffff' : '#9ca3af',
-                    border: 'none',
-                    borderRadius: '6px',
-                    padding: '5px 12px',
-                    fontSize: '12.5px',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    transition: 'all 0.15s ease'
-                  }}
-                >
-                  <Package style={{ width: '14px', height: '14px' }} />
-                  <span>Listado Warehouse</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveTab('configuracion');
-                    fetchClientsList();
-                  }}
-                  style={{
-                    backgroundColor: activeTab === 'configuracion' ? '#ff5722' : 'transparent',
-                    color: activeTab === 'configuracion' ? '#ffffff' : '#9ca3af',
-                    border: 'none',
-                    borderRadius: '6px',
-                    padding: '5px 12px',
-                    fontSize: '12.5px',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    transition: 'all 0.15s ease'
-                  }}
-                >
-                  <Settings style={{ width: '14px', height: '14px' }} />
-                  <span>Configuración</span>
-                  <span style={{
-                    fontSize: '10px',
-                    backgroundColor: activeTab === 'configuracion' ? 'rgba(0,0,0,0.25)' : '#374151',
-                    color: '#ffffff',
-                    padding: '1px 6px',
-                    borderRadius: '10px',
-                    fontWeight: 800
-                  }}>
-                    {clientsList.length}
-                  </span>
-                </button>
-              </nav>
-            )}
+            
           </div>
 
           {/* Usuario / Dropdown a la derecha */}
@@ -702,14 +769,20 @@ export default function ClienteDashboardTIB() {
 
                     <button
                       onClick={() => {
-                        setActiveTab('configuracion');
+                        if (activeTab === 'configuracion') {
+                          setActiveTab('warehouse');
+                          if (typeof window !== 'undefined') window.history.replaceState(null, '', '/clientes?tab=warehouse');
+                        } else {
+                          setActiveTab('configuracion');
+                          if (typeof window !== 'undefined') window.history.replaceState(null, '', '/clientes?tab=configuracion');
+                        }
                         setUserMenuOpen(false);
                         fetchClientsList();
                       }}
                       style={{ width: '100%', textAlign: 'left', padding: '8px 14px', background: 'none', border: 'none', color: '#1f2937', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
                     >
                       <Settings style={{ width: '14px', height: '14px', color: '#ff5722' }} />
-                      <span>Panel de Configuración</span>
+                      <span>{activeTab === 'configuracion' ? 'Volver a Listado Warehouse' : 'Panel de Configuración'}</span>
                     </button>
 
                     <button
@@ -728,12 +801,12 @@ export default function ClienteDashboardTIB() {
                     <button
                       onClick={() => {
                         setUserMenuOpen(false);
-                        handleSyncAllFromErp();
+                        handleSyncAllFromTib();
                       }}
                       style={{ width: '100%', textAlign: 'left', padding: '8px 14px', background: 'none', border: 'none', color: '#1f2937', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
                     >
                       <RefreshCw style={{ width: '14px', height: '14px', color: '#6b7280' }} />
-                      <span>Sincronizar con ERP</span>
+                      <span>Sincronizar con API TIB</span>
                     </button>
                   </div>
                 )}
@@ -1227,7 +1300,7 @@ export default function ClienteDashboardTIB() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <button
                   type="button"
-                  onClick={() => setActiveTab('warehouse')}
+                  onClick={() => { setActiveTab('warehouse'); if (typeof window !== 'undefined') window.history.replaceState(null, '', '/clientes?tab=warehouse'); }}
                   style={{
                     backgroundColor: '#ffffff',
                     color: '#374151',
@@ -1291,7 +1364,7 @@ export default function ClienteDashboardTIB() {
                 </div>
                 <button
                   type="button"
-                  onClick={handleSyncAllFromErp}
+                  onClick={handleSyncAllFromTib}
                   disabled={isSyncingAll}
                   style={{
                     marginTop: '10px',
@@ -1311,7 +1384,7 @@ export default function ClienteDashboardTIB() {
                   }}
                 >
                   <RefreshCw style={{ width: '13px', height: '13px', color: '#ff5722', animation: isSyncingAll ? 'spin 1s linear infinite' : 'none' }} />
-                  <span>{isSyncingAll ? 'Sincronizando con ERP...' : 'Sincronizar Almacén con ERP'}</span>
+                  <span>{isSyncingAll ? 'Sincronizando con TIB...' : 'Sincronizar con API TIB'}</span>
                 </button>
               </div>
 
@@ -1338,7 +1411,7 @@ export default function ClienteDashboardTIB() {
                       setSelectedTibClient(null);
                       setNewClientNombre('');
                       setNewClientEmail('');
-                      setNewClientPassword('');
+                
                       setNewClientTelefono('');
                       setNewClientDni('');
                       setNewClientKeywords('');
@@ -1455,19 +1528,20 @@ export default function ClienteDashboardTIB() {
                           <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Palabras Clave (Matching)</th>
                           <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Estado</th>
                           <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Fecha Registro</th>
+                          <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563', textAlign: 'center' }}>Acciones</th>
                         </tr>
                       </thead>
                       <tbody>
                         {isLoadingClients ? (
                           <tr>
-                            <td colSpan={7} style={{ padding: '36px', textAlign: 'center', color: '#6b7280' }}>
+                            <td colSpan={8} style={{ padding: '36px', textAlign: 'center', color: '#6b7280' }}>
                               <div style={{ width: '22px', height: '22px', border: '2px solid #ff5722', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 8px' }} />
                               <span>Cargando directorio de clientes...</span>
                             </td>
                           </tr>
                         ) : filteredClientsList.length === 0 ? (
                           <tr>
-                            <td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
+                            <td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
                               <Users style={{ width: '36px', height: '36px', color: '#d1d5db', margin: '0 auto 8px' }} />
                               <p style={{ fontWeight: 700, color: '#374151', margin: 0 }}>No hay clientes que coincidan</p>
                               <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>Crea un cliente nuevo con el botón "+ Agregar Cliente".</p>
@@ -1507,12 +1581,69 @@ export default function ClienteDashboardTIB() {
                                 )}
                               </td>
                               <td style={{ padding: '12px 14px' }}>
-                                <span style={{ backgroundColor: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 700 }}>
-                                  Activo
-                                </span>
+                                {c.password_establecido ? (
+                                  <span style={{ backgroundColor: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0', padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                    <CheckCircle2 style={{ width: '11px', height: '11px' }} />
+                                    <span>Activo</span>
+                                  </span>
+                                ) : (
+                                  <span style={{ backgroundColor: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                    <span>⏳ Pendiente Activación</span>
+                                  </span>
+                                )}
                               </td>
                               <td style={{ padding: '12px 14px', color: '#6b7280', fontSize: '11.5px' }}>
                                 {formatDateTimeTIB(c.creado_en).date}
+                              </td>
+                              <td style={{ padding: '8px 14px', textAlign: 'center' }}>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleResendActivation(c.email)}
+                                    disabled={resendingEmail === c.email}
+                                    title="Reenviar enlace de activación por correo"
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      padding: '6px 10px',
+                                      backgroundColor: '#f8fafc',
+                                      border: '1px solid #cbd5e1',
+                                      borderRadius: '6px',
+                                      color: '#1e293b',
+                                      fontSize: '11px',
+                                      fontWeight: 700,
+                                      cursor: resendingEmail === c.email ? 'not-allowed' : 'pointer',
+                                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                                      transition: 'all 0.15s ease',
+                                    }}
+                                  >
+                                    <Mail style={{ width: '12px', height: '12px', color: '#0284c7' }} />
+                                    <span>{resendingEmail === c.email ? 'Enviando...' : 'Reenviar Enlace'}</span>
+                                  </button>
+
+                                  <Link
+                                    href={`/clientes/configurar/${c.id}`}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '5px',
+                                      padding: '6px 12px',
+                                      backgroundColor: '#0284c7',
+                                      border: 'none',
+                                      borderRadius: '6px',
+                                      color: '#ffffff',
+                                      fontSize: '11px',
+                                      fontWeight: 700,
+                                      textDecoration: 'none',
+                                      boxShadow: '0 1px 2px rgba(2,132,199,0.25)',
+                                      transition: 'all 0.15s ease',
+                                    }}
+                                  >
+                                    <Pencil style={{ width: '11px', height: '11px' }} />
+                                    <span>Configurar</span>
+                                  </Link>
+                                </div>
                               </td>
                             </tr>
                           ))
@@ -1833,35 +1964,36 @@ export default function ClienteDashboardTIB() {
                 </span>
               </div>
 
-              {/* Email y Contraseña en 2 columnas */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151', marginBottom: '4px' }}>
-                    Correo Electrónico (Login) *
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={newClientEmail}
-                    onChange={(e) => setNewClientEmail(e.target.value)}
-                    placeholder="cliente@gmail.com"
-                    style={{ width: '100%', height: '40px', padding: '0 12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px', color: '#111827', outline: 'none' }}
-                  />
-                </div>
+              {/* Correo Electrónico y Aviso de Activación Segura */}
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151', marginBottom: '4px' }}>
+                  Correo Electrónico del Cliente *
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={newClientEmail}
+                  onChange={(e) => setNewClientEmail(e.target.value)}
+                  placeholder="cliente@gmail.com"
+                  style={{ width: '100%', height: '40px', padding: '0 12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px', color: '#111827', outline: 'none' }}
+                />
+              </div>
 
-                <div>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151', marginBottom: '4px' }}>
-                    Contraseña de Acceso *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    minLength={6}
-                    value={newClientPassword}
-                    onChange={(e) => setNewClientPassword(e.target.value)}
-                    placeholder="Mínimo 6 caracteres"
-                    style={{ width: '100%', height: '40px', padding: '0 12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px', color: '#111827', outline: 'none' }}
-                  />
+              {/* Banner informativo de activación segura sin contraseña */}
+              <div
+                style={{
+                  backgroundColor: '#f0fdf4',
+                  border: '1px solid #bbf7d0',
+                  borderRadius: '8px',
+                  padding: '12px 14px',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '10px',
+                }}
+              >
+                <ShieldCheck style={{ width: '18px', height: '18px', color: '#16a34a', flexShrink: 0, marginTop: '2px' }} />
+                <div style={{ fontSize: '12px', color: '#166534', lineHeight: 1.5 }}>
+                  <strong>Activación sin contraseña en panel:</strong> El Superadmin ya no define contraseñas. Al registrar al cliente, AMEX enviará automáticamente un correo de bienvenida oficial con su enlace seguro para que el cliente ingrese su propia contraseña.
                 </div>
               </div>
 
@@ -2138,6 +2270,168 @@ export default function ClienteDashboardTIB() {
                     </>
                   ) : (
                     <span>Guardar y Vincular Paquetes</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Editar Cliente / Configurar Palabras Clave y Matching */}
+      {editingClient && (
+        <div 
+          onClick={() => setEditingClient(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            style={{ backgroundColor: '#ffffff', borderRadius: '12px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)', maxWidth: '580px', width: '100%', padding: '24px', position: 'relative', maxHeight: '90vh', overflowY: 'auto' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '14px', borderBottom: '1px solid #e5e7eb', marginBottom: '18px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff' }}>
+                  <Settings style={{ width: '20px', height: '20px' }} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '17px', fontWeight: 800, color: '#111827', margin: 0 }}>
+                    Configurar Palabras Clave y Matching
+                  </h3>
+                  <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#6b7280' }}>
+                    Cliente: <strong>{editingClient.nombre_completo}</strong> ({editingClient.email})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingClient(null)}
+                style={{ padding: '6px', borderRadius: '6px', border: 'none', backgroundColor: '#f3f4f6', color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <X style={{ width: '18px', height: '18px' }} />
+              </button>
+            </div>
+
+            {editClientSuccess && (
+              <div style={{ marginBottom: '16px', padding: '12px', borderRadius: '8px', backgroundColor: '#ecfdf5', border: '1px solid #a7f3d0', color: '#065f46', fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <CheckCircle2 style={{ width: '18px', height: '18px', flexShrink: 0 }} />
+                <span>{editClientSuccess}</span>
+              </div>
+            )}
+
+            {editClientError && (
+              <div style={{ marginBottom: '16px', padding: '12px', borderRadius: '8px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <AlertCircle style={{ width: '18px', height: '18px', flexShrink: 0 }} />
+                <span>{editClientError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleUpdateClientSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151', marginBottom: '6px' }}>
+                  Consignatario / Nombre Completo
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editNombre}
+                  onChange={(e) => setEditNombre(e.target.value)}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px', outline: 'none' }}
+                />
+              </div>
+
+              {/* Sección Destacada de Palabras Clave */}
+              <div style={{ backgroundColor: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '8px', padding: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                  <Tag style={{ width: '15px', height: '15px', color: '#0284c7' }} />
+                  <label style={{ fontSize: '12.5px', fontWeight: 800, color: '#0369a1' }}>
+                    Palabras Clave (Matching Oficial TIB)
+                  </label>
+                </div>
+                <p style={{ margin: '0 0 8px', fontSize: '11.5px', color: '#0c4a6e', lineHeight: 1.4 }}>
+                  Ingresa las variaciones exactas de nombre separadas por comas. Cada paquete cuyo consignatario en TIB coincida con una de estas frases se asignará a este usuario.
+                </p>
+                <textarea
+                  rows={3}
+                  value={editKeywords}
+                  onChange={(e) => setEditKeywords(e.target.value)}
+                  placeholder="Ej: MARTIN MALDONADO, AMEX KENNETH MALDONADO, KENNETH MALDONADO"
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #7dd3fc', fontSize: '12.5px', outline: 'none', backgroundColor: '#ffffff', fontFamily: 'monospace' }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151', marginBottom: '6px' }}>
+                    Código Casillero
+                  </label>
+                  <input
+                    type="text"
+                    value={editCasillero}
+                    onChange={(e) => setEditCasillero(e.target.value)}
+                    placeholder="Ej: AMX-001 o 31888"
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px', outline: 'none' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151', marginBottom: '6px' }}>
+                    DNI / RUC
+                  </label>
+                  <input
+                    type="text"
+                    value={editDni}
+                    onChange={(e) => setEditDni(e.target.value)}
+                    placeholder="Documento de identidad"
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px', outline: 'none' }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151', marginBottom: '6px' }}>
+                  Teléfono de Contacto
+                </label>
+                <input
+                  type="text"
+                  value={editTelefono}
+                  onChange={(e) => setEditTelefono(e.target.value)}
+                  placeholder="Ej: 987654321"
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px', outline: 'none' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px', paddingTop: '14px', borderTop: '1px solid #e5e7eb' }}>
+                <button
+                  type="button"
+                  onClick={() => setEditingClient(null)}
+                  style={{ padding: '9px 18px', borderRadius: '6px', border: '1px solid #d1d5db', backgroundColor: '#ffffff', color: '#374151', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Cerrar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUpdatingClient}
+                  style={{
+                    padding: '9px 22px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    backgroundColor: '#0284c7',
+                    color: '#ffffff',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    cursor: isUpdatingClient ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 2px 4px rgba(2,132,199,0.3)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  {isUpdatingClient ? (
+                    <>
+                      <div style={{ width: '14px', height: '14px', border: '2px solid #ffffff', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                      <span>Actualizando y Re-sincronizando...</span>
+                    </>
+                  ) : (
+                    <span>Guardar y Re-vincular TIB</span>
                   )}
                 </button>
               </div>
