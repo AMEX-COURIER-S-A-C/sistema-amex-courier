@@ -611,17 +611,44 @@ export default function ClienteDashboardTIB() {
                                 type="button"
                                 onClick={() => setSelectedPhoto({ url: pkg.tib_imagen_url!, wr: pkg.numero_recibo_bodega })}
                                 title="Ver Fotografía de Recepción Miami"
-                                style={{ width: '34px', height: '34px', borderRadius: '5px', border: '1px solid #ffccbc', backgroundColor: '#fff3e0', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#e65100', cursor: 'pointer', transition: 'all 0.15s ease' }}
+                                style={{
+                                  padding: '6px 12px',
+                                  borderRadius: '5px',
+                                  border: '1px solid #ffccbc',
+                                  backgroundColor: '#fff3e0',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  color: '#e65100',
+                                  fontSize: '12px',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease'
+                                }}
                               >
-                                <Camera style={{ width: '16px', height: '16px' }} />
+                                <Camera style={{ width: '15px', height: '15px' }} />
+                                <span>Ver imagen</span>
                               </button>
                             ) : (
                               <button
                                 disabled
                                 title="Sin Fotografía registrada"
-                                style={{ width: '34px', height: '34px', borderRadius: '5px', border: '1px solid #e9ecef', backgroundColor: '#f8f9fa', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#ced4da', cursor: 'not-allowed' }}
+                                style={{
+                                  padding: '6px 12px',
+                                  borderRadius: '5px',
+                                  border: '1px solid #e9ecef',
+                                  backgroundColor: '#f8f9fa',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  color: '#9ca3af',
+                                  fontSize: '12px',
+                                  fontWeight: 600,
+                                  cursor: 'not-allowed'
+                                }}
                               >
-                                <Camera style={{ width: '16px', height: '16px' }} />
+                                <Camera style={{ width: '15px', height: '15px' }} />
+                                <span>Sin imagen</span>
                               </button>
                             )}
                           </div>
