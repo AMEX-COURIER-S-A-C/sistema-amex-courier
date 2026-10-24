@@ -138,22 +138,8 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
     fetchTibStatus(credentials.url, credentials.email, credentials.password, 'ENTREGADO'),
   ]);
 
-  // Para el Admin Master y clientes, procesar todos los paquetes del año 2026 (RECIBIDO, ENVIADO y ENTREGADO)
-  let allTibPackages: RawTibItem[] = [];
-  if (isSpecificRegularClient) {
-    allTibPackages = [...recibidos, ...enviados, ...entregados];
-  } else {
-    const is2026OrActive = (it: RawTibItem) => {
-      const d = it.fecRegister || it.fecModify || '';
-      return d.startsWith('2026') || !d;
-    };
-
-    allTibPackages = [
-      ...recibidos,
-      ...enviados.filter(is2026OrActive),
-      ...entregados.filter(is2026OrActive),
-    ];
-  }
+  // Procesar todo el inventario histórico de TIB (2021 - presente: RECIBIDO, ENVIADO y ENTREGADO)
+  const allTibPackages: RawTibItem[] = [...recibidos, ...enviados, ...entregados];
 
   // 4. Filtrar y procesar según las reglas de asignación
   const recordsToUpsert = [];
