@@ -106,41 +106,21 @@ export async function syncPackagesToClientPortal(packages: PaqueteSyncData[]) {
     return { success: true, count: 0, message: 'Ningún paquete coincidió con clientes registrados' };
   }
 
-  // 2. Insertar o actualizar en paquetes_portal usando numero_recibo_bodega como clave
-  // Para upsert limpio, actualizamos los existentes o insertamos nuevos
+  // 2. Insertar o actualizar en paquetes_portal en lotes de alta velocidad usando numero_recibo_bodega
+  const CHUNK_SIZE = 100;
   let insertedCount = 0;
-  for (const record of recordsToUpsert) {
-    const { data: existing } = await portalAdmin
-      .from('paquetes_portal')
-      .select('id')
-      .eq('numero_recibo_bodega', record.numero_recibo_bodega)
-      .limit(1)
-      .maybeSingle();
 
-    if (existing?.id) {
-      await portalAdmin
-        .from('paquetes_portal')
-        .update({
-          tracking: record.tracking,
-          nombre_consignatario: record.nombre_consignatario,
-          usuario_email: record.usuario_email,
-          tipo_empaque: record.tipo_empaque,
-          peso_kg: record.peso_kg,
-          estado_tib: record.estado_tib,
-          estado_amex: record.estado_amex,
-          estado_visible: record.estado_visible,
-          tib_imagen_url: record.tib_imagen_url,
-          tib_ticket_pdf_url: record.tib_ticket_pdf_url,
-          ubicacion_almacen: record.ubicacion_almacen,
-          actualizado_en: record.actualizado_en,
-        })
-        .eq('id', existing.id);
+  for (let i = 0; i < recordsToUpsert.length; i += CHUNK_SIZE) {
+    const chunk = recordsToUpsert.slice(i, i + CHUNK_SIZE);
+    const { error: upsertErr } = await portalAdmin
+      .from('paquetes_portal')
+      .upsert(chunk, { onConflict: 'numero_recibo_bodega' });
+
+    if (upsertErr) {
+      console.error('[PortalSync] Error en lote upsert:', upsertErr);
     } else {
-      await portalAdmin
-        .from('paquetes_portal')
-        .insert(record);
+      insertedCount += chunk.length;
     }
-    insertedCount++;
   }
 
   return { success: true, count: insertedCount };

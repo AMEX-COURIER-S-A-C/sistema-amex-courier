@@ -60,7 +60,8 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith('/api/auth/login') ||
     pathname.startsWith('/api/auth/logout') ||
     pathname.startsWith('/api/auth/recuperar-password') ||
-    pathname.startsWith('/api/auth/cambiar-password');
+    pathname.startsWith('/api/auth/cambiar-password') ||
+    pathname.startsWith('/api/clientes/');
 
   if (!supabaseUrl || !supabaseAnonKey) {
     if (isLoginPage || isPublicAuthRoute) return response;
@@ -187,17 +188,9 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // Comportamiento del portal de clientes
+  // Comportamiento del portal de clientes (aislado de la sesión interna de ERP)
   if (isClientPortal) {
-    if (isClientPublicRoute) {
-      if (user && pathname === '/clientes/login') {
-        return setRequestIdHeader(NextResponse.redirect(new URL('/clientes', request.url)));
-      }
-      return response;
-    }
-    if (!user) {
-      return setRequestIdHeader(NextResponse.redirect(new URL('/clientes/login', request.url)));
-    }
+    // La sesión del portal se valida directamente con supabasePortal
     return response;
   }
 

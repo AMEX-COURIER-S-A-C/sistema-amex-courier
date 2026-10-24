@@ -102,7 +102,7 @@ export async function POST(req: Request) {
           estado_amex,
           tib_imagen_url,
           tib_ticket_pdf_url,
-          ubicacion_almacen,
+          ubicacion_actual,
           creado_en
         `)
         .ilike('nombre_consignatario', `%${cleanNombre}%`)
@@ -120,6 +120,7 @@ export async function POST(req: Request) {
           erpPaquetes.map(p => ({
             ...p,
             usuario_email: cleanEmail,
+            ubicacion_almacen: p.ubicacion_actual || null,
           }))
         );
         syncedCount = syncRes.count || 0;

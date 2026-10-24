@@ -13,7 +13,7 @@ export async function POST(req: Request) {
 
     const erpAdmin = getSupabaseAdmin();
 
-    // Obtener paquetes registrados del ERP
+    // Obtener paquetes registrados del ERP principal
     const { data: paquetes, error } = await erpAdmin
       .from('paquetes')
       .select(`
@@ -28,22 +28,30 @@ export async function POST(req: Request) {
         estado_amex,
         tib_imagen_url,
         tib_ticket_pdf_url,
-        ubicacion_almacen,
+        ubicacion_actual,
         creado_en
       `)
       .order('creado_en', { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      console.error('[API sync-all] Error querying paquetes ERP:', error);
+      throw new Error(error.message || 'Error al consultar paquetes en ERP');
+    }
 
-    const syncRes = await syncPackagesToClientPortal(paquetes || []);
+    const mapped = (paquetes || []).map((p) => ({
+      ...p,
+      ubicacion_almacen: p.ubicacion_actual || null,
+    }));
+
+    const syncRes = await syncPackagesToClientPortal(mapped);
 
     return NextResponse.json({
       success: true,
       total_erp: paquetes?.length || 0,
       sincronizados: syncRes.count || 0,
     });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error al sincronizar paquetes';
+  } catch (err: any) {
+    const msg = err?.message || 'Error al sincronizar paquetes';
     console.error('[API sync-all] Error:', err);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
