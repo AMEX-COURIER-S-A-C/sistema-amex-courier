@@ -23,7 +23,8 @@ import {
   FileText,
   Tag,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Settings
 } from 'lucide-react';
 
 interface PaqueteTIB {
@@ -62,6 +63,10 @@ export default function ClienteDashboardTIB() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+
+  // Navegación entre vistas principales para Superadmin
+  const [activeTab, setActiveTab] = useState<'warehouse' | 'configuracion'>('warehouse');
+  const [clientSearchQuery, setClientSearchQuery] = useState('');
 
   // Filtros individuales estilo TIB
   const [filterWr, setFilterWr] = useState('');
@@ -198,25 +203,31 @@ export default function ClienteDashboardTIB() {
       }
     }
     loadSession();
+
+    const { data: { subscription } } = supabasePortal.auth.onAuthStateChange((_event, session) => {
+      if (!session) {
+        router.push('/clientes/login');
+      } else {
+        setUser(session.user);
+        fetchPaquetes(session.user.email);
+        if (session.user.email?.toLowerCase() === 'sistemaamexcourier@gmail.com') {
+          fetchClientsList();
+        }
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, [router, fetchPaquetes, fetchClientsList]);
 
-  const handleRefresh = () => {
+  // Manejo de refresh manual
+  const handleManualRefresh = () => {
     setIsRefreshing(true);
-    if (user?.email) {
-      fetchPaquetes(user.email);
-      if (user.email.toLowerCase() === 'sistemaamexcourier@gmail.com') {
-        fetchClientsList();
-      }
+    fetchPaquetes(user?.email);
+    if (user?.email?.toLowerCase() === 'sistemaamexcourier@gmail.com') {
+      fetchClientsList();
     }
-  };
-
-  const handleClearFilters = () => {
-    setFilterWr('');
-    setFilterTracking('');
-    setFilterConsignatario('');
-    setFilterTipo('');
-    setFilterEstado('');
-    setCurrentPage(1);
   };
 
   const handleLogout = async () => {
@@ -301,57 +312,92 @@ export default function ClienteDashboardTIB() {
     }
   };
 
-  // Conteo de filtros activos
-  const activeFiltersCount = [
-    Boolean(filterWr),
-    Boolean(filterTracking),
-    Boolean(filterConsignatario),
-    Boolean(filterTipo),
-    Boolean(filterEstado)
-  ].filter(Boolean).length;
-
-  // Filtrado multicriterio exacto como TIB
+  // Filtrado de paquetes en memoria
   const filteredPaquetes = useMemo(() => {
-    return paquetes.filter((pkg) => {
-      if (filterWr && !pkg.numero_recibo_bodega?.toLowerCase().includes(filterWr.toLowerCase().trim())) {
+    return paquetes.filter(p => {
+      if (filterWr && !p.numero_recibo_bodega.toLowerCase().includes(filterWr.toLowerCase())) {
         return false;
       }
-      if (filterTracking && !pkg.tracking?.toLowerCase().includes(filterTracking.toLowerCase().trim())) {
+      if (filterTracking && !p.tracking.toLowerCase().includes(filterTracking.toLowerCase())) {
         return false;
       }
-      if (filterConsignatario && !pkg.nombre_consignatario?.toLowerCase().includes(filterConsignatario.toLowerCase().trim())) {
+      if (filterConsignatario && !(p.nombre_consignatario || '').toLowerCase().includes(filterConsignatario.toLowerCase())) {
         return false;
       }
-      if (filterTipo && pkg.tipo_empaque?.toUpperCase() !== filterTipo.toUpperCase()) {
+      if (filterTipo && p.tipo_empaque !== filterTipo) {
         return false;
       }
       if (filterEstado) {
-        const est = (pkg.estado_visible || '').toUpperCase();
-        if (filterEstado === 'LINCE' && !est.includes('LINCE')) return false;
-        if (filterEstado === 'VUELO' && !est.includes('VUELO')) return false;
-        if (filterEstado === 'MIAMI' && !est.includes('MIAMI')) return false;
-        if (filterEstado === 'ENTREGADO' && !est.includes('ENTREGADO')) return false;
+        const textEstado = (p.estado_visible || p.estado_amex || p.estado_tib || '').toUpperCase();
+        if (!textEstado.includes(filterEstado.toUpperCase())) {
+          return false;
+        }
       }
       return true;
     });
   }, [paquetes, filterWr, filterTracking, filterConsignatario, filterTipo, filterEstado]);
 
+  // Filtrado de clientes para el Panel de Configuración
+  const filteredClientsList = useMemo(() => {
+    if (!clientSearchQuery.trim()) return clientsList;
+    const q = clientSearchQuery.toLowerCase();
+    return clientsList.filter(c => 
+      c.nombre_completo.toLowerCase().includes(q) ||
+      c.email.toLowerCase().includes(q) ||
+      (c.casillero_codigo && c.casillero_codigo.toLowerCase().includes(q)) ||
+      (c.telefono && c.telefono.includes(q)) ||
+      (c.documento_identidad && c.documento_identidad.includes(q))
+    );
+  }, [clientsList, clientSearchQuery]);
+
+  // Opciones únicas de tipos y estados
+  const tiposUnicos = useMemo(() => {
+    const set = new Set<string>();
+    paquetes.forEach(p => {
+      if (p.tipo_empaque) set.add(p.tipo_empaque);
+    });
+    return Array.from(set);
+  }, [paquetes]);
+
+  const estadosUnicos = useMemo(() => {
+    const set = new Set<string>();
+    paquetes.forEach(p => {
+      if (p.estado_visible) set.add(p.estado_visible);
+      else if (p.estado_amex === 'entregado') set.add('ENTREGADO');
+      else if (p.estado_amex === 'en_almacen') set.add('EN ALMACÉN LINCE');
+      else if (p.estado_tib === 'Enviado') set.add('EN VUELO');
+      else set.add('RECIBIDO MIAMI');
+    });
+    return Array.from(set);
+  }, [paquetes]);
+
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (filterWr) count++;
+    if (filterTracking) count++;
+    if (filterConsignatario) count++;
+    if (filterTipo) count++;
+    if (filterEstado) count++;
+    return count;
+  }, [filterWr, filterTracking, filterConsignatario, filterTipo, filterEstado]);
+
+  const handleClearFilters = () => {
+    setFilterWr('');
+    setFilterTracking('');
+    setFilterConsignatario('');
+    setFilterTipo('');
+    setFilterEstado('');
+    setCurrentPage(1);
+  };
+
   // Paginación
   const totalPages = Math.ceil(filteredPaquetes.length / itemsPerPage) || 1;
-
-  // Auto-ajustar currentPage si supera totalPages (p. ej. al filtrar)
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(Math.max(1, totalPages));
-    }
-  }, [currentPage, totalPages]);
-
   const paginatedPaquetes = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
     return filteredPaquetes.slice(start, start + itemsPerPage);
   }, [filteredPaquetes, currentPage, itemsPerPage]);
 
-  // Cálculo matemático estricto de páginas visibles (5 páginas continuas y 100% únicas, sin duplicados)
+  // Cálculo de páginas visibles
   const paginationPages = useMemo(() => {
     const maxVisible = 5;
     if (totalPages <= maxVisible) {
@@ -418,8 +464,8 @@ export default function ClienteDashboardTIB() {
       <header style={{ backgroundColor: '#1e2229', color: '#ffffff', height: '56px', display: 'flex', alignItems: 'center', boxShadow: '0 2px 4px rgba(0,0,0,0.15)', position: 'sticky', top: 0, zIndex: 40 }}>
         <div style={{ maxWidth: '1720px', width: '100%', margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           
-          {/* Logo y título */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          {/* Logo y título + Tabs de Navegación Superadmin */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '18px', fontWeight: 900, letterSpacing: '-0.5px', color: '#ffffff' }}>
                 Amex<span style={{ color: '#ff5722' }}>+</span>
@@ -428,11 +474,74 @@ export default function ClienteDashboardTIB() {
                 Gestor de Almacén
               </span>
             </div>
+            
             {isSuperadmin && (
               <span style={{ backgroundColor: '#ff5722', color: '#ffffff', fontSize: '11px', fontWeight: 800, padding: '2px 8px', borderRadius: '4px', letterSpacing: '0.4px', textTransform: 'uppercase', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                 <ShieldCheck style={{ width: '12px', height: '12px' }} />
                 <span>Superadmin</span>
               </span>
+            )}
+
+            {/* Pestañas de Vista para Superadmin (Aísla Configuración de Listado WR) */}
+            {isSuperadmin && (
+              <nav style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: 'rgba(255,255,255,0.08)', padding: '3px', borderRadius: '8px', marginLeft: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('warehouse')}
+                  style={{
+                    backgroundColor: activeTab === 'warehouse' ? '#ff5722' : 'transparent',
+                    color: activeTab === 'warehouse' ? '#ffffff' : '#9ca3af',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '5px 12px',
+                    fontSize: '12.5px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <Package style={{ width: '14px', height: '14px' }} />
+                  <span>Listado Warehouse</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('configuracion');
+                    fetchClientsList();
+                  }}
+                  style={{
+                    backgroundColor: activeTab === 'configuracion' ? '#ff5722' : 'transparent',
+                    color: activeTab === 'configuracion' ? '#ffffff' : '#9ca3af',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '5px 12px',
+                    fontSize: '12.5px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <Settings style={{ width: '14px', height: '14px' }} />
+                  <span>Configuración</span>
+                  <span style={{
+                    fontSize: '10px',
+                    backgroundColor: activeTab === 'configuracion' ? 'rgba(0,0,0,0.25)' : '#374151',
+                    color: '#ffffff',
+                    padding: '1px 6px',
+                    borderRadius: '10px',
+                    fontWeight: 800
+                  }}>
+                    {clientsList.length}
+                  </span>
+                </button>
+              </nav>
             )}
           </div>
 
@@ -447,7 +556,7 @@ export default function ClienteDashboardTIB() {
             </button>
 
             {userMenuOpen && (
-              <div style={{ position: 'absolute', right: 0, marginTop: '6px', width: '240px', backgroundColor: '#ffffff', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)', border: '1px solid #e5e7eb', padding: '6px 0', zIndex: 50 }}>
+              <div style={{ position: 'absolute', right: 0, marginTop: '6px', width: '250px', backgroundColor: '#ffffff', borderRadius: '8px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)', border: '1px solid #e5e7eb', padding: '6px 0', zIndex: 50 }}>
                 <div style={{ padding: '8px 14px', borderBottom: '1px solid #f3f4f6', fontSize: '12px', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   <div style={{ fontWeight: 700, color: '#111827', fontSize: '13px' }}>Cuenta Conectada</div>
                   <div>{user?.email}</div>
@@ -455,6 +564,51 @@ export default function ClienteDashboardTIB() {
                     Servidor: us-west-2 (Oregon)
                   </div>
                 </div>
+
+                {isSuperadmin && (
+                  <div style={{ padding: '6px 0', borderBottom: '1px solid #f3f4f6' }}>
+                    <div style={{ padding: '4px 14px', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', color: '#9ca3af', letterSpacing: '0.5px' }}>
+                      Configuración
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setActiveTab('configuracion');
+                        setUserMenuOpen(false);
+                        fetchClientsList();
+                      }}
+                      style={{ width: '100%', textAlign: 'left', padding: '8px 14px', background: 'none', border: 'none', color: '#1f2937', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+                    >
+                      <Settings style={{ width: '14px', height: '14px', color: '#ff5722' }} />
+                      <span>Panel de Configuración</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        setCreateClientSuccess(null);
+                        setCreateClientError(null);
+                        setIsAddClientOpen(true);
+                      }}
+                      style={{ width: '100%', textAlign: 'left', padding: '8px 14px', background: 'none', border: 'none', color: '#1f2937', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+                    >
+                      <UserPlus style={{ width: '14px', height: '14px', color: '#ff5722' }} />
+                      <span>+ Agregar Cliente</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        handleSyncAllFromErp();
+                      }}
+                      style={{ width: '100%', textAlign: 'left', padding: '8px 14px', background: 'none', border: 'none', color: '#1f2937', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+                    >
+                      <RefreshCw style={{ width: '14px', height: '14px', color: '#6b7280' }} />
+                      <span>Sincronizar con ERP</span>
+                    </button>
+                  </div>
+                )}
+
                 <button
                   onClick={handleLogout}
                   style={{ width: '100%', textAlign: 'left', padding: '10px 14px', background: 'none', border: 'none', color: '#dc2626', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
@@ -471,59 +625,486 @@ export default function ClienteDashboardTIB() {
       {/* 2. Contenedor de Contenido Principal */}
       <main style={{ maxWidth: '1720px', width: '100%', margin: '0 auto', padding: '24px', flex: 1, display: 'flex', flexDirection: 'column', gap: '18px' }}>
         
-        {/* Título de la sección estilo TIB + Acciones de Superadmin */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-          <div>
-            <h1 style={{ fontSize: '24px', fontWeight: 800, color: '#ff5722', margin: 0, letterSpacing: '-0.3px' }}>
-              Listado Warehouse
-            </h1>
-            <p style={{ margin: '2px 0 0', fontSize: '12.5px', color: '#6b7280' }}>
-              Control y seguimiento de paquetes recibidos en el almacén de Miami y despachos a Lima.
-            </p>
-          </div>
+        {/* ================= VISTA 1: LISTADO WAREHOUSE (LIMPIO, SIN BOTONES DE CONFIGURACIÓN) ================= */}
+        {activeTab === 'warehouse' ? (
+          <>
+            {/* Título de la sección estilo TIB */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <h1 style={{ fontSize: '24px', fontWeight: 800, color: '#ff5722', margin: 0, letterSpacing: '-0.3px' }}>
+                  Listado Warehouse
+                </h1>
+                <p style={{ margin: '2px 0 0', fontSize: '12.5px', color: '#6b7280' }}>
+                  Control y seguimiento de paquetes recibidos en el almacén de Miami y despachos a Lima.
+                </p>
+              </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-            {isSuperadmin && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCreateClientSuccess(null);
-                    setCreateClientError(null);
-                    setIsAddClientOpen(true);
-                  }}
-                  style={{
-                    backgroundColor: '#ff5722',
-                    color: '#ffffff',
-                    border: 'none',
-                    borderRadius: '6px',
-                    padding: '8px 16px',
-                    fontSize: '13px',
-                    fontWeight: 700,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    cursor: 'pointer',
-                    boxShadow: '0 2px 4px rgba(255,87,34,0.25)',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <UserPlus style={{ width: '16px', height: '16px' }} />
-                  <span>+ Agregar Cliente</span>
-                </button>
+              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                <span style={{ fontSize: '13px', color: '#6b7280', backgroundColor: '#ffffff', padding: '8px 14px', borderRadius: '6px', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
+                  Total en sistema: <strong style={{ color: '#111827', fontWeight: 800 }}>{paquetes.length}</strong>
+                </span>
+
+                {activeFiltersCount > 0 && (
+                  <span style={{ fontSize: '12px', color: '#ff5722', backgroundColor: '#fff3e0', border: '1px solid #ffccbc', padding: '8px 12px', borderRadius: '6px', fontWeight: 700 }}>
+                    {filteredPaquetes.length} coincidencia(s)
+                  </span>
+                )}
 
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsClientsListOpen(true);
-                    fetchClientsList();
-                  }}
+                  onClick={handleManualRefresh}
+                  disabled={isRefreshing}
                   style={{
                     backgroundColor: '#ffffff',
                     color: '#374151',
                     border: '1px solid #d1d5db',
                     borderRadius: '6px',
                     padding: '8px 14px',
+                    fontSize: '12.5px',
+                    fontWeight: 600,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    cursor: 'pointer',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                  }}
+                  title="Refrescar lista de paquetes"
+                >
+                  <RotateCw style={{ width: '13px', height: '13px', color: '#ff5722', animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }} />
+                  <span>Actualizar Lista</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Tarjeta de Filtros Estilo TIB */}
+            <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              
+              {/* Fila 1: 3 inputs amplios e independientes */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+                
+                {/* Input # Warehouse */}
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <Search style={{ position: 'absolute', left: '12px', width: '16px', height: '16px', color: '#9ca3af' }} />
+                  <input
+                    type="text"
+                    value={filterWr}
+                    onChange={(e) => {
+                      setFilterWr(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    placeholder="# Warehouse"
+                    style={{
+                      width: '100%',
+                      height: '42px',
+                      paddingLeft: '38px',
+                      paddingRight: '12px',
+                      borderRadius: '6px',
+                      border: '1px solid #d1d5db',
+                      fontSize: '13px',
+                      color: '#111827',
+                      outline: 'none',
+                      backgroundColor: '#ffffff',
+                      transition: 'border-color 0.15s ease'
+                    }}
+                  />
+                </div>
+
+                {/* Input # Tracking */}
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <Search style={{ position: 'absolute', left: '12px', width: '16px', height: '16px', color: '#9ca3af' }} />
+                  <input
+                    type="text"
+                    value={filterTracking}
+                    onChange={(e) => {
+                      setFilterTracking(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    placeholder="# Tracking"
+                    style={{
+                      width: '100%',
+                      height: '42px',
+                      paddingLeft: '38px',
+                      paddingRight: '12px',
+                      borderRadius: '6px',
+                      border: '1px solid #d1d5db',
+                      fontSize: '13px',
+                      color: '#111827',
+                      outline: 'none',
+                      backgroundColor: '#ffffff',
+                      transition: 'border-color 0.15s ease'
+                    }}
+                  />
+                </div>
+
+                {/* Input Consignatario */}
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <Search style={{ position: 'absolute', left: '12px', width: '16px', height: '16px', color: '#9ca3af' }} />
+                  <input
+                    type="text"
+                    value={filterConsignatario}
+                    onChange={(e) => {
+                      setFilterConsignatario(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    placeholder="CONSIGNATARIO"
+                    style={{
+                      width: '100%',
+                      height: '42px',
+                      paddingLeft: '38px',
+                      paddingRight: '12px',
+                      borderRadius: '6px',
+                      border: '1px solid #d1d5db',
+                      fontSize: '13px',
+                      color: '#111827',
+                      outline: 'none',
+                      backgroundColor: '#ffffff',
+                      transition: 'border-color 0.15s ease'
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Fila 2: Selects de Tipo y Estado */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+                
+                {/* Select Tipo de Paquete */}
+                <div>
+                  <select
+                    value={filterTipo}
+                    onChange={(e) => {
+                      setFilterTipo(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    style={{
+                      width: '100%',
+                      height: '42px',
+                      padding: '0 12px',
+                      borderRadius: '6px',
+                      border: '1px solid #d1d5db',
+                      fontSize: '13px',
+                      color: '#374151',
+                      outline: 'none',
+                      backgroundColor: '#ffffff',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="">Tipo de Paquete (Todos)</option>
+                    {tiposUnicos.map(tipo => (
+                      <option key={tipo} value={tipo}>{tipo}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Select Estado */}
+                <div>
+                  <select
+                    value={filterEstado}
+                    onChange={(e) => {
+                      setFilterEstado(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    style={{
+                      width: '100%',
+                      height: '42px',
+                      padding: '0 12px',
+                      borderRadius: '6px',
+                      border: '1px solid #d1d5db',
+                      fontSize: '13px',
+                      color: '#374151',
+                      outline: 'none',
+                      backgroundColor: '#ffffff',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="">Estado (Todos)</option>
+                    {estadosUnicos.map(estado => (
+                      <option key={estado} value={estado}>{estado}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Fila 3: Botones de Acción TIB */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingTop: '4px' }}>
+                <button
+                  type="button"
+                  style={{
+                    backgroundColor: '#1e2229',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '9px 24px',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    letterSpacing: '0.4px',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  BUSCAR
+                </button>
+
+                {activeFiltersCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearFilters}
+                    style={{
+                      backgroundColor: '#ffffff',
+                      color: '#4b5563',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '6px',
+                      padding: '8px 18px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <FilterX style={{ width: '14px', height: '14px', color: '#6b7280' }} />
+                    <span>LIMPIAR FILTROS</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* 4. Tabla Principal Estilo TIB */}
+            <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
+              <div style={{ overflowX: 'auto', width: '100%' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+                  
+                  {/* Encabezado estilo TIB */}
+                  <thead>
+                    <tr style={{ backgroundColor: '#f8f9fa', borderBottom: '1px solid #e5e7eb', color: '#4b5563', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      <th style={{ padding: '14px 16px', minWidth: '130px' }}>WR</th>
+                      <th style={{ padding: '14px 16px', minWidth: '150px' }}># TRACKING</th>
+                      <th style={{ padding: '14px 16px', minWidth: '220px' }}>CLIENTE</th>
+                      <th style={{ padding: '14px 16px', minWidth: '90px' }}>TIPO</th>
+                      <th style={{ padding: '14px 16px', minWidth: '100px' }}>PESO(KG)</th>
+                      <th style={{ padding: '14px 16px', minWidth: '150px' }}>ESTADO</th>
+                      <th style={{ padding: '14px 16px', minWidth: '120px' }}>REGISTRADO</th>
+                      <th style={{ padding: '14px 16px', minWidth: '120px' }}>MODIFICADO</th>
+                      <th style={{ padding: '14px 16px', minWidth: '140px', textAlign: 'center' }}>DOCUMENTOS</th>
+                    </tr>
+                  </thead>
+
+                  {/* Cuerpo de la tabla */}
+                  <tbody>
+                    {isLoading ? (
+                      <tr>
+                        <td colSpan={9} style={{ padding: '60px 16px', textAlign: 'center', color: '#6b7280' }}>
+                          <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+                            <div style={{ width: '28px', height: '28px', border: '3px solid #ff5722', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                            <span style={{ fontSize: '13px', fontWeight: 600 }}>Cargando paquetes desde almacén...</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : paginatedPaquetes.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} style={{ padding: '60px 16px', textAlign: 'center', color: '#6b7280' }}>
+                          <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                            <Package style={{ width: '36px', height: '36px', color: '#d1d5db' }} />
+                            <span style={{ fontSize: '14px', fontWeight: 700, color: '#374151' }}>No se encontraron paquetes registrados</span>
+                            <span style={{ fontSize: '12px', color: '#9ca3af' }}>Intenta ajustar los filtros de búsqueda o consulta tu número de Warehouse.</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      paginatedPaquetes.map((pkg, idx) => {
+                        const creado = formatDateTimeTIB(pkg.creado_en);
+                        const modificado = formatDateTimeTIB(pkg.actualizado_en || pkg.creado_en);
+                        const estadoTexto = getEstadoTexto(pkg);
+
+                        return (
+                          <tr 
+                            key={pkg.id || pkg.numero_recibo_bodega} 
+                            style={{ 
+                              borderBottom: '1px solid #f1f3f6', 
+                              backgroundColor: idx % 2 === 0 ? '#ffffff' : '#fafbfc',
+                              transition: 'background-color 0.12s ease'
+                            }}
+                          >
+                            {/* WR */}
+                            <td style={{ padding: '14px 16px', fontWeight: 700, color: '#111827', fontFamily: 'monospace', fontSize: '13px' }}>
+                              {pkg.numero_recibo_bodega}
+                            </td>
+
+                            {/* Tracking */}
+                            <td style={{ padding: '14px 16px', color: '#374151', fontFamily: 'monospace', fontSize: '12.5px' }}>
+                              {pkg.tracking || '—'}
+                            </td>
+
+                            {/* Cliente / Consignatario */}
+                            <td style={{ padding: '14px 16px', fontWeight: 700, color: '#111827' }}>
+                              {pkg.nombre_consignatario || 'CLIENTE AMEX'}
+                            </td>
+
+                            {/* Tipo */}
+                            <td style={{ padding: '14px 16px', color: '#4b5563', textTransform: 'uppercase', fontSize: '12px', fontWeight: 600 }}>
+                              {pkg.tipo_empaque || 'CAJA'}
+                            </td>
+
+                            {/* Peso */}
+                            <td style={{ padding: '14px 16px', fontWeight: 700, color: '#111827' }}>
+                              {pkg.peso_kg != null ? Number(pkg.peso_kg).toFixed(2) : '—'}
+                            </td>
+
+                            {/* Estado (Solo Texto Plano, sin fondo ni colores) */}
+                            <td style={{ padding: '14px 16px', fontSize: '11.5px', fontWeight: 700, color: '#1f2937', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                              {estadoTexto}
+                            </td>
+
+                            {/* Registrado (2 líneas estilo TIB) */}
+                            <td style={{ padding: '14px 16px', fontSize: '12px', color: '#4b5563', lineHeight: '1.3' }}>
+                              <div style={{ fontWeight: 600, color: '#111827' }}>{creado.date}</div>
+                              <div style={{ fontSize: '11px', color: '#9ca3af' }}>{creado.time}</div>
+                            </td>
+
+                            {/* Modificado (2 líneas estilo TIB) */}
+                            <td style={{ padding: '14px 16px', fontSize: '12px', color: '#4b5563', lineHeight: '1.3' }}>
+                              <div style={{ fontWeight: 600, color: '#111827' }}>{modificado.date}</div>
+                              <div style={{ fontSize: '11px', color: '#9ca3af' }}>{modificado.time}</div>
+                            </td>
+
+                            {/* Documentos / Foto */}
+                            <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                              {pkg.tib_imagen_url ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedPhoto({ url: pkg.tib_imagen_url!, wr: pkg.numero_recibo_bodega })}
+                                  style={{
+                                    backgroundColor: '#fff7ed',
+                                    color: '#c2410c',
+                                    border: '1px solid #ffedd5',
+                                    borderRadius: '6px',
+                                    padding: '6px 12px',
+                                    fontSize: '12px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                                  }}
+                                  title="Ver foto tomada en bodega Miami"
+                                >
+                                  <Camera style={{ width: '14px', height: '14px', color: '#ea580c' }} />
+                                  <span>Ver imagen</span>
+                                </button>
+                              ) : (
+                                <span style={{ 
+                                  backgroundColor: '#f3f4f6', 
+                                  color: '#9ca3af', 
+                                  border: '1px solid #e5e7eb', 
+                                  borderRadius: '6px', 
+                                  padding: '6px 12px', 
+                                  fontSize: '12px', 
+                                  fontWeight: 600, 
+                                  display: 'inline-flex', 
+                                  alignItems: 'center', 
+                                  gap: '6px' 
+                                }}>
+                                  <Camera style={{ width: '14px', height: '14px', opacity: 0.5 }} />
+                                  <span>Sin imagen</span>
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Paginación estilo TIB */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderTop: '1px solid #e5e7eb', backgroundColor: '#f8f9fa', flexWrap: 'wrap', gap: '10px' }}>
+                <span style={{ fontSize: '12px', color: '#6b7280' }}>
+                  Mostrando del <strong style={{ color: '#111827' }}>{filteredPaquetes.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}</strong> al <strong style={{ color: '#111827' }}>{Math.min(currentPage * itemsPerPage, filteredPaquetes.length)}</strong> de un total de <strong style={{ color: '#111827' }}>{filteredPaquetes.length}</strong> registros
+                </span>
+
+                {totalPages > 1 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                      style={{ padding: '6px 12px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', opacity: currentPage === 1 ? 0.4 : 1, fontSize: '12px', fontWeight: 600 }}
+                    >
+                      Anterior
+                    </button>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                      {paginationPages.map(page => (
+                        <button
+                          key={page}
+                          type="button"
+                          onClick={() => setCurrentPage(page)}
+                          style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '4px',
+                            border: currentPage === page ? 'none' : '1px solid #d1d5db',
+                            backgroundColor: currentPage === page ? '#ff5722' : '#ffffff',
+                            color: currentPage === page ? '#ffffff' : '#374151',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {page}
+                        </button>
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      disabled={currentPage === totalPages}
+                      style={{ padding: '6px 12px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', opacity: currentPage === totalPages ? 0.4 : 1, fontSize: '12px', fontWeight: 600 }}
+                    >
+                      Siguiente
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        ) : (
+          /* ================= VISTA 2: PANEL DE CONFIGURACIÓN Y CLIENTES ================= */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            
+            {/* Cabecera del Panel de Configuración */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '38px', height: '38px', borderRadius: '10px', backgroundColor: '#ff5722', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff', boxShadow: '0 2px 6px rgba(255,87,34,0.3)' }}>
+                    <Settings style={{ width: '20px', height: '20px' }} />
+                  </div>
+                  <div>
+                    <h1 style={{ fontSize: '24px', fontWeight: 800, color: '#111827', margin: 0, letterSpacing: '-0.3px' }}>
+                      Panel de Configuración
+                    </h1>
+                    <p style={{ margin: '2px 0 0', fontSize: '12.5px', color: '#6b7280' }}>
+                      Administración de clientes, asignación de casilleros y sincronización de base de datos Oregon.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('warehouse')}
+                  style={{
+                    backgroundColor: '#ffffff',
+                    color: '#374151',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    padding: '8px 16px',
                     fontSize: '13px',
                     fontWeight: 600,
                     display: 'inline-flex',
@@ -533,397 +1114,230 @@ export default function ClienteDashboardTIB() {
                     boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
                   }}
                 >
-                  <Users style={{ width: '15px', height: '15px', color: '#6b7280' }} />
-                  <span>Clientes ({clientsList.length})</span>
+                  <Package style={{ width: '14px', height: '14px', color: '#ff5722' }} />
+                  <span>Volver a Listado Warehouse</span>
                 </button>
+              </div>
+            </div>
 
+            {/* Fila de Tarjetas de Resumen Técnico */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+              
+              {/* Tarjeta Servidor */}
+              <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: '#6b7280', letterSpacing: '0.5px' }}>
+                  Servidor Base de Datos Clientes
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#10b981' }} />
+                  <span style={{ fontSize: '15px', fontWeight: 800, color: '#111827' }}>us-west-2 (Oregon, USA)</span>
+                </div>
+                <p style={{ fontSize: '12px', color: '#6b7280', margin: '4px 0 0' }}>
+                  Base de datos 100% aislada e independiente para el portal de clientes.
+                </p>
+              </div>
+
+              {/* Tarjeta Clientes */}
+              <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: '#6b7280', letterSpacing: '0.5px' }}>
+                  Clientes Registrados en Portal
+                </span>
+                <div style={{ fontSize: '26px', fontWeight: 900, color: '#ff5722', marginTop: '4px' }}>
+                  {clientsList.length}
+                </div>
+                <p style={{ fontSize: '12px', color: '#6b7280', margin: '2px 0 0' }}>
+                  Usuarios con acceso activo a su casillero personal.
+                </p>
+              </div>
+
+              {/* Tarjeta Sincronización ERP */}
+              <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', padding: '18px 20px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <div>
+                  <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', color: '#6b7280', letterSpacing: '0.5px' }}>
+                    Inventario en Portal
+                  </span>
+                  <div style={{ fontSize: '26px', fontWeight: 900, color: '#111827', marginTop: '4px' }}>
+                    {paquetes.length} paquetes
+                  </div>
+                </div>
                 <button
                   type="button"
                   onClick={handleSyncAllFromErp}
                   disabled={isSyncingAll}
                   style={{
-                    backgroundColor: '#ffffff',
-                    color: '#374151',
-                    border: '1px solid #d1d5db',
+                    marginTop: '10px',
+                    backgroundColor: '#1e2229',
+                    color: '#ffffff',
+                    border: 'none',
                     borderRadius: '6px',
                     padding: '8px 14px',
-                    fontSize: '13px',
-                    fontWeight: 600,
+                    fontSize: '12.5px',
+                    fontWeight: 700,
                     display: 'inline-flex',
                     alignItems: 'center',
+                    justifyContent: 'center',
                     gap: '6px',
-                    cursor: 'pointer',
-                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                    cursor: isSyncingAll ? 'not-allowed' : 'pointer',
+                    opacity: isSyncingAll ? 0.7 : 1,
                   }}
-                  title="Sincronizar paquetes aprobados del ERP hacia el portal de clientes"
                 >
-                  <RefreshCw style={{ width: '14px', height: '14px', color: '#ff5722', animation: isSyncingAll ? 'spin 1s linear infinite' : 'none' }} />
-                  <span>{isSyncingAll ? 'Sincronizando...' : 'Sincronizar Almacén'}</span>
-                </button>
-              </>
-            )}
-
-            <span style={{ fontSize: '13px', color: '#6b7280', backgroundColor: '#ffffff', padding: '8px 14px', borderRadius: '6px', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
-              Total en sistema: <strong style={{ color: '#111827', fontWeight: 800 }}>{paquetes.length}</strong>
-            </span>
-            {activeFiltersCount > 0 && (
-              <span style={{ fontSize: '12px', color: '#ff5722', backgroundColor: '#fff3e0', border: '1px solid #ffccbc', padding: '8px 12px', borderRadius: '6px', fontWeight: 700 }}>
-                {filteredPaquetes.length} coincidencia(s)
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* 3. Tarjeta de Filtros Estilo TIB */}
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          
-          {/* Fila 1: 3 inputs amplios e independientes */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
-            
-            {/* Input # Warehouse */}
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <Search style={{ position: 'absolute', left: '12px', width: '16px', height: '16px', color: '#9ca3af' }} />
-              <input
-                type="text"
-                value={filterWr}
-                onChange={(e) => {
-                  setFilterWr(e.target.value);
-                  setCurrentPage(1);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') setCurrentPage(1);
-                }}
-                placeholder="# Warehouse"
-                style={{ width: '100%', height: '42px', paddingLeft: '38px', paddingRight: '12px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13.5px', color: '#1f2937', outline: 'none' }}
-              />
-            </div>
-
-            {/* Input # Tracking */}
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <Search style={{ position: 'absolute', left: '12px', width: '16px', height: '16px', color: '#9ca3af' }} />
-              <input
-                type="text"
-                value={filterTracking}
-                onChange={(e) => {
-                  setFilterTracking(e.target.value);
-                  setCurrentPage(1);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') setCurrentPage(1);
-                }}
-                placeholder="# Tracking"
-                style={{ width: '100%', height: '42px', paddingLeft: '38px', paddingRight: '12px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13.5px', color: '#1f2937', outline: 'none' }}
-              />
-            </div>
-
-            {/* Input Consignatario */}
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <Search style={{ position: 'absolute', left: '12px', width: '16px', height: '16px', color: '#9ca3af' }} />
-              <input
-                type="text"
-                value={filterConsignatario}
-                onChange={(e) => {
-                  setFilterConsignatario(e.target.value);
-                  setCurrentPage(1);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') setCurrentPage(1);
-                }}
-                placeholder="Consignatario"
-                style={{ width: '100%', height: '42px', paddingLeft: '38px', paddingRight: '12px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13.5px', color: '#1f2937', outline: 'none', textTransform: 'uppercase' }}
-              />
-            </div>
-          </div>
-
-          {/* Fila 2: Selects de Tipo de Paquete y Estado */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', maxWidth: '640px', gap: '16px' }}>
-            <select
-              value={filterTipo}
-              onChange={(e) => {
-                setFilterTipo(e.target.value);
-                setCurrentPage(1);
-              }}
-              style={{ width: '100%', height: '42px', padding: '0 12px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13.5px', color: '#374151', outline: 'none' }}
-            >
-              <option value="">Tipo de Paquete (Todos)</option>
-              <option value="CAJA">CAJA</option>
-              <option value="SOBRE">SOBRE</option>
-              <option value="SACA">SACA</option>
-              <option value="BULTO">BULTO</option>
-            </select>
-
-            <select
-              value={filterEstado}
-              onChange={(e) => {
-                setFilterEstado(e.target.value);
-                setCurrentPage(1);
-              }}
-              style={{ width: '100%', height: '42px', padding: '0 12px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13.5px', color: '#374151', outline: 'none' }}
-            >
-              <option value="">Estado (Todos)</option>
-              <option value="MIAMI">RECIBIDO MIAMI</option>
-              <option value="VUELO">EN VUELO</option>
-              <option value="LINCE">EN ALMACÉN LINCE</option>
-              <option value="ENTREGADO">ENTREGADO</option>
-            </select>
-          </div>
-
-          {/* Fila 3: Botones de Acción Estilo TIB */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px', paddingTop: '6px', borderTop: '1px solid #f1f5f9' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <button
-                type="button"
-                onClick={() => setCurrentPage(1)}
-                style={{ backgroundColor: '#2b303c', color: '#ffffff', padding: '10px 24px', borderRadius: '6px', fontSize: '13px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.6px', border: 'none', cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }}
-              >
-                Buscar
-              </button>
-              <button
-                type="button"
-                onClick={handleClearFilters}
-                style={{ backgroundColor: '#4b5563', color: '#ffffff', padding: '10px 22px', borderRadius: '6px', fontSize: '13px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.6px', border: 'none', cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-              >
-                <FilterX style={{ width: '14px', height: '14px' }} />
-                <span>Limpiar Filtros</span>
-              </button>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleRefresh}
-              disabled={isRefreshing}
-              style={{ backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', padding: '9px 18px', borderRadius: '6px', fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}
-            >
-              <RotateCw style={{ width: '15px', height: '15px', color: '#ff5722', animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }} />
-              <span>{isRefreshing ? 'Actualizando...' : 'Actualizar Lista'}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* 4. Tabla de Datos Réplica Exacta de TIB */}
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
-          <div style={{ overflowX: 'auto', width: '100%' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '12.5px', minWidth: '980px' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#f8f9fa', borderBottom: '1px solid #e2e8f0' }}>
-                  <th style={{ padding: '14px 16px', fontWeight: 800, color: '#4b5563', textTransform: 'uppercase', fontSize: '11.5px', letterSpacing: '0.5px' }}>WR</th>
-                  <th style={{ padding: '14px 16px', fontWeight: 800, color: '#4b5563', textTransform: 'uppercase', fontSize: '11.5px', letterSpacing: '0.5px' }}># Tracking</th>
-                  <th style={{ padding: '14px 16px', fontWeight: 800, color: '#4b5563', textTransform: 'uppercase', fontSize: '11.5px', letterSpacing: '0.5px' }}>Cliente</th>
-                  <th style={{ padding: '14px 16px', fontWeight: 800, color: '#4b5563', textTransform: 'uppercase', fontSize: '11.5px', letterSpacing: '0.5px' }}>Tipo</th>
-                  <th style={{ padding: '14px 16px', fontWeight: 800, color: '#4b5563', textTransform: 'uppercase', fontSize: '11.5px', letterSpacing: '0.5px' }}>Peso(Kg)</th>
-                  <th style={{ padding: '14px 16px', fontWeight: 800, color: '#4b5563', textTransform: 'uppercase', fontSize: '11.5px', letterSpacing: '0.5px' }}>Estado</th>
-                  <th style={{ padding: '14px 16px', fontWeight: 800, color: '#4b5563', textTransform: 'uppercase', fontSize: '11.5px', letterSpacing: '0.5px' }}>Registrado</th>
-                  <th style={{ padding: '14px 16px', fontWeight: 800, color: '#4b5563', textTransform: 'uppercase', fontSize: '11.5px', letterSpacing: '0.5px' }}>Modificado</th>
-                  <th style={{ padding: '14px 16px', fontWeight: 800, color: '#4b5563', textTransform: 'uppercase', fontSize: '11.5px', letterSpacing: '0.5px', textAlign: 'center' }}>Documentos</th>
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading ? (
-                  <tr>
-                    <td colSpan={9} style={{ padding: '60px 16px', textAlign: 'center', color: '#6b7280' }}>
-                      <div style={{ width: '28px', height: '28px', border: '3px solid #ff5722', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 12px' }} />
-                      <span style={{ fontWeight: 600 }}>Cargando almacén...</span>
-                    </td>
-                  </tr>
-                ) : paginatedPaquetes.length === 0 ? (
-                  <tr>
-                    <td colSpan={9} style={{ padding: '60px 16px', textAlign: 'center', color: '#6b7280' }}>
-                      <Package style={{ width: '42px', height: '42px', color: '#d1d5db', margin: '0 auto 12px' }} />
-                      <p style={{ fontSize: '14px', fontWeight: 700, color: '#374151', margin: '0 0 4px' }}>No se encontraron registros de Warehouse</p>
-                      <p style={{ fontSize: '12px', color: '#9ca3af', margin: '0 0 14px' }}>
-                        {isSuperadmin 
-                          ? 'Puedes agregar un nuevo cliente con el botón naranja o sincronizar paquetes del almacén.' 
-                          : 'Tus paquetes aparecerán aquí en cuanto ingresen al almacén.'}
-                      </p>
-                      {isSuperadmin && (
-                        <button
-                          type="button"
-                          onClick={() => setIsAddClientOpen(true)}
-                          style={{
-                            backgroundColor: '#ff5722',
-                            color: '#ffffff',
-                            border: 'none',
-                            padding: '8px 18px',
-                            borderRadius: '6px',
-                            fontSize: '12.5px',
-                            fontWeight: 700,
-                            cursor: 'pointer'
-                          }}
-                        >
-                          + Agregar Primer Cliente
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ) : (
-                  paginatedPaquetes.map((pkg, idx) => {
-                    const reg = formatDateTimeTIB(pkg.creado_en);
-                    const mod = formatDateTimeTIB(pkg.actualizado_en || pkg.creado_en);
-                    const estado = getEstadoTexto(pkg);
-
-                    return (
-                      <tr 
-                        key={pkg.id} 
-                        style={{ borderBottom: '1px solid #f1f3f6', backgroundColor: idx % 2 === 0 ? '#ffffff' : '#fafbfc' }}
-                      >
-                        {/* WR */}
-                        <td style={{ padding: '12px 16px', fontWeight: 800, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '13px', color: '#111827', whiteSpace: 'nowrap' }}>
-                          {pkg.numero_recibo_bodega}
-                        </td>
-
-                        {/* Tracking */}
-                        <td style={{ padding: '12px 16px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '12.5px', color: '#4b5563', whiteSpace: 'nowrap' }}>
-                          {pkg.tracking || '—'}
-                        </td>
-
-                        {/* Cliente / Consignatario */}
-                        <td style={{ padding: '12px 16px', fontWeight: 700, textTransform: 'uppercase', color: '#1f2937', whiteSpace: 'nowrap' }}>
-                          {pkg.nombre_consignatario || 'SIN ASIGNAR'}
-                        </td>
-
-                        {/* Tipo */}
-                        <td style={{ padding: '12px 16px', fontWeight: 600, textTransform: 'uppercase', color: '#4b5563', whiteSpace: 'nowrap' }}>
-                          {pkg.tipo_empaque || 'CAJA'}
-                        </td>
-
-                        {/* Peso */}
-                        <td style={{ padding: '12px 16px', fontWeight: 800, color: '#111827', whiteSpace: 'nowrap' }}>
-                          {pkg.peso_kg != null ? Number(pkg.peso_kg).toFixed(2) : '—'}
-                        </td>
-
-                        {/* Estado: solo texto sin colores ni pastillas */}
-                        <td style={{ padding: '12px 16px', fontWeight: 700, color: '#1f2937', fontSize: '12px', whiteSpace: 'nowrap' }}>
-                          {estado}
-                        </td>
-
-                        {/* Registrado (dos líneas como TIB) */}
-                        <td style={{ padding: '12px 16px', color: '#374151', fontSize: '12px', whiteSpace: 'nowrap', lineHeight: 1.35 }}>
-                          <div style={{ fontWeight: 600 }}>{reg.date}</div>
-                          <div style={{ color: '#9ca3af', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '11px' }}>{reg.time}</div>
-                        </td>
-
-                        {/* Modificado (dos líneas como TIB) */}
-                        <td style={{ padding: '12px 16px', color: '#374151', fontSize: '12px', whiteSpace: 'nowrap', lineHeight: 1.35 }}>
-                          <div style={{ fontWeight: 600 }}>{mod.date}</div>
-                          <div style={{ color: '#9ca3af', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '11px' }}>{mod.time}</div>
-                        </td>
-
-                        {/* Columna Documentos: Solo botón de Foto / Imagen */}
-                        <td style={{ padding: '12px 16px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                            {pkg.tib_imagen_url ? (
-                              <button
-                                type="button"
-                                onClick={() => setSelectedPhoto({ url: pkg.tib_imagen_url!, wr: pkg.numero_recibo_bodega })}
-                                title="Ver Fotografía de Recepción Miami"
-                                style={{
-                                  padding: '6px 12px',
-                                  borderRadius: '5px',
-                                  border: '1px solid #ffccbc',
-                                  backgroundColor: '#fff3e0',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '6px',
-                                  color: '#e65100',
-                                  fontSize: '12px',
-                                  fontWeight: 700,
-                                  cursor: 'pointer',
-                                  transition: 'all 0.15s ease'
-                                }}
-                              >
-                                <Camera style={{ width: '15px', height: '15px' }} />
-                                <span>Ver imagen</span>
-                              </button>
-                            ) : (
-                              <button
-                                disabled
-                                title="Sin Fotografía registrada"
-                                style={{
-                                  padding: '6px 12px',
-                                  borderRadius: '5px',
-                                  border: '1px solid #e9ecef',
-                                  backgroundColor: '#f8f9fa',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '6px',
-                                  color: '#9ca3af',
-                                  fontSize: '12px',
-                                  fontWeight: 600,
-                                  cursor: 'not-allowed'
-                                }}
-                              >
-                                <Camera style={{ width: '15px', height: '15px' }} />
-                                <span>Sin imagen</span>
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* 5. Paginación idéntica a TIB */}
-          <div style={{ padding: '16px 20px', backgroundColor: '#f8f9fa', borderTop: '1px solid #e2e8f0', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px', fontSize: '13px', color: '#4b5563' }}>
-            <div>
-              Mostrando <strong style={{ color: '#111827' }}>{filteredPaquetes.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}</strong> a <strong style={{ color: '#111827' }}>{Math.min(currentPage * itemsPerPage, filteredPaquetes.length)}</strong> de <strong style={{ color: '#111827' }}>{filteredPaquetes.length}</strong> registros
-            </div>
-
-            {totalPages > 1 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                  disabled={currentPage === 1}
-                  style={{ padding: '6px 12px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', opacity: currentPage === 1 ? 0.4 : 1, fontSize: '12px', fontWeight: 600 }}
-                >
-                  Anterior
-                </button>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '0 4px' }}>
-                  {paginationPages.map((pageNum) => {
-                    const isSelected = currentPage === pageNum;
-                    return (
-                      <button
-                        key={`page-${pageNum}`}
-                        type="button"
-                        onClick={() => setCurrentPage(pageNum)}
-                        style={{
-                          width: '32px',
-                          height: '32px',
-                          borderRadius: '4px',
-                          fontSize: '12px',
-                          fontWeight: 800,
-                          backgroundColor: isSelected ? '#ff5722' : '#ffffff',
-                          color: isSelected ? '#ffffff' : '#374151',
-                          border: isSelected ? 'none' : '1px solid #d1d5db',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                  disabled={currentPage === totalPages}
-                  style={{ padding: '6px 12px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', opacity: currentPage === totalPages ? 0.4 : 1, fontSize: '12px', fontWeight: 600 }}
-                >
-                  Siguiente
+                  <RefreshCw style={{ width: '13px', height: '13px', color: '#ff5722', animation: isSyncingAll ? 'spin 1s linear infinite' : 'none' }} />
+                  <span>{isSyncingAll ? 'Sincronizando con ERP...' : 'Sincronizar Almacén con ERP'}</span>
                 </button>
               </div>
-            )}
+
+            </div>
+
+            {/* Tarjeta Principal de Directorio de Clientes */}
+            <div style={{ backgroundColor: '#ffffff', borderRadius: '10px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', padding: '22px' }}>
+              
+              {/* Header de la sección de clientes */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px', marginBottom: '18px' }}>
+                <div>
+                  <h2 style={{ fontSize: '18px', fontWeight: 800, color: '#111827', margin: 0 }}>
+                    Directorio de Clientes
+                  </h2>
+                  <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#6b7280' }}>
+                    Crea accesos, asigna códigos de casillero y define alias para matching automático de paquetes.
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  {/* Buscador de clientes */}
+                  <div style={{ position: 'relative', minWidth: '240px' }}>
+                    <Search style={{ width: '14px', height: '14px', color: '#9ca3af', position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+                    <input
+                      type="text"
+                      value={clientSearchQuery}
+                      onChange={(e) => setClientSearchQuery(e.target.value)}
+                      placeholder="Buscar cliente, correo, DNI..."
+                      style={{
+                        width: '100%',
+                        height: '38px',
+                        paddingLeft: '32px',
+                        paddingRight: '10px',
+                        borderRadius: '6px',
+                        border: '1px solid #d1d5db',
+                        fontSize: '12.5px',
+                        outline: 'none',
+                      }}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCreateClientSuccess(null);
+                      setCreateClientError(null);
+                      setIsAddClientOpen(true);
+                    }}
+                    style={{
+                      backgroundColor: '#ff5722',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '6px',
+                      padding: '8px 18px',
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 4px rgba(255,87,34,0.25)',
+                    }}
+                  >
+                    <UserPlus style={{ width: '15px', height: '15px' }} />
+                    <span>+ Agregar Cliente</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Tabla de Clientes en Configuración */}
+              <div style={{ overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: '#f8f9fa', borderBottom: '1px solid #e5e7eb' }}>
+                      <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Consignatario / Nombre</th>
+                      <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Correo (Login)</th>
+                      <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Casillero</th>
+                      <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Teléfono / Documento</th>
+                      <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Palabras Clave (Matching)</th>
+                      <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Estado</th>
+                      <th style={{ padding: '12px 14px', fontWeight: 700, color: '#4b5563' }}>Fecha Registro</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {isLoadingClients ? (
+                      <tr>
+                        <td colSpan={7} style={{ padding: '36px', textAlign: 'center', color: '#6b7280' }}>
+                          <div style={{ width: '22px', height: '22px', border: '2px solid #ff5722', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 8px' }} />
+                          <span>Cargando directorio de clientes...</span>
+                        </td>
+                      </tr>
+                    ) : filteredClientsList.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
+                          <Users style={{ width: '36px', height: '36px', color: '#d1d5db', margin: '0 auto 8px' }} />
+                          <p style={{ fontWeight: 700, color: '#374151', margin: 0 }}>No hay clientes que coincidan</p>
+                          <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>Crea un cliente nuevo con el botón "+ Agregar Cliente".</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredClientsList.map((c, idx) => (
+                        <tr key={c.id} style={{ borderBottom: '1px solid #f3f4f6', backgroundColor: idx % 2 === 0 ? '#ffffff' : '#fafbfc' }}>
+                          <td style={{ padding: '12px 14px', fontWeight: 700, color: '#111827' }}>
+                            {c.nombre_completo}
+                          </td>
+                          <td style={{ padding: '12px 14px', color: '#4b5563', fontFamily: 'monospace', fontSize: '12px' }}>
+                            {c.email}
+                          </td>
+                          <td style={{ padding: '12px 14px' }}>
+                            <span style={{ backgroundColor: '#f3f4f6', padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 700, color: '#374151', fontFamily: 'monospace' }}>
+                              {c.casillero_codigo || `AMX-${String(idx + 1).padStart(3, '0')}`}
+                            </span>
+                          </td>
+                          <td style={{ padding: '12px 14px', color: '#4b5563' }}>
+                            <div>{c.telefono || '—'}</div>
+                            {c.documento_identidad && (
+                              <div style={{ fontSize: '11px', color: '#9ca3af' }}>Doc: {c.documento_identidad}</div>
+                            )}
+                          </td>
+                          <td style={{ padding: '12px 14px', color: '#6b7280', fontSize: '11.5px', maxWidth: '240px' }}>
+                            {Array.isArray(c.alias_palabras_clave) && c.alias_palabras_clave.length > 0 ? (
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                {c.alias_palabras_clave.map((k, ki) => (
+                                  <span key={ki} style={{ backgroundColor: '#e0f2fe', color: '#0369a1', padding: '1px 6px', borderRadius: '3px', fontSize: '10.5px', fontWeight: 600 }}>
+                                    {k}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span>Nombre exacto</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '12px 14px' }}>
+                            <span style={{ backgroundColor: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 700 }}>
+                              Activo
+                            </span>
+                          </td>
+                          <td style={{ padding: '12px 14px', color: '#6b7280', fontSize: '11.5px' }}>
+                            {formatDateTimeTIB(c.creado_en).date}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+            </div>
+
           </div>
-        </div>
+        )}
+
       </main>
 
-      {/* 6. Modal de Foto Flotante */}
+      {/* Modal de Foto Flotante */}
       {selectedPhoto && (
         <div 
           onClick={() => setSelectedPhoto(null)}
@@ -981,7 +1395,7 @@ export default function ClienteDashboardTIB() {
         </div>
       )}
 
-      {/* 7. Modal de Agregar Usuario Cliente (Solo Superadmin) */}
+      {/* Modal de Agregar Usuario Cliente (Solo Superadmin) */}
       {isAddClientOpen && (
         <div 
           onClick={() => setIsAddClientOpen(false)}
@@ -1163,107 +1577,6 @@ export default function ClienteDashboardTIB() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* 8. Modal de Lista de Clientes Registrados */}
-      {isClientsListOpen && (
-        <div 
-          onClick={() => setIsClientsListOpen(false)}
-          style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
-        >
-          <div 
-            onClick={(e) => e.stopPropagation()}
-            style={{ backgroundColor: '#ffffff', borderRadius: '12px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)', maxWidth: '820px', width: '100%', padding: '24px', position: 'relative', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '14px', borderBottom: '1px solid #e5e7eb', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: '#2b303c', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ffffff' }}>
-                  <Users style={{ width: '18px', height: '18px' }} />
-                </div>
-                <div>
-                  <h3 style={{ fontSize: '17px', fontWeight: 800, color: '#111827', margin: 0 }}>
-                    Clientes Registrados en el Portal
-                  </h3>
-                  <span style={{ fontSize: '12px', color: '#6b7280' }}>
-                    Total: {clientsList.length} clientes en base de datos aislada (us-west-2 Oregon)
-                  </span>
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsClientsListOpen(false);
-                    setIsAddClientOpen(true);
-                  }}
-                  style={{ padding: '6px 14px', backgroundColor: '#ff5722', color: '#ffffff', borderRadius: '6px', border: 'none', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
-                >
-                  + Agregar Cliente
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsClientsListOpen(false)}
-                  style={{ padding: '6px', borderRadius: '6px', border: 'none', backgroundColor: '#f3f4f6', color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <X style={{ width: '18px', height: '18px' }} />
-                </button>
-              </div>
-            </div>
-
-            <div style={{ overflowY: 'auto', flex: 1, border: '1px solid #e5e7eb', borderRadius: '6px' }}>
-              {isLoadingClients ? (
-                <div style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
-                  <div style={{ width: '24px', height: '24px', border: '2px solid #ff5722', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 8px' }} />
-                  <span>Cargando clientes...</span>
-                </div>
-              ) : clientsList.length === 0 ? (
-                <div style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
-                  <Users style={{ width: '36px', height: '36px', color: '#d1d5db', margin: '0 auto 8px' }} />
-                  <p style={{ fontWeight: 700, color: '#374151', margin: 0 }}>No hay clientes registrados aún</p>
-                  <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>Crea el primer usuario cliente con el botón naranja.</p>
-                </div>
-              ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
-                  <thead>
-                    <tr style={{ backgroundColor: '#f8f9fa', borderBottom: '1px solid #e5e7eb' }}>
-                      <th style={{ padding: '10px 14px', fontWeight: 700, color: '#4b5563' }}>Consignatario / Nombre</th>
-                      <th style={{ padding: '10px 14px', fontWeight: 700, color: '#4b5563' }}>Correo (Login)</th>
-                      <th style={{ padding: '10px 14px', fontWeight: 700, color: '#4b5563' }}>Teléfono</th>
-                      <th style={{ padding: '10px 14px', fontWeight: 700, color: '#4b5563' }}>DNI / RUC</th>
-                      <th style={{ padding: '10px 14px', fontWeight: 700, color: '#4b5563' }}>Registrado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {clientsList.map((c, i) => (
-                      <tr key={c.id} style={{ borderBottom: '1px solid #f3f4f6', backgroundColor: i % 2 === 0 ? '#ffffff' : '#fafbfc' }}>
-                        <td style={{ padding: '10px 14px', fontWeight: 700, color: '#111827' }}>
-                          <div>{c.nombre_completo}</div>
-                          {Array.isArray(c.alias_palabras_clave) && c.alias_palabras_clave.length > 1 && (
-                            <div style={{ fontSize: '10.5px', color: '#6b7280', marginTop: '2px' }}>
-                              Alias: {c.alias_palabras_clave.join(', ')}
-                            </div>
-                          )}
-                        </td>
-                        <td style={{ padding: '10px 14px', color: '#4b5563', fontFamily: 'monospace', fontSize: '12px' }}>
-                          {c.email}
-                        </td>
-                        <td style={{ padding: '10px 14px', color: '#4b5563' }}>
-                          {c.telefono || '—'}
-                        </td>
-                        <td style={{ padding: '10px 14px', color: '#4b5563' }}>
-                          {c.documento_identidad || '—'}
-                        </td>
-                        <td style={{ padding: '10px 14px', color: '#6b7280', fontSize: '11.5px' }}>
-                          {formatDateTimeTIB(c.creado_en).date}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
           </div>
         </div>
       )}
