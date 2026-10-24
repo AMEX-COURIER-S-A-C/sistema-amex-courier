@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { withApi } from '@/lib/api/withApi';
-import { parseRotuloWithAi, FAST_TEXT_MODEL } from '@/lib/openai/analyzer';
+import { parseRotuloWithAi, ROTULO_AI_MODEL } from '@/lib/openai/analyzer';
 import { recordAiUsage } from '@/lib/ai/cost-tracker';
 
 const ParseRotuloSchema = z
@@ -31,7 +31,7 @@ export const POST = withApi(
 
     recordAiUsage({
       feature: 'rotulo-parsing',
-      model: FAST_TEXT_MODEL,
+      model: ROTULO_AI_MODEL,
       promptTokens: 400,
       completionTokens: 200,
       usuarioId: user?.id,
