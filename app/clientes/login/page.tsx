@@ -4,6 +4,8 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabasePortal } from '@/lib/supabase/portal-client';
+import { getLoginThemeTokens } from '@/lib/themes/seasonalConfig';
+import { HalloweenBackdrop, HalloweenCornerWebs } from '@/components/themes/HalloweenBackdrop';
 import { 
   Package, 
   Search, 
@@ -26,6 +28,8 @@ import {
 
 export default function ClienteLoginPage() {
   const router = useRouter();
+  const theme = getLoginThemeTokens();
+
   const [activeTab, setActiveTab] = useState<'login' | 'tracking'>('login');
 
   // Login form state
@@ -34,6 +38,7 @@ export default function ClienteLoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isCapsLockOn, setIsCapsLockOn] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isTransitioningIn, setIsTransitioningIn] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Quick Tracking state
@@ -60,7 +65,7 @@ export default function ClienteLoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isLoading) return;
+    if (isLoading || isTransitioningIn) return;
     setIsLoading(true);
     setErrorMessage(null);
 
@@ -87,7 +92,11 @@ export default function ClienteLoginPage() {
           refresh_token: data.session.refresh_token,
         });
 
-        router.push('/clientes');
+        // Activar cortina de entrada fluida Halloween
+        setIsTransitioningIn(true);
+        setTimeout(() => {
+          router.push('/clientes');
+        }, 450);
         return;
       }
 
@@ -101,7 +110,10 @@ export default function ClienteLoginPage() {
         });
 
         if (!directError && directAuth.session) {
-          router.push('/clientes');
+          setIsTransitioningIn(true);
+          setTimeout(() => {
+            router.push('/clientes');
+          }, 450);
           return;
         }
       } catch (_) {}
@@ -126,7 +138,7 @@ export default function ClienteLoginPage() {
     setTrackingResult(null);
 
     try {
-      // 1. Consultar a través del endpoint blindado de rastreo
+      // Consultar a través del endpoint blindado de rastreo
       const res = await fetch(`/api/clientes/tracking?code=${encodeURIComponent(code)}`);
       const json = await res.json();
 
@@ -147,36 +159,202 @@ export default function ClienteLoginPage() {
     }
   };
 
+  // Cortina fluida de entrada tras login exitoso (Estilo Halloween AAA)
+  if (isTransitioningIn) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: '100vh',
+          background: theme.pageBackground,
+          color: '#f8fafc',
+          fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
+          padding: 24,
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+      >
+        {theme.isHalloween && <HalloweenBackdrop />}
+        <style>{`
+          @keyframes amexEntryCardIn {
+            from { opacity: 0; transform: scale(0.97) translateY(6px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+          }
+          @keyframes amexProgressSlide {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(250%); }
+          }
+        `}</style>
+        <div
+          style={{
+            position: 'relative',
+            zIndex: 2,
+            padding: '28px 36px',
+            borderRadius: 20,
+            background: 'rgba(15, 23, 42, 0.88)',
+            backdropFilter: 'blur(16px)',
+            border: theme.shellBorder,
+            boxShadow: theme.shellShadow,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            maxWidth: 400,
+            width: '100%',
+            textAlign: 'center',
+            animation: 'amexEntryCardIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+          }}
+        >
+          <div
+            style={{
+              padding: '12px 22px',
+              borderRadius: 14,
+              background: 'rgba(9, 13, 22, 0.9)',
+              border: theme.logoBoxBorder,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: 18,
+            }}
+          >
+            <img
+              src="/images/logo-amex-clean.png"
+              alt="AMEX Courier"
+              style={{ height: 38, width: 'auto', objectFit: 'contain', filter: theme.logoDropShadow }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 6 }}>
+            <i className="fa-solid fa-ghost fa-bounce" style={{ color: theme.spinnerColor, fontSize: 16 }} />
+            <span style={{ fontSize: 15, fontWeight: 800, letterSpacing: '-0.2px', color: '#f8fafc' }}>
+              Abriendo tu Casillero AMEX
+            </span>
+          </div>
+          <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 18px 0', lineHeight: 1.45 }}>
+            Sincronizando estado de paquetes y guías en Miami y Lima...
+          </p>
+
+          <div
+            style={{
+              width: '100%',
+              height: 4,
+              borderRadius: 999,
+              background: 'rgba(255, 255, 255, 0.08)',
+              overflow: 'hidden',
+              position: 'relative',
+            }}
+          >
+            <div
+              style={{
+                width: '45%',
+                height: '100%',
+                borderRadius: 999,
+                background: theme.progressGradient,
+                animation: 'amexProgressSlide 1.1s cubic-bezier(0.4, 0, 0.2, 1) infinite',
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div 
-      className="amex-client-portal min-h-screen bg-[#070b14] text-slate-100 flex flex-col justify-between selection:bg-amber-500 selection:text-slate-950 font-sans"
+      className="amex-client-portal min-h-screen text-slate-100 flex flex-col justify-between selection:bg-orange-500 selection:text-slate-950 font-sans relative overflow-x-hidden"
       data-portal="client" 
       data-lenis-prevent
+      style={{
+        background: theme.pageBackground,
+        minHeight: '100dvh',
+      }}
     >
-      {/* Dynamic Background Glows */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-        <div className="absolute -top-40 -left-40 w-[550px] h-[550px] bg-amber-500/12 rounded-full blur-[140px]" />
-        <div className="absolute top-1/3 -right-40 w-[600px] h-[600px] bg-orange-600/10 rounded-full blur-[160px]" />
-        <div className="absolute -bottom-40 left-1/3 w-[500px] h-[500px] bg-blue-600/8 rounded-full blur-[150px]" />
-      </div>
+      {/* Escena Dinámica Halloween 60 FPS (Luna de cosecha, brujas, murciélagos, calabazas, chispas) */}
+      {theme.isHalloween && <HalloweenBackdrop />}
+
+      <style>{`
+        @keyframes amexShellIn {
+          from { opacity: 0; transform: translateY(12px) scale(0.99); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .amex-portal-shell {
+          position: relative;
+          z-index: 2;
+          width: 100%;
+          max-width: 1040px;
+          border-radius: 24px;
+          overflow: hidden;
+          background: rgba(15, 23, 42, 0.82);
+          backdrop-filter: blur(20px);
+          border: ${theme.shellBorder};
+          box-shadow: ${theme.shellShadow};
+          animation: amexShellIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          --spot-x: 50%;
+          --spot-y: 50%;
+          --spot-opacity: 0;
+        }
+        .amex-portal-shell::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          z-index: 4;
+          background: radial-gradient(
+            440px circle at var(--spot-x) var(--spot-y),
+            rgba(249, 115, 22, 0.12),
+            transparent 65%
+          );
+          opacity: var(--spot-opacity);
+          transition: opacity 0.25s ease;
+        }
+        .amex-portal-input {
+          width: 100%;
+          padding: 12px 14px 12px 40px;
+          border-radius: 12px;
+          background: rgba(9, 13, 22, 0.8);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          color: #f8fafc;
+          font-size: 13.5px;
+          outline: none;
+          box-sizing: border-box;
+          transition: all 0.18s ease;
+        }
+        .amex-portal-input:focus {
+          border-color: ${theme.inputFocusBorder};
+          box-shadow: ${theme.inputFocusShadow};
+          background: rgba(9, 13, 22, 0.94);
+        }
+        .amex-halloween-btn {
+          background: ${theme.submitBtnBackground};
+          border: ${theme.submitBtnBorder};
+          box-shadow: ${theme.submitBtnShadow};
+          transition: all 0.18s ease;
+        }
+        .amex-halloween-btn:hover:not(:disabled) {
+          transform: translateY(-1px);
+          box-shadow: ${theme.submitBtnHoverShadow};
+          filter: brightness(1.08);
+        }
+      `}</style>
 
       {/* Top Header */}
-      <header className="relative z-10 border-b border-slate-800/80 bg-slate-950/70 backdrop-blur-xl px-5 sm:px-8 py-3.5">
+      <header className="relative z-10 border-b border-orange-500/25 bg-slate-950/75 backdrop-blur-xl px-5 sm:px-8 py-3.5">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-400 flex items-center justify-center font-black text-slate-950 text-lg shadow-md shadow-amber-500/25">
-              A
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-extrabold text-base tracking-wider text-white">AMEX <span className="text-amber-400">COURIER</span></span>
-                <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  Portal Clientes
-                </span>
+            {/* Logo Oficial en Cabecera */}
+            <div className="flex items-center gap-2.5">
+              <img
+                src="/images/logo-amex-clean.png"
+                alt="AMEX Courier"
+                className="h-8 w-auto object-contain drop-shadow-[0_2px_8px_rgba(249,115,22,0.35)]"
+              />
+              <span className="hidden sm:inline-block h-4 w-px bg-slate-700/80 mx-1" />
+              <div className="hidden sm:flex items-center gap-1.5 text-xs font-bold text-orange-400 bg-orange-500/15 px-2.5 py-0.5 rounded-full border border-orange-500/30">
+                <i className="fa-solid fa-ghost text-[10px]" />
+                <span>Portal Clientes Halloween</span>
               </div>
-              <span className="block text-[11px] font-medium text-slate-400 tracking-wide">
-                Casillero Internacional Miami • Perú
-              </span>
             </div>
           </div>
 
@@ -185,9 +363,9 @@ export default function ClienteLoginPage() {
               href="https://wa.me/51924811106?text=Hola%20AMEX%20Courier,%20necesito%20asistencia%20con%20mi%20casillero"
               target="_blank"
               rel="noreferrer"
-              className="hidden sm:inline-flex items-center gap-1.5 text-xs text-slate-300 hover:text-amber-400 bg-slate-900/90 hover:bg-slate-800/90 px-3.5 py-1.5 rounded-full border border-slate-700/60 transition-colors"
+              className="hidden sm:inline-flex items-center gap-1.5 text-xs text-slate-300 hover:text-orange-400 bg-slate-900/90 hover:bg-slate-800/90 px-3.5 py-1.5 rounded-full border border-orange-500/30 transition-colors"
             >
-              <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
+              <i className="fa-brands fa-whatsapp text-emerald-400 text-sm" />
               <span>Soporte WhatsApp</span>
             </a>
 
@@ -199,42 +377,70 @@ export default function ClienteLoginPage() {
         </div>
       </header>
 
-      {/* Main Container - Spacious Split Layout */}
+      {/* Main Container - Split Layout con Telarañas y Animación Interactiva */}
       <main className="relative z-10 flex-1 flex items-center justify-center p-4 sm:p-6 md:p-8 my-auto">
-        <div className="w-full max-w-5xl bg-slate-900/80 border border-slate-800/90 rounded-3xl shadow-2xl backdrop-blur-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 min-h-[580px]">
+        <div 
+          className="amex-portal-shell grid grid-cols-1 lg:grid-cols-12 min-h-[590px]"
+          onMouseMove={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            e.currentTarget.style.setProperty('--spot-x', `${e.clientX - rect.left}px`);
+            e.currentTarget.style.setProperty('--spot-y', `${e.clientY - rect.top}px`);
+            e.currentTarget.style.setProperty('--spot-opacity', '1');
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.setProperty('--spot-opacity', '0');
+          }}
+        >
+          {/* Telarañas de esquina interactivas con arañas que trepan */}
+          {theme.isHalloween && <HalloweenCornerWebs />}
           
-          {/* ================= LEFT COLUMN: BRANDING & FEATURES ================= */}
-          <div className="lg:col-span-5 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950/90 p-7 sm:p-10 border-b lg:border-b-0 lg:border-r border-slate-800/90 flex flex-col justify-between relative overflow-hidden">
-            {/* Ambient Background Accent */}
-            <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 rounded-full blur-[80px] pointer-events-none" />
-
+          {/* ================= LEFT COLUMN: HALLOWEEN BRANDING & FEATURES ================= */}
+          <div 
+            className="lg:col-span-5 p-7 sm:p-10 border-b lg:border-b-0 lg:border-r border-orange-500/25 flex flex-col justify-between relative overflow-hidden"
+            style={{ background: theme.leftPanelBackground }}
+          >
             <div>
-              {/* Badge */}
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-bold tracking-wider uppercase mb-6">
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Casillero Postal Miami • Lima</span>
+              {/* Badge Halloween */}
+              <div 
+                className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-xs font-black tracking-wider uppercase mb-6"
+                style={{
+                  background: theme.badgeBackground,
+                  border: theme.badgeBorder,
+                  color: theme.badgeColor,
+                }}
+              >
+                <i className={theme.badgeIcon} />
+                <span>{theme.badgeText}</span>
               </div>
 
-              {/* Logo Box */}
-              <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-6 mb-6 shadow-inner flex items-center justify-center">
+              {/* Logo Box Oficial con Resplandor */}
+              <div 
+                className="rounded-2xl p-6 mb-6 flex items-center justify-center"
+                style={{
+                  background: 'linear-gradient(145deg, rgba(15, 23, 42, 0.9) 0%, rgba(7, 4, 15, 0.95) 100%)',
+                  border: theme.logoBoxBorder,
+                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 12px 30px rgba(0,0,0,0.5)',
+                }}
+              >
                 <img
                   src="/images/logo-amex-clean.png"
                   alt="AMEX Courier Logo Oficial"
-                  className="w-full max-w-[240px] h-auto object-contain drop-shadow-[0_4px_16px_rgba(245,158,11,0.25)]"
+                  className="w-full max-w-[240px] h-auto object-contain"
+                  style={{ filter: theme.logoDropShadow }}
                 />
               </div>
 
               <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight leading-snug">
                 Gestiona y rastrea tus compras internacionales
               </h2>
-              <p className="text-xs sm:text-sm text-slate-400 mt-2 leading-relaxed">
-                Revisa tus paquetes recibidos en nuestra bodega de Miami con foto en alta definición y seguimiento hasta tus manos en Perú.
+              <p className="text-xs sm:text-sm text-slate-300/80 mt-2 leading-relaxed">
+                Revisa tus paquetes recibidos en nuestra bodega de Miami con foto en alta definición y seguimiento en tiempo real hasta Lima.
               </p>
 
               {/* Value Proposition List */}
               <div className="mt-8 space-y-4">
                 <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0 mt-0.5 text-amber-400">
+                  <div className="w-8 h-8 rounded-xl bg-orange-500/20 border border-orange-500/40 flex items-center justify-center shrink-0 mt-0.5 text-orange-400">
                     <Plane className="w-4 h-4" />
                   </div>
                   <div>
@@ -244,7 +450,7 @@ export default function ClienteLoginPage() {
                 </div>
 
                 <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0 mt-0.5 text-amber-400">
+                  <div className="w-8 h-8 rounded-xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center shrink-0 mt-0.5 text-purple-300">
                     <Camera className="w-4 h-4" />
                   </div>
                   <div>
@@ -254,12 +460,12 @@ export default function ClienteLoginPage() {
                 </div>
 
                 <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0 mt-0.5 text-amber-400">
+                  <div className="w-8 h-8 rounded-xl bg-orange-500/20 border border-orange-500/40 flex items-center justify-center shrink-0 mt-0.5 text-orange-400">
                     <Lock className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="text-xs font-bold text-slate-200">Privacidad y Seguridad Blindada</h3>
-                    <p className="text-[11px] text-slate-400">Base de datos dedicada e independiente para clientes.</p>
+                    <h3 className="text-xs font-bold text-slate-200">Base de datos dedicada y segura</h3>
+                    <p className="text-[11px] text-slate-400">Servidor exclusivo en Oregon (us-west-2) para clientes.</p>
                   </div>
                 </div>
               </div>
@@ -267,25 +473,28 @@ export default function ClienteLoginPage() {
 
             {/* Bottom Support Callout */}
             <div className="mt-8 pt-6 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-              <span>AMEX Courier S.A.C.</span>
+              <span className="flex items-center gap-1.5 text-orange-300">
+                <i className="fa-solid fa-wand-magic-sparkles text-xs" />
+                <span>AMEX Courier S.A.C.</span>
+              </span>
               <span className="font-mono text-slate-500 text-[11px]">RUC 20607649082</span>
             </div>
           </div>
 
           {/* ================= RIGHT COLUMN: INTERACTIVE FORM & TABS ================= */}
-          <div className="lg:col-span-7 p-6 sm:p-10 flex flex-col justify-center bg-slate-900/60">
+          <div className="lg:col-span-7 p-6 sm:p-10 flex flex-col justify-center bg-slate-900/60 relative z-10">
             
             {/* Elegant Tab Switcher */}
-            <div className="grid grid-cols-2 gap-1.5 bg-slate-950/80 p-1.5 rounded-2xl border border-slate-800 mb-8 max-w-md mx-auto w-full">
+            <div className="grid grid-cols-2 gap-1.5 bg-slate-950/85 p-1.5 rounded-2xl border border-orange-500/25 mb-8 max-w-md mx-auto w-full shadow-lg">
               <button
                 type="button"
                 onClick={() => {
                   setActiveTab('login');
                   setErrorMessage(null);
                 }}
-                className={`py-2.5 px-4 text-xs sm:text-sm font-bold rounded-xl transition-all duration-200 flex items-center justify-center gap-2 ${
+                className={`py-2.5 px-4 text-xs sm:text-sm font-extrabold rounded-xl transition-all duration-200 flex items-center justify-center gap-2 ${
                   activeTab === 'login'
-                    ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 shadow-md shadow-amber-500/25'
+                    ? 'amex-halloween-btn text-white'
                     : 'text-slate-400 hover:text-white hover:bg-slate-900/60'
                 }`}
               >
@@ -299,9 +508,9 @@ export default function ClienteLoginPage() {
                   setActiveTab('tracking');
                   setTrackingError(null);
                 }}
-                className={`py-2.5 px-4 text-xs sm:text-sm font-bold rounded-xl transition-all duration-200 flex items-center justify-center gap-2 ${
+                className={`py-2.5 px-4 text-xs sm:text-sm font-extrabold rounded-xl transition-all duration-200 flex items-center justify-center gap-2 ${
                   activeTab === 'tracking'
-                    ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 shadow-md shadow-amber-500/25'
+                    ? 'amex-halloween-btn text-white'
                     : 'text-slate-400 hover:text-white hover:bg-slate-900/60'
                 }`}
               >
@@ -312,8 +521,12 @@ export default function ClienteLoginPage() {
 
             {/* -------------------- TAB 1: LOGIN -------------------- */}
             {activeTab === 'login' && (
-              <div className="max-w-md mx-auto w-full animate-fade-in">
+              <div className="max-w-md mx-auto w-full">
                 <div className="mb-6 text-center sm:text-left">
+                  <div className="flex items-center gap-2 text-xs font-bold text-purple-400 uppercase tracking-wider mb-1">
+                    <i className="fa-solid fa-hat-wizard" />
+                    <span>Portal de Clientes</span>
+                  </div>
                   <h1 className="text-2xl font-black text-white tracking-tight">
                     Iniciar Sesión
                   </h1>
@@ -323,9 +536,9 @@ export default function ClienteLoginPage() {
                 </div>
 
                 {errorMessage && (
-                  <div className="mb-5 p-3.5 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs flex items-start gap-2.5 animate-shake">
+                  <div className="mb-5 p-3.5 rounded-2xl bg-red-500/15 border border-red-500/40 text-red-300 text-xs flex items-start gap-2.5">
                     <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-                    <span className="leading-relaxed font-medium">{errorMessage}</span>
+                    <span className="leading-relaxed font-semibold">{errorMessage}</span>
                   </div>
                 )}
 
@@ -343,7 +556,7 @@ export default function ClienteLoginPage() {
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="tu-correo@ejemplo.com"
-                        className="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl py-3 pl-10 pr-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-500/30 transition-all font-medium"
+                        className="amex-portal-input"
                       />
                     </div>
                   </div>
@@ -358,7 +571,7 @@ export default function ClienteLoginPage() {
                         href="https://wa.me/51924811106?text=Hola%20AMEX%20Courier,%20olvide%20mi%20contraseña%20de%20mi%20casillero"
                         target="_blank"
                         rel="noreferrer"
-                        className="text-[11px] text-amber-400 hover:text-amber-300 font-semibold transition-colors"
+                        className="text-[11px] text-orange-400 hover:text-orange-300 font-semibold transition-colors"
                       >
                         ¿Olvidaste tu contraseña?
                       </a>
@@ -373,7 +586,7 @@ export default function ClienteLoginPage() {
                         onKeyUp={handleCapsLockCheck}
                         onKeyDown={handleCapsLockCheck}
                         placeholder="••••••••"
-                        className="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl py-3 pl-10 pr-11 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-500/30 transition-all font-medium"
+                        className="amex-portal-input pr-11"
                       />
                       <button
                         type="button"
@@ -386,7 +599,7 @@ export default function ClienteLoginPage() {
                     </div>
 
                     {isCapsLockOn && (
-                      <div className="mt-1.5 text-[11px] text-amber-400 flex items-center gap-1.5 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20">
+                      <div className="mt-1.5 text-[11px] text-amber-400 flex items-center gap-1.5 bg-amber-500/15 px-2.5 py-1 rounded-lg border border-amber-500/30">
                         <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                         <span>Bloq Mayús está activado</span>
                       </div>
@@ -397,11 +610,11 @@ export default function ClienteLoginPage() {
                   <button
                     type="submit"
                     disabled={isLoading}
-                    className="w-full mt-3 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black py-3.5 rounded-xl text-sm transition-all shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2.5 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer uppercase tracking-wider"
+                    className="w-full mt-3 amex-halloween-btn text-white font-black py-3.5 rounded-xl text-sm transition-all flex items-center justify-center gap-2.5 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer uppercase tracking-wider"
                   >
                     {isLoading ? (
                       <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                         <span>Verificando credenciales...</span>
                       </div>
                     ) : (
@@ -421,7 +634,7 @@ export default function ClienteLoginPage() {
                       href="https://wa.me/51924811106?text=Hola%20AMEX%20Courier,%20deseo%20abrir%20un%20casillero%20postal%20en%20Miami"
                       target="_blank"
                       rel="noreferrer"
-                      className="text-amber-400 font-bold hover:underline"
+                      className="text-orange-400 font-bold hover:underline"
                     >
                       Solicítalo gratis aquí
                     </a>
@@ -435,10 +648,14 @@ export default function ClienteLoginPage() {
 
             {/* -------------------- TAB 2: QUICK TRACKING -------------------- */}
             {activeTab === 'tracking' && (
-              <div className="max-w-md mx-auto w-full animate-fade-in">
+              <div className="max-w-md mx-auto w-full">
                 <div className="mb-6 text-center sm:text-left">
+                  <div className="flex items-center gap-2 text-xs font-bold text-orange-400 uppercase tracking-wider mb-1">
+                    <i className="fa-solid fa-magnifying-glass" />
+                    <span>Rastreo Rápido Directo</span>
+                  </div>
                   <h2 className="text-2xl font-black text-white tracking-tight">
-                    Consulta Rápida de Paquete
+                    Consulta tu Envío
                   </h2>
                   <p className="text-xs sm:text-sm text-slate-400 mt-1">
                     Ingresa tu número de Warehouse Receipt (WR) o Tracking USA para ver el estado inmediato sin iniciar sesión.
@@ -458,7 +675,7 @@ export default function ClienteLoginPage() {
                         value={searchWr}
                         onChange={(e) => setSearchWr(e.target.value)}
                         placeholder="Ej: WR000486257 o TBA..."
-                        className="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl py-3 pl-10 pr-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-500/30 transition-all uppercase font-mono font-semibold"
+                        className="amex-portal-input uppercase font-mono font-semibold"
                       />
                     </div>
                   </div>
@@ -466,7 +683,7 @@ export default function ClienteLoginPage() {
                   <button
                     type="submit"
                     disabled={isSearching}
-                    className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3.5 rounded-xl text-sm transition-all border border-slate-700/80 shadow-md flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                    className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3.5 rounded-xl text-sm transition-all border border-orange-500/30 shadow-md flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
                   >
                     {isSearching ? (
                       <div className="flex items-center gap-2">
@@ -475,7 +692,7 @@ export default function ClienteLoginPage() {
                       </div>
                     ) : (
                       <>
-                        <Search className="w-4 h-4 text-amber-400" />
+                        <Search className="w-4 h-4 text-orange-400" />
                         <span>Consultar Estado del Paquete</span>
                       </>
                     )}
@@ -483,20 +700,20 @@ export default function ClienteLoginPage() {
                 </form>
 
                 {trackingError && (
-                  <div className="mt-5 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-2.5 animate-shake">
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+                  <div className="mt-5 p-4 rounded-2xl bg-orange-500/10 border border-orange-500/35 text-orange-300 text-xs flex items-start gap-2.5">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-orange-400" />
                     <span className="leading-relaxed">{trackingError}</span>
                   </div>
                 )}
 
                 {trackingResult && (
-                  <div className="mt-6 p-5 rounded-2xl bg-slate-950/90 border border-slate-800 shadow-xl space-y-4 animate-fade-in">
+                  <div className="mt-6 p-5 rounded-2xl bg-slate-950/90 border border-orange-500/30 shadow-2xl space-y-4">
                     
                     {/* Header info */}
                     <div className="flex items-center justify-between border-b border-slate-800/90 pb-3">
                       <div>
                         <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Recibo Warehouse</span>
-                        <p className="text-lg font-black text-amber-400 font-mono tracking-tight">
+                        <p className="text-lg font-black text-orange-400 font-mono tracking-tight">
                           {trackingResult.numero_recibo_bodega}
                         </p>
                       </div>
@@ -538,8 +755,8 @@ export default function ClienteLoginPage() {
                           <span>En Vuelo Internacional Miami ➔ Lima</span>
                         </div>
                       ) : (
-                        <div className="p-3 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 text-xs font-bold flex items-center gap-2.5">
-                          <Clock className="w-4 h-4 shrink-0" />
+                        <div className="p-3 rounded-xl bg-orange-500/15 border border-orange-500/35 text-orange-300 text-xs font-bold flex items-center gap-2.5">
+                          <Clock className="w-4 h-4 shrink-0 text-orange-400" />
                           <span>Recibido en Bodega Miami (TIB)</span>
                         </div>
                       )}
@@ -551,7 +768,7 @@ export default function ClienteLoginPage() {
                         <button
                           type="button"
                           onClick={() => setPreviewPhoto(trackingResult.tib_imagen_url)}
-                          className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-700/80 rounded-xl text-xs font-bold text-amber-400 flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                          className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 border border-orange-500/40 rounded-xl text-xs font-bold text-orange-300 flex items-center justify-center gap-2 transition-colors cursor-pointer"
                         >
                           <Camera className="w-3.5 h-3.5" />
                           <span>📷 Ver Foto Tomada en Miami</span>
@@ -571,11 +788,11 @@ export default function ClienteLoginPage() {
       {/* Modal para ver Foto del Paquete */}
       {previewPhoto && (
         <div 
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4"
           onClick={() => setPreviewPhoto(null)}
         >
           <div 
-            className="relative bg-slate-900 border border-slate-800 rounded-3xl p-4 max-w-lg w-full max-h-[90vh] flex flex-col items-center shadow-2xl"
+            className="relative bg-slate-900 border border-orange-500/30 rounded-3xl p-4 max-w-lg w-full max-h-[90vh] flex flex-col items-center shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="w-full flex items-center justify-between pb-3 border-b border-slate-800">
@@ -599,7 +816,7 @@ export default function ClienteLoginPage() {
               href={previewPhoto}
               target="_blank"
               rel="noreferrer"
-              className="text-xs text-amber-400 hover:underline flex items-center gap-1 font-semibold"
+              className="text-xs text-orange-400 hover:underline flex items-center gap-1 font-semibold"
             >
               <span>Abrir imagen en alta resolución</span>
               <ExternalLink className="w-3 h-3" />
@@ -609,10 +826,10 @@ export default function ClienteLoginPage() {
       )}
 
       {/* Footer */}
-      <footer className="relative z-10 border-t border-slate-800/60 py-4 px-6 text-center text-xs text-slate-500 bg-slate-950/40">
+      <footer className="relative z-10 border-t border-orange-500/20 py-4 px-6 text-center text-xs text-slate-400 bg-slate-950/60">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
           <p>© {new Date().getFullYear()} AMEX COURIER PERÚ — Todos los derechos reservados.</p>
-          <p className="text-[11px] text-slate-600">Servicio de Casillero Postal USA &bull; Sistema Exclusivo de Clientes</p>
+          <p className="text-[11px] text-orange-400/80">Edición Especial Halloween • Casillero Postal USA &bull; Sistema de Clientes</p>
         </div>
       </footer>
     </div>
