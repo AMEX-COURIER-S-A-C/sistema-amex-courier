@@ -1,34 +1,29 @@
 /**
- * Obtiene la URL base correcta para el Portal de Clientes, adaptándose dinámicamente
- * entre desarrollo local (localhost:3000) y producción (clientes.sistemaamexcourier.online).
+ * Obtiene la URL base oficial para el Portal de Clientes (enlaces de invitación, activación y recuperación).
+ * Por defecto SIEMPRE debe ser el dominio oficial de producción: https://clientes.sistemaamexcourier.online
+ * para que los clientes que abran el correo desde su celular, tablet o PC accedan siempre a la web real.
  */
 export function getPortalBaseUrl(req?: Request): string {
-  // 1. Si la petición trae encabezados de host
-  if (req) {
-    const forwardedHost = req.headers.get('x-forwarded-host');
-    const host = forwardedHost || req.headers.get('host');
-    const proto = req.headers.get('x-forwarded-proto') || (host?.includes('localhost') ? 'http' : 'https');
-
-    if (host) {
-      // Si estamos en localhost
-      if (host.includes('localhost') || host.includes('127.0.0.1')) {
-        return `${proto}://${host}`;
-      }
-      // Si el host ya es el subdominio de clientes o el dominio principal
-      return `${proto}://${host}`;
-    }
+  // 1. Si explícitamente se fuerza localhost para depuración interna específica
+  if (process.env.FORCE_LOCAL_PORTAL_URL === 'true') {
+    return 'http://localhost:3000';
   }
 
-  // 2. Variable de entorno explícita
+  // 2. Si se configuró una URL explícita en el entorno
   if (process.env.NEXT_PUBLIC_PORTAL_URL) {
     return process.env.NEXT_PUBLIC_PORTAL_URL.replace(/\/$/, '');
   }
 
-  // 3. Producción
-  if (process.env.NODE_ENV === 'production') {
-    return 'https://clientes.sistemaamexcourier.online';
+  // 3. Si la petición viene de un host público real
+  if (req) {
+    const forwardedHost = req.headers.get('x-forwarded-host');
+    const host = forwardedHost || req.headers.get('host');
+    if (host && !host.includes('localhost') && !host.includes('127.0.0.1')) {
+      const proto = req.headers.get('x-forwarded-proto') || 'https';
+      return `${proto}://${host}`;
+    }
   }
 
-  // 4. Fallback desarrollo
-  return process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+  // 4. Por defecto absoluto para cualquier correo a clientes: el dominio oficial en vivo
+  return 'https://clientes.sistemaamexcourier.online';
 }
