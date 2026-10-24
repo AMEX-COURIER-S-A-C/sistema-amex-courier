@@ -12,18 +12,15 @@ import {
   Lock, 
   Mail, 
   ArrowRight, 
-  CheckCircle2, 
   AlertCircle, 
   Eye, 
   EyeOff, 
   ShieldCheck,
-  Plane,
   Building2,
+  Plane,
   Clock,
-  ExternalLink,
-  MessageCircle,
   Camera,
-  Sparkles
+  ExternalLink
 } from 'lucide-react';
 
 export default function ClienteLoginPage() {
@@ -86,13 +83,11 @@ export default function ClienteLoginPage() {
       }
 
       if (data.session) {
-        // Establecer sesión en el cliente de Supabase del navegador
         await supabasePortal.auth.setSession({
           access_token: data.session.access_token,
           refresh_token: data.session.refresh_token,
         });
 
-        // Activar cortina de entrada fluida Halloween
         setIsTransitioningIn(true);
         setTimeout(() => {
           router.push('/clientes');
@@ -102,7 +97,6 @@ export default function ClienteLoginPage() {
 
       throw new Error('No se pudo establecer la sesión.');
     } catch (err: any) {
-      // Intento de fallback directo con el cliente de Supabase del navegador
       try {
         const { data: directAuth, error: directError } = await supabasePortal.auth.signInWithPassword({
           email: cleanEmail,
@@ -138,7 +132,6 @@ export default function ClienteLoginPage() {
     setTrackingResult(null);
 
     try {
-      // Consultar a través del endpoint blindado de rastreo
       const res = await fetch(`/api/clientes/tracking?code=${encodeURIComponent(code)}`);
       const json = await res.json();
 
@@ -159,7 +152,7 @@ export default function ClienteLoginPage() {
     }
   };
 
-  // Cortina fluida de entrada tras login exitoso (Estilo Halloween AAA)
+  // Cortina de entrada tras login exitoso
   if (isTransitioningIn) {
     return (
       <div
@@ -233,7 +226,7 @@ export default function ClienteLoginPage() {
             </span>
           </div>
           <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 18px 0', lineHeight: 1.45 }}>
-            Sincronizando estado de paquetes y guías en Miami y Lima...
+            Sincronizando estado de paquetes y guías...
           </p>
 
           <div
@@ -271,7 +264,7 @@ export default function ClienteLoginPage() {
         minHeight: '100dvh',
       }}
     >
-      {/* Escena Dinámica Halloween 60 FPS (Luna de cosecha, brujas, murciélagos, calabazas, chispas) */}
+      {/* Escena Dinámica Halloween (Luna de cosecha, brujas, murciélagos, calabazas, chispas) */}
       {theme.isHalloween && <HalloweenBackdrop />}
 
       <style>{`
@@ -283,7 +276,7 @@ export default function ClienteLoginPage() {
           position: relative;
           z-index: 2;
           width: 100%;
-          max-width: 1040px;
+          max-width: 960px;
           border-radius: 24px;
           overflow: hidden;
           background: rgba(15, 23, 42, 0.82);
@@ -339,23 +332,15 @@ export default function ClienteLoginPage() {
         }
       `}</style>
 
-      {/* Top Header */}
-      <header className="relative z-10 border-b border-orange-500/25 bg-slate-950/75 backdrop-blur-xl px-5 sm:px-8 py-3.5">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+      {/* Top Header - Limpio con Logo Oficial */}
+      <header className="relative z-10 border-b border-orange-500/20 bg-slate-950/75 backdrop-blur-xl px-5 sm:px-8 py-3.5">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            {/* Logo Oficial en Cabecera */}
-            <div className="flex items-center gap-2.5">
-              <img
-                src="/images/logo-amex-clean.png"
-                alt="AMEX Courier"
-                className="h-8 w-auto object-contain drop-shadow-[0_2px_8px_rgba(249,115,22,0.35)]"
-              />
-              <span className="hidden sm:inline-block h-4 w-px bg-slate-700/80 mx-1" />
-              <div className="hidden sm:flex items-center gap-1.5 text-xs font-bold text-orange-400 bg-orange-500/15 px-2.5 py-0.5 rounded-full border border-orange-500/30">
-                <i className="fa-solid fa-ghost text-[10px]" />
-                <span>Portal Clientes Halloween</span>
-              </div>
-            </div>
+            <img
+              src="/images/logo-amex-clean.png"
+              alt="AMEX Courier"
+              className="h-8 w-auto object-contain drop-shadow-[0_2px_8px_rgba(249,115,22,0.35)]"
+            />
           </div>
 
           <div className="flex items-center gap-3">
@@ -377,10 +362,10 @@ export default function ClienteLoginPage() {
         </div>
       </header>
 
-      {/* Main Container - Split Layout con Telarañas y Animación Interactiva */}
+      {/* Main Container */}
       <main className="relative z-10 flex-1 flex items-center justify-center p-4 sm:p-6 md:p-8 my-auto">
         <div 
-          className="amex-portal-shell grid grid-cols-1 lg:grid-cols-12 min-h-[590px]"
+          className="amex-portal-shell grid grid-cols-1 lg:grid-cols-12 min-h-[520px]"
           onMouseMove={(e) => {
             const rect = e.currentTarget.getBoundingClientRect();
             e.currentTarget.style.setProperty('--spot-x', `${e.clientX - rect.left}px`);
@@ -391,31 +376,18 @@ export default function ClienteLoginPage() {
             e.currentTarget.style.setProperty('--spot-opacity', '0');
           }}
         >
-          {/* Telarañas de esquina interactivas con arañas que trepan */}
+          {/* Telarañas de esquina */}
           {theme.isHalloween && <HalloweenCornerWebs />}
           
-          {/* ================= LEFT COLUMN: HALLOWEEN BRANDING & FEATURES ================= */}
+          {/* ================= LEFT COLUMN: CLEAN BRANDING ================= */}
           <div 
-            className="lg:col-span-5 p-7 sm:p-10 border-b lg:border-b-0 lg:border-r border-orange-500/25 flex flex-col justify-between relative overflow-hidden"
+            className="lg:col-span-5 p-8 sm:p-12 border-b lg:border-b-0 lg:border-r border-orange-500/25 flex flex-col justify-center relative overflow-hidden"
             style={{ background: theme.leftPanelBackground }}
           >
-            <div>
-              {/* Badge Halloween */}
+            <div className="space-y-6 max-w-sm mx-auto lg:mx-0">
+              {/* Logo Box Oficial */}
               <div 
-                className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-xs font-black tracking-wider uppercase mb-6"
-                style={{
-                  background: theme.badgeBackground,
-                  border: theme.badgeBorder,
-                  color: theme.badgeColor,
-                }}
-              >
-                <i className={theme.badgeIcon} />
-                <span>{theme.badgeText}</span>
-              </div>
-
-              {/* Logo Box Oficial con Resplandor */}
-              <div 
-                className="rounded-2xl p-6 mb-6 flex items-center justify-center"
+                className="rounded-2xl p-6 flex items-center justify-center"
                 style={{
                   background: 'linear-gradient(145deg, rgba(15, 23, 42, 0.9) 0%, rgba(7, 4, 15, 0.95) 100%)',
                   border: theme.logoBoxBorder,
@@ -430,54 +402,14 @@ export default function ClienteLoginPage() {
                 />
               </div>
 
-              <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight leading-snug">
-                Gestiona y rastrea tus compras internacionales
-              </h2>
-              <p className="text-xs sm:text-sm text-slate-300/80 mt-2 leading-relaxed">
-                Revisa tus paquetes recibidos en nuestra bodega de Miami con foto en alta definición y seguimiento en tiempo real hasta Lima.
-              </p>
-
-              {/* Value Proposition List */}
-              <div className="mt-8 space-y-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-orange-500/20 border border-orange-500/40 flex items-center justify-center shrink-0 mt-0.5 text-orange-400">
-                    <Plane className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-xs font-bold text-slate-200">Vuelos continuos Miami ➔ Lima</h3>
-                    <p className="text-[11px] text-slate-400">Despachos rápidos y alerta inmediata de arribo a almacén.</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center shrink-0 mt-0.5 text-purple-300">
-                    <Camera className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-xs font-bold text-slate-200">Fotografía real de tus paquetes</h3>
-                    <p className="text-[11px] text-slate-400">Comprueba el estado de tu carga registrada en bodega.</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-orange-500/20 border border-orange-500/40 flex items-center justify-center shrink-0 mt-0.5 text-orange-400">
-                    <Lock className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-xs font-bold text-slate-200">Base de datos dedicada y segura</h3>
-                    <p className="text-[11px] text-slate-400">Servidor exclusivo en Oregon (us-west-2) para clientes.</p>
-                  </div>
-                </div>
+              <div>
+                <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight leading-snug">
+                  Tu Casillero en Miami & Lima
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-300/80 mt-2 leading-relaxed">
+                  Rastrea tus compras en tiempo real y revisa la evidencia fotográfica registrada en bodega.
+                </p>
               </div>
-            </div>
-
-            {/* Bottom Support Callout */}
-            <div className="mt-8 pt-6 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-              <span className="flex items-center gap-1.5 text-orange-300">
-                <i className="fa-solid fa-wand-magic-sparkles text-xs" />
-                <span>AMEX Courier S.A.C.</span>
-              </span>
-              <span className="font-mono text-slate-500 text-[11px]">RUC 20607649082</span>
             </div>
           </div>
 
@@ -523,16 +455,9 @@ export default function ClienteLoginPage() {
             {activeTab === 'login' && (
               <div className="max-w-md mx-auto w-full">
                 <div className="mb-6 text-center sm:text-left">
-                  <div className="flex items-center gap-2 text-xs font-bold text-purple-400 uppercase tracking-wider mb-1">
-                    <i className="fa-solid fa-hat-wizard" />
-                    <span>Portal de Clientes</span>
-                  </div>
                   <h1 className="text-2xl font-black text-white tracking-tight">
                     Iniciar Sesión
                   </h1>
-                  <p className="text-xs sm:text-sm text-slate-400 mt-1">
-                    Ingresa con tu correo y contraseña asignada a tu casillero.
-                  </p>
                 </div>
 
                 {errorMessage && (
@@ -627,7 +552,7 @@ export default function ClienteLoginPage() {
                 </form>
 
                 {/* Additional Guidance */}
-                <div className="mt-8 pt-6 border-t border-slate-800/80 text-center space-y-2">
+                <div className="mt-6 pt-5 border-t border-slate-800/80 text-center">
                   <p className="text-xs text-slate-400">
                     ¿Aún no tienes casillero en Miami?{' '}
                     <a 
@@ -639,9 +564,6 @@ export default function ClienteLoginPage() {
                       Solicítalo gratis aquí
                     </a>
                   </p>
-                  <p className="text-[11px] text-slate-500">
-                    Acceso autorizado únicamente para clientes registrados de AMEX Courier.
-                  </p>
                 </div>
               </div>
             )}
@@ -650,22 +572,15 @@ export default function ClienteLoginPage() {
             {activeTab === 'tracking' && (
               <div className="max-w-md mx-auto w-full">
                 <div className="mb-6 text-center sm:text-left">
-                  <div className="flex items-center gap-2 text-xs font-bold text-orange-400 uppercase tracking-wider mb-1">
-                    <i className="fa-solid fa-magnifying-glass" />
-                    <span>Rastreo Rápido Directo</span>
-                  </div>
                   <h2 className="text-2xl font-black text-white tracking-tight">
                     Consulta tu Envío
                   </h2>
-                  <p className="text-xs sm:text-sm text-slate-400 mt-1">
-                    Ingresa tu número de Warehouse Receipt (WR) o Tracking USA para ver el estado inmediato sin iniciar sesión.
-                  </p>
                 </div>
 
                 <form onSubmit={handleQuickTracking} className="space-y-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
-                      Número de Guía / Tracking
+                      Número de Guía o Tracking USA
                     </label>
                     <div className="relative">
                       <Package className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -747,7 +662,7 @@ export default function ClienteLoginPage() {
                       {trackingResult.estado_amex === 'en_almacen' ? (
                         <div className="p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-2.5">
                           <Building2 className="w-4 h-4 shrink-0" />
-                          <span>¡En Almacén Lince! (Listo para retiro o entrega)</span>
+                          <span>¡En Almacén Lince! (Listo para entrega)</span>
                         </div>
                       ) : trackingResult.estado_tib === 'Enviado' ? (
                         <div className="p-3 rounded-xl bg-blue-500/15 border border-blue-500/30 text-blue-400 text-xs font-bold flex items-center gap-2.5">
@@ -825,12 +740,9 @@ export default function ClienteLoginPage() {
         </div>
       )}
 
-      {/* Footer */}
+      {/* Footer Limpio */}
       <footer className="relative z-10 border-t border-orange-500/20 py-4 px-6 text-center text-xs text-slate-400 bg-slate-950/60">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
-          <p>© {new Date().getFullYear()} AMEX COURIER PERÚ — Todos los derechos reservados.</p>
-          <p className="text-[11px] text-orange-400/80">Edición Especial Halloween • Casillero Postal USA &bull; Sistema de Clientes</p>
-        </div>
+        <p>© {new Date().getFullYear()} AMEX COURIER PERÚ — Todos los derechos reservados.</p>
       </footer>
     </div>
   );
