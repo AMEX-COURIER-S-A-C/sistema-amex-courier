@@ -191,10 +191,43 @@ export default function ClienteDashboardTIB() {
 
   // Paginación
   const totalPages = Math.ceil(filteredPaquetes.length / itemsPerPage) || 1;
+
+  // Auto-ajustar currentPage si supera totalPages (p. ej. al filtrar)
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(Math.max(1, totalPages));
+    }
+  }, [currentPage, totalPages]);
+
   const paginatedPaquetes = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
     return filteredPaquetes.slice(start, start + itemsPerPage);
   }, [filteredPaquetes, currentPage, itemsPerPage]);
+
+  // Cálculo matemático estricto de páginas visibles (5 páginas continuas y 100% únicas, sin duplicados)
+  const paginationPages = useMemo(() => {
+    const maxVisible = 5;
+    if (totalPages <= maxVisible) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+    const half = Math.floor(maxVisible / 2);
+    let start = currentPage - half;
+    let end = currentPage + half;
+
+    if (start < 1) {
+      start = 1;
+      end = maxVisible;
+    } else if (end > totalPages) {
+      end = totalPages;
+      start = totalPages - maxVisible + 1;
+    }
+
+    const pages: number[] = [];
+    for (let p = start; p <= end; p++) {
+      pages.push(p);
+    }
+    return pages;
+  }, [currentPage, totalPages]);
 
   // Formato de fecha en dos líneas como TIB
   const formatDateTimeTIB = (isoString?: string | null) => {
@@ -619,16 +652,11 @@ export default function ClienteDashboardTIB() {
                 </button>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '0 4px' }}>
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    let pageNum = i + 1;
-                    if (totalPages > 5 && currentPage > 3) {
-                      pageNum = currentPage - 3 + i + 1;
-                      if (pageNum > totalPages) pageNum = totalPages - (4 - i);
-                    }
+                  {paginationPages.map((pageNum) => {
                     const isSelected = currentPage === pageNum;
                     return (
                       <button
-                        key={pageNum}
+                        key={`page-${pageNum}`}
                         type="button"
                         onClick={() => setCurrentPage(pageNum)}
                         style={{
