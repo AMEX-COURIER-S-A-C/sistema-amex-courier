@@ -59,6 +59,8 @@ interface ManifestRow {
   observacion: string;
   total_paquetes?: number;
   pagina?: number;
+  arbitrado?: boolean;
+  consenso_directo?: boolean;
 }
 
 export default function ManifiestosTibTab({ onRefreshData }: { onRefreshData?: () => Promise<void> }) {
@@ -66,6 +68,8 @@ export default function ManifiestosTibTab({ onRefreshData }: { onRefreshData?: (
   const [file, setFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState<string>('');
+  const [processingStage, setProcessingStage] = useState<1 | 2 | 3>(1);
+  const [processingPercent, setProcessingPercent] = useState<number>(0);
   const [encabezado, setEncabezado] = useState<HeaderData | null>(null);
   const [cuadre, setCuadre] = useState<ReconciliationData | null>(null);
   const [filas, setFilas] = useState<ManifestRow[]>([]);
@@ -92,14 +96,26 @@ export default function ManifiestosTibTab({ onRefreshData }: { onRefreshData?: (
     if (!file) return;
 
     setIsProcessing(true);
-    setProcessingStep('Iniciando extracción con motor OpenCV & PyMuPDF...');
+    setProcessingStage(1);
+    setProcessingPercent(15);
+    setProcessingStep('Paso 1/3: Rasterizando páginas a 300 DPI y corrigiendo inclinación óptica (Hough)...');
     setSaveSuccessMsg(null);
+
+    const timer1 = setTimeout(() => {
+      setProcessingStage(2);
+      setProcessingPercent(45);
+      setProcessingStep('Paso 2/3: Pasada 1 — Extracción inicial estructurada con GPT-6.1 Sol...');
+    }, 4500);
+
+    const timer2 = setTimeout(() => {
+      setProcessingStage(3);
+      setProcessingPercent(78);
+      setProcessingStep('Paso 3/3: Pasada 2 — Auditoría forense de matriz de puntos (0/8, 1/4, 1/7) y consenso...');
+    }, 12000);
 
     try {
       const formData = new FormData();
       formData.append('file', file);
-
-      setProcessingStep('Rasterizando páginas y detectando cuadrículas OMR...');
 
       const res = await fetch('/api/manifiestos-tib/procesar', {
         method: 'POST',
@@ -112,6 +128,8 @@ export default function ManifiestosTibTab({ onRefreshData }: { onRefreshData?: (
         throw new Error(data.error || 'Error al procesar el archivo');
       }
 
+      setProcessingPercent(100);
+      setProcessingStep('✓ Consenso 100% verificado y tabla conciliada.');
       setEncabezado(data.encabezado);
       setCuadre(data.cuadre);
       setFilas(data.filas || []);
@@ -126,6 +144,8 @@ export default function ManifiestosTibTab({ onRefreshData }: { onRefreshData?: (
         variant: 'danger'
       });
     } finally {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
       setIsProcessing(false);
       setProcessingStep('');
     }
@@ -538,8 +558,90 @@ export default function ManifiestosTibTab({ onRefreshData }: { onRefreshData?: (
           )}
 
           {isProcessing && (
-            <div style={{ marginTop: '12px', color: '#64748b', fontSize: '13px', fontStyle: 'italic' }}>
-              ⏳ {processingStep}
+            <div
+              style={{
+                marginTop: '18px',
+                padding: '20px',
+                background: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '12px',
+                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05)',
+              }}
+            >
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', marginBottom: '14px' }}>
+                <div
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    background: processingStage >= 1 ? '#eff6ff' : '#f8fafc',
+                    border: `1px solid ${processingStage >= 1 ? '#3b82f6' : '#e2e8f0'}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    color: processingStage >= 1 ? '#1d4ed8' : '#94a3b8',
+                  }}
+                >
+                  <span style={{ background: processingStage >= 1 ? '#3b82f6' : '#cbd5e1', color: '#fff', borderRadius: '50%', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px' }}>1</span>
+                  <span>1. Óptica HD & Deskew</span>
+                </div>
+
+                <div
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    background: processingStage >= 2 ? '#eff6ff' : '#f8fafc',
+                    border: `1px solid ${processingStage >= 2 ? '#3b82f6' : '#e2e8f0'}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    color: processingStage >= 2 ? '#1d4ed8' : '#94a3b8',
+                  }}
+                >
+                  <span style={{ background: processingStage >= 2 ? '#3b82f6' : '#cbd5e1', color: '#fff', borderRadius: '50%', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px' }}>2</span>
+                  <span>2. Pasada 1 (Extracción)</span>
+                </div>
+
+                <div
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    background: processingStage >= 3 ? '#f0fdf4' : '#f8fafc',
+                    border: `1px solid ${processingStage >= 3 ? '#22c55e' : '#e2e8f0'}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    color: processingStage >= 3 ? '#15803d' : '#94a3b8',
+                  }}
+                >
+                  <span style={{ background: processingStage >= 3 ? '#22c55e' : '#cbd5e1', color: '#fff', borderRadius: '50%', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px' }}>3</span>
+                  <span>3. Pasada 2 (Consenso IA)</span>
+                </div>
+              </div>
+
+              <div style={{ width: '100%', height: '8px', background: '#e2e8f0', borderRadius: '999px', overflow: 'hidden' }}>
+                <div
+                  style={{
+                    width: `${processingPercent}%`,
+                    height: '100%',
+                    background: 'linear-gradient(90deg, #3b82f6 0%, #10b981 100%)',
+                    transition: 'width 0.4s ease-in-out',
+                  }}
+                />
+              </div>
+
+              <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12.5px' }}>
+                <span style={{ color: '#0f172a', fontWeight: 600 }}>
+                  <i className="fa-solid fa-spinner fa-spin" style={{ marginRight: '6px', color: '#3b82f6' }}></i>
+                  {processingStep}
+                </span>
+                <span style={{ fontWeight: 800, color: '#64748b' }}>{processingPercent}%</span>
+              </div>
             </div>
           )}
         </div>

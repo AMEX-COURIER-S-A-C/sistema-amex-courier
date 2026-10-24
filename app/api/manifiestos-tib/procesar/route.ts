@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
       console.warn('[R2 Upload Warning in procesar]:', r2Err);
     }
 
-    // 1. Intentar procesar en el microservicio Python VPS si está disponible
+    // 1. Intentar procesar en el motor forense de alta resolución del VPS (Hostinger)
     const vpsHost = process.env.VPS_HOST || '2.25.89.222';
     const engineUrl = process.env.MANIFEST_ENGINE_URL || `http://${vpsHost}:8000`;
 
@@ -112,19 +112,73 @@ export async function POST(req: NextRequest) {
       const blob = new Blob([fileBuffer], { type: file.type || 'application/pdf' });
       pythonFormData.append('file', blob, file.name);
 
-      // Timeout corto (3s) para no bloquear al operador si el puerto o VPS no está activo
-      const pyRes = await fetch(`${engineUrl}/process-manifest`, {
+      // Conexión al motor HD de doble pasada y consenso con GPT-6.1 Sol en VPS
+      const pyRes = await fetch(`${engineUrl}/process-manifest-hd`, {
         method: 'POST',
         body: pythonFormData,
-        signal: AbortSignal.timeout(3500),
+        signal: AbortSignal.timeout(90_000),
       });
 
       if (pyRes.ok) {
         const pyData = await pyRes.json();
-        return NextResponse.json({ ...pyData, archivo_url: archivoUrl });
+        const encabezado = pyData.encabezado || {};
+        const filas = pyData.filas || [];
+
+        // Reconciliación Matemática de Cuadre
+        const guiasDeclaradas = Number(encabezado.guias_declaradas || 0);
+        const paquetesDeclarados = Number(encabezado.paquetes_declarados || 0);
+        const totalGuiasExtraidas = filas.length;
+        let totalWrsExtraidos = 0;
+        const guiasMultiPaquete: any[] = [];
+        const guiasSinPaquete: any[] = [];
+
+        for (const f of filas) {
+          const wrs = f.wrs || [];
+          totalWrsExtraidos += wrs.length;
+          if (wrs.length > 1) {
+            guiasMultiPaquete.push({ guia: f.guia, cantidad: wrs.length, wrs });
+          } else if (wrs.length === 0) {
+            guiasSinPaquete.push({ guia: f.guia, observacion: f.observacion });
+          }
+        }
+
+        const difGuias = totalGuiasExtraidas - guiasDeclaradas;
+        const difPaquetes = totalWrsExtraidos - paquetesDeclarados;
+        const cuadrePerfecto = guiasDeclaradas > 0 && difGuias === 0 && difPaquetes === 0;
+
+        return NextResponse.json({
+          success: true,
+          archivo: file.name,
+          archivo_url: archivoUrl,
+          motor: 'vps_dualpass_consensus_gpt61_sol',
+          total_paginas: pyData.total_paginas || 1,
+          encabezado,
+          cuadre: {
+            cuadre_perfecto: cuadrePerfecto,
+            status_code: cuadrePerfecto ? 'CUADRE_PERFECTO' : 'DESCUADRE',
+            mensaje: cuadrePerfecto
+              ? `✓ Cuadre Perfecto: 100% de coincidencia (${totalGuiasExtraidas} Guías / ${totalWrsExtraidos} Paquetes) con Consenso Doble Pasada.`
+              : `⚠️ Descuadre detectado: Guías (${totalGuiasExtraidas}/${guiasDeclaradas}) • Paquetes (${totalWrsExtraidos}/${paquetesDeclarados})`,
+            totales: {
+              guias_declaradas: guiasDeclaradas,
+              guias_extraidas: totalGuiasExtraidas,
+              diferencia_guias: difGuias,
+              paquetes_declarados: paquetesDeclarados,
+              paquetes_extraidos: totalWrsExtraidos,
+              diferencia_paquetes: difPaquetes,
+            },
+            auditoria: {
+              total_guias_con_multiples_paquetes: guiasMultiPaquete.length,
+              guias_multi_paquete: guiasMultiPaquete,
+              total_guias_sin_paquete: guiasSinPaquete.length,
+              guias_sin_paquete: guiasSinPaquete,
+            },
+          },
+          filas,
+        });
       }
-    } catch {
-      // Si el microservicio Python en VPS no está disponible, pasar a motor multimodal
+    } catch (pyErr) {
+      console.warn('[VPS Manifest Engine Warning]: Falló motor VPS, conmutando a motor de contingencia Vercel:', pyErr);
     }
 
     // 2. Motor de Contingencia Inteligente (Soporta PDF multipágina e imágenes)
@@ -328,63 +382,7 @@ INSTRUCCIONES CRÍTICAS DE FORMATO Y OCR:
         todasLasFilas.push(...pageRows);
       }
 
-      // Validación y Autocorrección Contextual contra Paquetes Registrados en Supabase
-      try {
-        const admin = getSupabaseAdmin();
-        const { data: dbPackages } = await admin
-          .from('paquetes')
-          .select('id, numero_recibo_bodega, tracking')
-          .not('numero_recibo_bodega', 'is', null)
-          .order('creado_en', { ascending: false })
-          .limit(1000);
-
-        if (dbPackages && dbPackages.length > 0) {
-          const knownWrSet = new Set(
-            dbPackages
-              .map((p) => p.numero_recibo_bodega?.toUpperCase().trim())
-              .filter(Boolean) as string[]
-          );
-
-          for (const f of todasLasFilas) {
-            f.wrs = f.wrs.map((wr: string) => {
-              if (knownWrSet.has(wr)) return wr;
-
-              // Buscar si existe un WR en BD con distancia 1 (típica confusión matriz de puntos)
-              for (const known of knownWrSet) {
-                if (known.length === wr.length && known.startsWith('WR000')) {
-                  let diffCount = 0;
-                  let diffIdx = -1;
-                  for (let i = 0; i < wr.length; i++) {
-                    if (wr[i] !== known[i]) {
-                      diffCount++;
-                      diffIdx = i;
-                    }
-                  }
-                  if (diffCount === 1) {
-                    const charWr = wr[diffIdx];
-                    const charKnown = known[diffIdx];
-                    const isCommonConfusion =
-                      (charWr === '4' && charKnown === '1') ||
-                      (charWr === '1' && charKnown === '4') ||
-                      (charWr === '0' && charKnown === '8') ||
-                      (charWr === '8' && charKnown === '0') ||
-                      (charWr === '7' && charKnown === '1') ||
-                      (charWr === '1' && charKnown === '7');
-
-                    if (isCommonConfusion) {
-                      console.log(`[OCR Auto-Correction]: Replaced ${wr} with ${known} (matched known DB package with 1-char difference)`);
-                      return known;
-                    }
-                  }
-                }
-              }
-              return wr;
-            });
-          }
-        }
-      } catch (dbErr) {
-        console.warn('[OCR Reconcile Warning]: Error checking known packages in DB:', dbErr);
-      }
+      // La extracción física del PDF debe ser 100% fiel al documento escaneado sin sobreescrituras arbitrarias.
 
       // Reconciliación Matemática de Cuadre
       const guiasDeclaradas = Number(encabezadoExtraid.guias_declaradas || 0);
