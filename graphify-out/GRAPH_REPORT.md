@@ -1,16 +1,16 @@
 # Graph Report - sistema-amex-courier  (2026-10-24)
 
 ## Corpus Check
-- 513 files · ~562,005 words
+- 513 files · ~562,061 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2308 nodes · 5247 edges · 153 communities (128 shown, 25 thin omitted)
+- 2308 nodes · 5247 edges · 154 communities (129 shown, 25 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 17 edges (avg confidence: 0.62)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `8ccab519`
+- Built from commit: `158b60df`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -122,6 +122,7 @@
 - scanner.ts
 - next_types_root_params_d
 - next_types_routes_d
+- CobroDeliveryModal.tsx
 - ref_fs
 - useCobrosOperaciones.ts
 - read-excel-file
@@ -175,7 +176,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (153 total, 25 thin omitted)
+## Communities (154 total, 25 thin omitted)
 
 ### Community 0 - "constants.ts"
 Cohesion: 0.22
@@ -438,8 +439,8 @@ Cohesion: 0.11
 Nodes (22): BoletasShalomSkeleton(), CobrosSkeleton(), DashboardSkeleton(), DniMatrixSkeleton(), FormatoEntregaSkeleton(), InventorySkeleton(), InvoicesSkeleton(), LiveSheetsSkeleton() (+14 more)
 
 ### Community 81 - "CobrosDailySheetView.tsx"
-Cohesion: 0.20
-Nodes (10): CobroDeliveryModal(), CobroDeliveryModalProps, CobrosDailySheetView(), CobrosTab(), DirectorioClientesTab(), useCobrosOperaciones(), VoucherViewerModal(), TipoRetirante (+2 more)
+Cohesion: 0.31
+Nodes (6): CobrosDailySheetView(), CobrosTab(), DirectorioClientesTab(), useCobrosOperaciones(), VoucherViewerModal(), CobrosTab
 
 ### Community 82 - "inventory/index.ts"
 Cohesion: 0.11
@@ -540,6 +541,10 @@ Nodes (4): GET(), LogEntry, Logger, LogLevel
 ### Community 114 - "scanner.ts"
 Cohesion: 0.36
 Nodes (8): BaseScanExtra, DeliveryScanExtra, GeneralScanExtra, LookupScanExtra, OnScanConfirmHandler, RelocateScanExtra, ScanWorkflowMode, SlottingScanExtra
+
+### Community 117 - "CobroDeliveryModal.tsx"
+Cohesion: 0.50
+Nodes (4): CobroDeliveryModal(), CobroDeliveryModalProps, TipoRetirante, features_cobros_types_tiporetirante
 
 ### Community 119 - "ref_fs"
 Cohesion: 0.12
