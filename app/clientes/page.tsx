@@ -5,58 +5,69 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { 
-  Package, 
   Search, 
   RotateCw, 
-  Plane, 
-  Building2, 
-  CheckCircle2, 
-  Clock, 
-  Image as ImageIcon, 
+  FileText, 
+  Camera, 
   X, 
   LogOut, 
-  ShieldCheck, 
+  ChevronDown, 
   ChevronLeft, 
   ChevronRight,
+  Menu,
   ExternalLink,
-  Layers
+  Package,
+  Plane,
+  Building2,
+  CheckCircle2,
+  Clock,
+  Eye,
+  Filter
 } from 'lucide-react';
 
-interface PaqueteCliente {
+interface PaqueteTIB {
   id: string;
   numero_recibo_bodega: string;
   tracking: string;
+  nombre_consignatario: string | null;
+  tipo_empaque: string | null;
   peso_kg: number | null;
   estado_tib: string | null;
   estado_amex: string | null;
   tib_imagen_url: string | null;
-  nombre_consignatario: string | null;
+  tib_ticket_pdf_url: string | null;
   creado_en: string;
+  actualizado_en: string | null;
 }
 
-export default function ClienteDashboardPage() {
+export default function ClienteDashboardTIB() {
   const router = useRouter();
 
   const [user, setUser] = useState<any | null>(null);
-  const [paquetes, setPaquetes] = useState<PaqueteCliente[]>([]);
+  const [paquetes, setPaquetes] = useState<PaqueteTIB[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('todos');
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+
+  // Filtros individuales estilo TIB
+  const [filterWr, setFilterWr] = useState('');
+  const [filterTracking, setFilterTracking] = useState('');
+  const [filterConsignatario, setFilterConsignatario] = useState('');
+  const [filterTipo, setFilterTipo] = useState('');
+  const [filterEstado, setFilterEstado] = useState('');
 
   // Modal para ver foto
   const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; wr: string } | null>(null);
 
-  // Paginación
+  // Paginación estilo TIB
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const itemsPerPage = 12;
 
-  // Cargar usuario autenticado
+  // Cargar sesión del usuario
   useEffect(() => {
     async function loadSession() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        // Redirigir a login si no hay sesión
         router.push('/clientes/login');
         return;
       }
@@ -66,14 +77,26 @@ export default function ClienteDashboardPage() {
     loadSession();
   }, [router]);
 
-  // Cargar paquetes asignados al correo del cliente
   const fetchPaquetes = async (email?: string | null) => {
     if (!email) return;
     setIsLoading(true);
     try {
       const { data, error } = await supabase
         .from('paquetes')
-        .select('id, numero_recibo_bodega, tracking, peso_kg, estado_tib, estado_amex, tib_imagen_url, nombre_consignatario, creado_en')
+        .select(`
+          id, 
+          numero_recibo_bodega, 
+          tracking, 
+          nombre_consignatario,
+          tipo_empaque,
+          peso_kg, 
+          estado_tib, 
+          estado_amex, 
+          tib_imagen_url, 
+          tib_ticket_pdf_url,
+          creado_en, 
+          actualizado_en
+        `)
         .eq('usuario_email', email)
         .order('creado_en', { ascending: false });
 
@@ -94,236 +117,400 @@ export default function ClienteDashboardPage() {
     }
   };
 
+  const handleClearFilters = () => {
+    setFilterWr('');
+    setFilterTracking('');
+    setFilterConsignatario('');
+    setFilterTipo('');
+    setFilterEstado('');
+    setCurrentPage(1);
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push('/clientes/login');
   };
 
-  // Filtrado
+  // Filtrado multicriterio exacto como TIB
   const filteredPaquetes = useMemo(() => {
     return paquetes.filter((pkg) => {
-      const q = searchQuery.toLowerCase().trim();
-      const matchQuery = !q ||
-        pkg.numero_recibo_bodega?.toLowerCase().includes(q) ||
-        pkg.tracking?.toLowerCase().includes(q) ||
-        pkg.nombre_consignatario?.toLowerCase().includes(q);
-
-      if (!matchQuery) return false;
-
-      if (statusFilter === 'miami') {
-        return pkg.estado_amex !== 'en_almacen' && pkg.estado_tib !== 'Enviado';
+      if (filterWr && !pkg.numero_recibo_bodega?.toLowerCase().includes(filterWr.toLowerCase().trim())) {
+        return false;
       }
-      if (statusFilter === 'vuelo') {
-        return pkg.estado_tib === 'Enviado' && pkg.estado_amex !== 'en_almacen';
+      if (filterTracking && !pkg.tracking?.toLowerCase().includes(filterTracking.toLowerCase().trim())) {
+        return false;
       }
-      if (statusFilter === 'lince') {
-        return pkg.estado_amex === 'en_almacen';
+      if (filterConsignatario && !pkg.nombre_consignatario?.toLowerCase().includes(filterConsignatario.toLowerCase().trim())) {
+        return false;
       }
-
+      if (filterTipo && pkg.tipo_empaque?.toUpperCase() !== filterTipo.toUpperCase()) {
+        return false;
+      }
+      if (filterEstado) {
+        if (filterEstado === 'LINCE' && pkg.estado_amex !== 'en_almacen') return false;
+        if (filterEstado === 'VUELO' && (pkg.estado_tib !== 'Enviado' || pkg.estado_amex === 'en_almacen')) return false;
+        if (filterEstado === 'MIAMI' && (pkg.estado_amex === 'en_almacen' || pkg.estado_tib === 'Enviado')) return false;
+      }
       return true;
     });
-  }, [paquetes, searchQuery, statusFilter]);
+  }, [paquetes, filterWr, filterTracking, filterConsignatario, filterTipo, filterEstado]);
 
-  // Paginación calculada
+  // Paginación
   const totalPages = Math.ceil(filteredPaquetes.length / itemsPerPage) || 1;
   const paginatedPaquetes = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
     return filteredPaquetes.slice(start, start + itemsPerPage);
   }, [filteredPaquetes, currentPage, itemsPerPage]);
 
-  // Función para determinar el estado visual amigable
-  const getEstadoBadge = (pkg: PaqueteCliente) => {
+  const formatDate = (isoString?: string | null) => {
+    if (!isoString) return '—';
+    try {
+      const d = new Date(isoString);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    } catch {
+      return '—';
+    }
+  };
+
+  const renderEstadoBadge = (pkg: PaqueteTIB) => {
     if (pkg.estado_amex === 'en_almacen' || pkg.estado_amex === 'recibido') {
       return (
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
-          <Building2 className="w-3.5 h-3.5" />
-          En Almacén Lince
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-bold uppercase bg-emerald-100 text-emerald-800 border border-emerald-300">
+          <Building2 className="w-3 h-3 text-emerald-600" />
+          EN ALMACÉN LINCE
         </span>
       );
     }
     if (pkg.estado_tib === 'Enviado') {
       return (
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/15 border border-blue-500/30 text-blue-400 text-xs font-semibold">
-          <Plane className="w-3.5 h-3.5" />
-          En Vuelo Miami ➔ Lima
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-bold uppercase bg-blue-100 text-blue-800 border border-blue-300">
+          <Plane className="w-3 h-3 text-blue-600" />
+          EN VUELO A LIMA
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400 text-xs font-semibold">
-        <Clock className="w-3.5 h-3.5" />
-        En Almacén Miami
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-bold uppercase bg-amber-100 text-amber-800 border border-amber-300">
+        <Clock className="w-3 h-3 text-amber-600" />
+        RECIBIDO MIAMI
       </span>
     );
   };
 
   return (
-    <div className="min-h-screen bg-[#070b14] text-slate-100 flex flex-col selection:bg-amber-500 selection:text-white">
-      {/* Background Glow */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute -top-40 -left-40 w-96 h-96 bg-amber-500/10 rounded-full blur-[140px]" />
-        <div className="absolute top-1/3 -right-40 w-96 h-96 bg-blue-600/10 rounded-full blur-[160px]" />
-      </div>
-
-      {/* Header */}
-      <header className="relative z-10 border-b border-slate-800/80 bg-slate-950/70 backdrop-blur-md px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-400 flex items-center justify-center font-black text-slate-950 text-xl shadow-lg shadow-amber-500/20">
-              A
-            </div>
-            <div>
-              <span className="font-extrabold text-lg tracking-wider text-white">AMEX <span className="text-amber-400">COURIER</span></span>
-              <span className="block text-[11px] font-medium text-slate-400 tracking-wider">PORTAL DE CLIENTES</span>
+    <div className="min-h-screen bg-[#f3f4f6] text-gray-800 flex flex-col font-sans">
+      
+      {/* 1. Header superior estilo TIB con identidad AMEX */}
+      <header className="bg-[#1f242d] text-white shadow-md sticky top-0 z-40 border-b border-gray-700">
+        <div className="max-w-[1700px] mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+          
+          {/* Logo y título */}
+          <div className="flex items-center gap-4">
+            <button className="text-gray-400 hover:text-white p-1 rounded transition-colors">
+              <Menu className="w-5 h-5" />
+            </button>
+            <div className="flex items-center gap-2.5">
+              <span className="text-xl font-black tracking-tight text-white">
+                Amex<span className="text-[#f59e0b]">+</span>
+              </span>
+              <span className="hidden sm:inline-block text-xs font-semibold uppercase tracking-wider text-gray-300 border-l border-gray-600 pl-2.5">
+                Gestor de Almacén — Clientes
+              </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="hidden sm:flex flex-col text-right">
-              <span className="text-xs font-semibold text-white">{user?.user_metadata?.nombre_completo || 'Cliente'}</span>
-              <span className="text-[11px] text-slate-400">{user?.email}</span>
-            </div>
+          {/* Usuario / Dropdown a la derecha */}
+          <div className="relative">
             <button
-              onClick={handleLogout}
-              className="p-2 sm:px-3 sm:py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-medium text-slate-300 hover:text-white flex items-center gap-1.5 transition-colors"
-              title="Cerrar Sesión"
+              onClick={() => setUserMenuOpen(!userMenuOpen)}
+              className="flex items-center gap-2 text-xs font-semibold text-gray-200 hover:text-white py-1 px-2.5 rounded transition-colors"
             >
-              <LogOut className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Salir</span>
+              <span>Hola! {user?.user_metadata?.nombre_completo || user?.email?.split('@')[0]?.toUpperCase() || 'CLIENTE'}</span>
+              <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
             </button>
+
+            {userMenuOpen && (
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-xl border border-gray-200 py-1 text-gray-700 text-xs z-50 animate-in fade-in slide-in-from-top-1 duration-150">
+                <div className="px-3 py-2 border-b border-gray-100 text-gray-500 font-medium">
+                  {user?.email}
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="w-full text-left px-3 py-2 hover:bg-gray-100 text-red-600 flex items-center gap-2 font-semibold"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Cerrar Sesión</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </header>
 
-      {/* Main Container */}
-      <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
+      {/* 2. Cuerpo Principal */}
+      <main className="flex-1 max-w-[1700px] w-full mx-auto p-4 sm:p-6 space-y-4">
         
-        {/* Metric Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-          <div className="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-4">
-            <div className="flex items-center justify-between text-slate-400 text-xs mb-1">
-              <span>Total Paquetes</span>
-              <Package className="w-4 h-4 text-amber-400" />
-            </div>
-            <p className="text-2xl font-black text-white">{paquetes.length}</p>
-          </div>
-          <div className="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-4">
-            <div className="flex items-center justify-between text-slate-400 text-xs mb-1">
-              <span>En Miami</span>
-              <Clock className="w-4 h-4 text-amber-400" />
-            </div>
-            <p className="text-2xl font-black text-amber-400">
-              {paquetes.filter(p => p.estado_amex !== 'en_almacen' && p.estado_tib !== 'Enviado').length}
-            </p>
-          </div>
-          <div className="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-4">
-            <div className="flex items-center justify-between text-slate-400 text-xs mb-1">
-              <span>En Vuelo</span>
-              <Plane className="w-4 h-4 text-blue-400" />
-            </div>
-            <p className="text-2xl font-black text-blue-400">
-              {paquetes.filter(p => p.estado_tib === 'Enviado' && p.estado_amex !== 'en_almacen').length}
-            </p>
-          </div>
-          <div className="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-4">
-            <div className="flex items-center justify-between text-slate-400 text-xs mb-1">
-              <span>En Lince (Listos)</span>
-              <Building2 className="w-4 h-4 text-emerald-400" />
-            </div>
-            <p className="text-2xl font-black text-emerald-400">
-              {paquetes.filter(p => p.estado_amex === 'en_almacen').length}
-            </p>
+        {/* Título de la sección estilo TIB */}
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-[#e65100] tracking-tight">
+            Listado Warehouse
+          </h1>
+          <div className="text-xs text-gray-500 font-medium">
+            Total en sistema: <strong className="text-gray-800">{paquetes.length}</strong>
           </div>
         </div>
 
-        {/* Action Bar: Search, Filters & Refresh Button */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-4 sm:p-6 backdrop-blur-xl space-y-4">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            {/* Search Input */}
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+        {/* 3. Panel de Filtros estilo TIB */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-5 space-y-4">
+          
+          {/* Fila 1 de inputs: Warehouse, Tracking, Consignatario */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">Q</span>
               <input
                 type="text"
-                value={searchQuery}
+                value={filterWr}
                 onChange={(e) => {
-                  setSearchQuery(e.target.value);
+                  setFilterWr(e.target.value);
                   setCurrentPage(1);
                 }}
-                placeholder="Buscar por WR (ej: WR000486257) o Tracking USA..."
-                className="w-full bg-slate-950/80 border border-slate-800 rounded-2xl py-2.5 pl-10 pr-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors uppercase"
+                placeholder="# Warehouse"
+                className="w-full bg-white border border-gray-300 rounded-md py-2 pl-8 pr-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#e65100] focus:ring-1 focus:ring-[#e65100] transition-colors"
               />
             </div>
 
-            {/* Refresh Button */}
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">Q</span>
+              <input
+                type="text"
+                value={filterTracking}
+                onChange={(e) => {
+                  setFilterTracking(e.target.value);
+                  setCurrentPage(1);
+                }}
+                placeholder="# Tracking"
+                className="w-full bg-white border border-gray-300 rounded-md py-2 pl-8 pr-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#e65100] focus:ring-1 focus:ring-[#e65100] transition-colors"
+              />
+            </div>
+
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">Q</span>
+              <input
+                type="text"
+                value={filterConsignatario}
+                onChange={(e) => {
+                  setFilterConsignatario(e.target.value);
+                  setCurrentPage(1);
+                }}
+                placeholder="Consignatario"
+                className="w-full bg-white border border-gray-300 rounded-md py-2 pl-8 pr-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#e65100] focus:ring-1 focus:ring-[#e65100] transition-colors uppercase"
+              />
+            </div>
+          </div>
+
+          {/* Fila 2 de filtros: Tipo de Paquete y Estado */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-2xl">
+            <div>
+              <select
+                value={filterTipo}
+                onChange={(e) => {
+                  setFilterTipo(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-full bg-white border border-gray-300 rounded-md py-2 px-3 text-sm text-gray-700 focus:outline-none focus:border-[#e65100] transition-colors"
+              >
+                <option value="">Tipo de Paquete (Todos)</option>
+                <option value="CAJA">CAJA</option>
+                <option value="SOBRE">SOBRE</option>
+                <option value="SACA">SACA</option>
+                <option value="BULTO">BULTO</option>
+              </select>
+            </div>
+
+            <div>
+              <select
+                value={filterEstado}
+                onChange={(e) => {
+                  setFilterEstado(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-full bg-white border border-gray-300 rounded-md py-2 px-3 text-sm text-gray-700 focus:outline-none focus:border-[#e65100] transition-colors"
+              >
+                <option value="">Estado (Todos)</option>
+                <option value="MIAMI">RECIBIDO MIAMI</option>
+                <option value="VUELO">EN VUELO A LIMA</option>
+                <option value="LINCE">EN ALMACÉN LINCE</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Botones de acción estilo TIB */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-gray-100">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCurrentPage(1)}
+                className="bg-[#242b35] hover:bg-[#181d24] text-white px-5 py-2 rounded text-xs font-bold uppercase tracking-wider transition-colors shadow-sm"
+              >
+                Buscar
+              </button>
+              <button
+                type="button"
+                onClick={handleClearFilters}
+                className="bg-[#242b35] hover:bg-[#181d24] text-white px-5 py-2 rounded text-xs font-bold uppercase tracking-wider transition-colors shadow-sm"
+              >
+                Limpiar Filtros
+              </button>
+            </div>
+
             <button
+              type="button"
               onClick={handleRefresh}
               disabled={isRefreshing}
-              className="px-4 py-2.5 bg-slate-950/80 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-slate-200 font-semibold rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95 disabled:opacity-50"
+              className="bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 px-4 py-2 rounded text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm disabled:opacity-50"
             >
-              <RotateCw className={`w-4 h-4 text-amber-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <RotateCw className={`w-3.5 h-3.5 text-[#e65100] ${isRefreshing ? 'animate-spin' : ''}`} />
               <span>{isRefreshing ? 'Actualizando...' : 'Actualizar Lista'}</span>
             </button>
           </div>
+        </div>
 
-          {/* Table Container */}
-          <div className="overflow-x-auto rounded-2xl border border-slate-800/80 bg-slate-950/60">
-            <table className="w-full text-left text-xs sm:text-sm">
-              <thead className="bg-slate-900/80 text-[11px] uppercase tracking-wider text-slate-400 border-b border-slate-800">
+        {/* 4. Tabla de Datos Réplica Exacta de TIB */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead className="bg-[#f8f9fa] border-b border-gray-200 text-gray-600 font-bold uppercase text-[11px] tracking-wider">
                 <tr>
-                  <th className="py-3 px-4">Warehouse (WR)</th>
-                  <th className="py-3 px-4">Tracking USA</th>
-                  <th className="py-3 px-4">Peso</th>
-                  <th className="py-3 px-4">Estado del Envío</th>
-                  <th className="py-3 px-4">Fecha Miami</th>
-                  <th className="py-3 px-4 text-center">Foto Miami</th>
+                  <th className="py-3 px-3.5">WR</th>
+                  <th className="py-3 px-3.5"># Tracking</th>
+                  <th className="py-3 px-3.5">Cliente</th>
+                  <th className="py-3 px-3.5">Tipo</th>
+                  <th className="py-3 px-3.5">Peso(Kg)</th>
+                  <th className="py-3 px-3.5">Estado</th>
+                  <th className="py-3 px-3.5">Registrado</th>
+                  <th className="py-3 px-3.5">Modificado</th>
+                  <th className="py-3 px-3.5 text-center">Documentos</th>
+                  <th className="py-3 px-3.5 text-center">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 font-medium">
+              <tbody className="divide-y divide-gray-200 font-normal text-gray-700">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={6} className="py-12 text-center text-slate-500">
-                      <div className="w-6 h-6 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                      <span>Cargando tus paquetes...</span>
+                    <td colSpan={10} className="py-16 text-center text-gray-500">
+                      <div className="w-6 h-6 border-2 border-[#e65100] border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                      <span className="font-medium text-xs">Cargando almacén...</span>
                     </td>
                   </tr>
                 ) : paginatedPaquetes.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-12 text-center text-slate-500">
-                      <Package className="w-10 h-10 text-slate-700 mx-auto mb-2" />
-                      <p className="text-sm font-semibold text-slate-400">No hay paquetes para mostrar</p>
-                      <p className="text-xs text-slate-600 mt-1">Los paquetes recibidos en Miami aparecerán automáticamente aquí.</p>
+                    <td colSpan={10} className="py-16 text-center text-gray-500">
+                      <Package className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                      <p className="text-sm font-semibold text-gray-600">No se encontraron registros de Warehouse</p>
+                      <p className="text-xs text-gray-400 mt-1">Verifica los filtros o espera a que se registren nuevas cajas en Miami.</p>
                     </td>
                   </tr>
                 ) : (
                   paginatedPaquetes.map((pkg) => (
-                    <tr key={pkg.id} className="hover:bg-slate-900/50 transition-colors">
-                      <td className="py-3 px-4 font-mono font-bold text-amber-400">
+                    <tr key={pkg.id} className="hover:bg-amber-50/40 transition-colors">
+                      {/* WR */}
+                      <td className="py-3 px-3.5 font-bold font-mono text-gray-900 whitespace-nowrap">
                         {pkg.numero_recibo_bodega}
                       </td>
-                      <td className="py-3 px-4 font-mono text-slate-300">
+
+                      {/* Tracking */}
+                      <td className="py-3 px-3.5 font-mono text-gray-600 whitespace-nowrap">
                         {pkg.tracking || '—'}
                       </td>
-                      <td className="py-3 px-4 text-slate-200">
-                        {pkg.peso_kg ? `${pkg.peso_kg} kg` : '—'}
+
+                      {/* Cliente / Consignatario */}
+                      <td className="py-3 px-3.5 font-medium uppercase text-gray-800 whitespace-nowrap">
+                        {pkg.nombre_consignatario || 'SIN ASIGNAR'}
                       </td>
-                      <td className="py-3 px-4">
-                        {getEstadoBadge(pkg)}
+
+                      {/* Tipo */}
+                      <td className="py-3 px-3.5 font-semibold text-gray-600 uppercase whitespace-nowrap">
+                        {pkg.tipo_empaque || 'CAJA'}
                       </td>
-                      <td className="py-3 px-4 text-slate-400 text-xs">
-                        {pkg.creado_en ? new Date(pkg.creado_en).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
+
+                      {/* Peso */}
+                      <td className="py-3 px-3.5 font-medium text-gray-800 whitespace-nowrap">
+                        {pkg.peso_kg != null ? Number(pkg.peso_kg).toFixed(2) : '—'}
                       </td>
-                      <td className="py-3 px-4 text-center">
-                        {pkg.tib_imagen_url ? (
-                          <button
-                            onClick={() => setSelectedPhoto({ url: pkg.tib_imagen_url!, wr: pkg.numero_recibo_bodega })}
-                            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700/60 text-slate-200 hover:text-white text-xs font-medium transition-colors"
-                          >
-                            <ImageIcon className="w-3.5 h-3.5 text-amber-400" />
-                            <span>Ver Foto</span>
-                          </button>
-                        ) : (
-                          <span className="text-slate-600 text-xs">Sin foto</span>
-                        )}
+
+                      {/* Estado */}
+                      <td className="py-3 px-3.5 whitespace-nowrap">
+                        {renderEstadoBadge(pkg)}
+                      </td>
+
+                      {/* Registrado */}
+                      <td className="py-3 px-3.5 text-gray-500 text-[11px] whitespace-nowrap">
+                        {formatDate(pkg.creado_en)}
+                      </td>
+
+                      {/* Modificado */}
+                      <td className="py-3 px-3.5 text-gray-500 text-[11px] whitespace-nowrap">
+                        {formatDate(pkg.actualizado_en || pkg.creado_en)}
+                      </td>
+
+                      {/* Documentos (Ticket + Foto) estilo botones TIB */}
+                      <td className="py-3 px-3.5 text-center whitespace-nowrap">
+                        <div className="inline-flex items-center gap-1.5 justify-center">
+                          {/* Ticket PDF */}
+                          {pkg.tib_ticket_pdf_url ? (
+                            <a
+                              href={pkg.tib_ticket_pdf_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              title="Ver Ticket PDF"
+                              className="p-1.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 transition-colors"
+                            >
+                              <FileText className="w-4 h-4 text-gray-600" />
+                            </a>
+                          ) : (
+                            <button
+                              disabled
+                              title="Sin Ticket"
+                              className="p-1.5 rounded bg-gray-50 text-gray-300 border border-gray-200 cursor-not-allowed"
+                            >
+                              <FileText className="w-4 h-4" />
+                            </button>
+                          )}
+
+                          {/* Foto Cámara */}
+                          {pkg.tib_imagen_url ? (
+                            <button
+                              onClick={() => setSelectedPhoto({ url: pkg.tib_imagen_url!, wr: pkg.numero_recibo_bodega })}
+                              title="Ver Foto Miami"
+                              className="p-1.5 rounded bg-amber-50 hover:bg-amber-100 text-[#e65100] border border-amber-300 transition-colors"
+                            >
+                              <Camera className="w-4 h-4" />
+                            </button>
+                          ) : (
+                            <button
+                              disabled
+                              title="Sin Foto"
+                              className="p-1.5 rounded bg-gray-50 text-gray-300 border border-gray-200 cursor-not-allowed"
+                            >
+                              <Camera className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Acciones */}
+                      <td className="py-3 px-3.5 text-center whitespace-nowrap">
+                        <button
+                          onClick={() => {
+                            if (pkg.tib_imagen_url) {
+                              setSelectedPhoto({ url: pkg.tib_imagen_url, wr: pkg.numero_recibo_bodega });
+                            }
+                          }}
+                          title="Detalles"
+                          className="p-1.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 transition-colors"
+                        >
+                          <Eye className="w-4 h-4 text-gray-600" />
+                        </button>
                       </td>
                     </tr>
                   ))
@@ -332,71 +519,95 @@ export default function ClienteDashboardPage() {
             </table>
           </div>
 
-          {/* Pagination Controls */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between pt-2 text-xs text-slate-400">
-              <span>
-                Mostrando {(currentPage - 1) * itemsPerPage + 1} a {Math.min(currentPage * itemsPerPage, filteredPaquetes.length)} de {filteredPaquetes.length} paquetes
-              </span>
-              <div className="flex items-center gap-2">
+          {/* 5. Paginación estilo TIB */}
+          <div className="p-3.5 bg-[#f8f9fa] border-t border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-600">
+            <div>
+              Mostrando <strong className="text-gray-800">{(currentPage - 1) * itemsPerPage + 1}</strong> a <strong className="text-gray-800">{Math.min(currentPage * itemsPerPage, filteredPaquetes.length)}</strong> de <strong className="text-gray-800">{filteredPaquetes.length}</strong> registros
+            </div>
+
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1">
                 <button
                   onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                   disabled={currentPage === 1}
-                  className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  className="px-2.5 py-1 rounded bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium"
                 >
-                  <ChevronLeft className="w-4 h-4" />
+                  Anterior
                 </button>
-                <span className="font-semibold text-white px-2">
-                  {currentPage} de {totalPages}
-                </span>
+
+                <div className="flex items-center gap-1 px-1">
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum = i + 1;
+                    if (totalPages > 5 && currentPage > 3) {
+                      pageNum = currentPage - 3 + i + 1;
+                      if (pageNum > totalPages) pageNum = totalPages - (4 - i);
+                    }
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`w-7 h-7 rounded text-xs font-bold transition-colors ${
+                          currentPage === pageNum
+                            ? 'bg-[#e65100] text-white shadow-sm'
+                            : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </div>
+
                 <button
                   onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                   disabled={currentPage === totalPages}
-                  className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  className="px-2.5 py-1 rounded bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium"
                 >
-                  <ChevronRight className="w-4 h-4" />
+                  Siguiente
                 </button>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </main>
 
-      {/* Modal Visor de Foto Miami */}
+      {/* 6. Modal de Foto Flotante */}
       {selectedPhoto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-2xl w-full p-4 sm:p-6 shadow-2xl relative">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full p-4 sm:p-5 border border-gray-300 relative">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-200 mb-3">
               <div className="flex items-center gap-2">
-                <Package className="w-4 h-4 text-amber-400" />
-                <span className="font-bold text-white text-sm sm:text-base">Foto de Recepción en Miami — WR {selectedPhoto.wr}</span>
+                <Camera className="w-5 h-5 text-[#e65100]" />
+                <h3 className="font-bold text-gray-900 text-base">
+                  Foto de Recepción Miami — WR {selectedPhoto.wr}
+                </h3>
               </div>
               <button
                 onClick={() => setSelectedPhoto(null)}
-                className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
+                className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="rounded-2xl overflow-hidden bg-slate-950 border border-slate-800 flex items-center justify-center max-h-[70vh]">
+            <div className="bg-gray-100 rounded-md overflow-hidden flex items-center justify-center max-h-[65vh] border border-gray-200">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={selectedPhoto.url}
-                alt={`Foto de paquete ${selectedPhoto.wr}`}
+                alt={`Paquete ${selectedPhoto.wr}`}
                 className="w-full h-full object-contain"
               />
             </div>
 
             <div className="mt-4 flex items-center justify-between">
-              <span className="text-xs text-slate-500">Fotografía tomada al ingresar a la bodega de Miami</span>
+              <span className="text-xs text-gray-500">Fotografía original tomada al recepcionar en bodega</span>
               <a
                 href={selectedPhoto.url}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs transition-colors"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#e65100] hover:bg-[#cf3e00] text-white font-bold rounded text-xs transition-colors shadow-sm"
               >
-                <span>Abrir en tamaño original</span>
+                <span>Abrir tamaño original</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
             </div>
@@ -404,9 +615,9 @@ export default function ClienteDashboardPage() {
         </div>
       )}
 
-      {/* Footer */}
-      <footer className="relative z-10 border-t border-slate-800/60 py-4 px-6 text-center text-xs text-slate-500">
-        <p>© {new Date().getFullYear()} AMEX COURIER PERÚ — Todos los derechos reservados.</p>
+      {/* Footer minimalista */}
+      <footer className="border-t border-gray-200 bg-white py-3 px-6 text-center text-xs text-gray-500">
+        © {new Date().getFullYear()} AMEX COURIER PERÚ — Todos los derechos reservados.
       </footer>
     </div>
   );
