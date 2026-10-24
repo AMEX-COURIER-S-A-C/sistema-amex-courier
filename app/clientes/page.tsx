@@ -345,28 +345,66 @@ export default function ClienteDashboardTIB() {
     }
   }, []);
 
-  const handleSelectTibClient = (client: any) => {
-    setNewClientNombre(client.nombre);
-    setSelectedTibClient(client);
+  const handleAddTibKeyword = (client: any) => {
+    const raw = String(client.nombre || '').trim();
+    const existing = newClientKeywords
+      .split(',')
+      .map(k => k.trim())
+      .filter(Boolean);
+
+    // Si el usuario estaba escribiendo un término de búsqueda, reemplazar el último incompleto
+    if (existing.length > 0) {
+      const lastTerm = existing[existing.length - 1];
+      if (raw.toLowerCase().includes(lastTerm.toLowerCase())) {
+        existing.pop();
+      }
+    }
+
+    // Agregar el nombre oficial de TIB
+    if (!existing.includes(raw)) {
+      existing.push(raw);
+    }
+
+    // Agregar la versión limpia sin "AMEX /" si aplica
+    const sinAmex = raw.replace(/^AMEX\s*[\/\-:]?\s*/i, '').trim();
+    if (sinAmex && sinAmex !== raw && !existing.includes(sinAmex)) {
+      existing.push(sinAmex);
+    }
+
+    setNewClientKeywords(existing.join(', '));
     setIsTibDropdownOpen(false);
 
-    // Auto-generar alias inteligentes sin el prefijo AMEX
+    // Si el nombre de arriba está vacío, prellenarlo con el nombre de la persona
+    if (!newClientNombre.trim()) {
+      setNewClientNombre(sinAmex || raw);
+    }
+
+    // Si el email está vacío y TIB tenía email, autocompletar
+    if (client.email && !newClientEmail.trim()) {
+      setNewClientEmail(client.email);
+    }
+  };
+
+  const handleSelectTibClient = (client: any) => {
     const raw = String(client.nombre || '').trim();
     const sinAmex = raw.replace(/^AMEX\s*[\/\-:]?\s*/i, '').trim();
-    const variants = new Set<string>();
 
+    // En el campo superior: Nombre del cliente
+    setNewClientNombre(sinAmex || raw);
+
+    // En el campo inferior de Variaciones: el nombre de TIB y sus variantes
+    const variants = new Set<string>();
+    variants.add(raw);
     if (sinAmex && sinAmex !== raw) {
       variants.add(sinAmex);
     }
-
-    const parts = sinAmex.split(' ').filter((p: string) => p.length > 2);
+    const parts = sinAmex.split(' ').filter(p => p.length > 2);
     if (parts.length >= 2) {
       variants.add(`${parts[0]} ${parts[parts.length - 1]}`);
     }
 
-    if (!newClientKeywords.trim()) {
-      setNewClientKeywords(Array.from(variants).join(', '));
-    }
+    setNewClientKeywords(Array.from(variants).join(', '));
+    setIsTibDropdownOpen(false);
 
     if (client.email && !newClientEmail.trim()) {
       setNewClientEmail(client.email);
@@ -1777,252 +1815,22 @@ export default function ClienteDashboardTIB() {
 
             <form onSubmit={handleCreateClientSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               
-              {/* Nombre Completo / Consignatario con Selector TIB */}
-              <div style={{ position: 'relative' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151' }}>
-                    Nombre Completo o Empresa (Consignatario en Guías) *
-                  </label>
-                  <span style={{ fontSize: '11px', color: '#ff5722', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                    <Search style={{ width: '12px', height: '12px' }} />
-                    Buscador TIB (3,360 clientes)
-                  </span>
-                </div>
-
-                <div style={{ position: 'relative' }}>
-                  <input
-                    type="text"
-                    required
-                    value={newClientNombre}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setNewClientNombre(val);
-                      setSelectedTibClient(null);
-                      searchTibClients(val);
-                    }}
-                    onFocus={() => {
-                      searchTibClients(newClientNombre);
-                      setIsTibDropdownOpen(true);
-                    }}
-                    placeholder="Escribe para buscar... Ej: JANIRA, ANGELO, GABRIELA"
-                    style={{
-                      width: '100%',
-                      height: '40px',
-                      padding: '0 36px 0 12px',
-                      borderRadius: '6px',
-                      border: selectedTibClient ? '1.5px solid #10b981' : '1px solid #d1d5db',
-                      fontSize: '13px',
-                      color: '#111827',
-                      outline: 'none',
-                      backgroundColor: selectedTibClient ? '#f0fdf4' : '#ffffff'
-                    }}
-                  />
-
-                  {isSearchingTib ? (
-                    <div
-                      style={{
-                        position: 'absolute',
-                        right: '12px',
-                        top: '50%',
-                        transform: 'translateY(-50%)',
-                        width: '16px',
-                        height: '16px',
-                        border: '2px solid #ff5722',
-                        borderTopColor: 'transparent',
-                        borderRadius: '50%',
-                        animation: 'spin 1s linear infinite'
-                      }}
-                    />
-                  ) : (
-                    <Search
-                      style={{
-                        position: 'absolute',
-                        right: '12px',
-                        top: '50%',
-                        transform: 'translateY(-50%)',
-                        width: '16px',
-                        height: '16px',
-                        color: selectedTibClient ? '#10b981' : '#9ca3af',
-                        pointerEvents: 'none'
-                      }}
-                    />
-                  )}
-
-                  {/* Dropdown flotante de resultados TIB */}
-                  {isTibDropdownOpen && (
-                    <div
-                      style={{
-                        position: 'absolute',
-                        top: 'calc(100% + 4px)',
-                        left: 0,
-                        right: 0,
-                        zIndex: 60,
-                        backgroundColor: '#ffffff',
-                        borderRadius: '8px',
-                        border: '1px solid #e5e7eb',
-                        boxShadow: '0 12px 28px -4px rgba(0,0,0,0.2), 0 4px 10px rgba(0,0,0,0.06)',
-                        maxHeight: '260px',
-                        overflowY: 'auto'
-                      }}
-                    >
-                      <div
-                        style={{
-                          padding: '8px 12px',
-                          backgroundColor: '#f9fafb',
-                          borderBottom: '1px solid #f3f4f6',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between'
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: '11px',
-                            fontWeight: 800,
-                            color: '#4b5563',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.4px'
-                          }}
-                        >
-                          Consignatarios TIB ({tibSearchResults.length} encontrados)
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setIsTibDropdownOpen(false)}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            fontSize: '11px',
-                            color: '#6b7280',
-                            cursor: 'pointer',
-                            padding: 0
-                          }}
-                        >
-                          Cerrar ✕
-                        </button>
-                      </div>
-
-                      {tibSearchResults.length === 0 ? (
-                        <div style={{ padding: '16px', textAlign: 'center', fontSize: '12px', color: '#6b7280' }}>
-                          No encontramos consignatarios con "{newClientNombre}". Puedes escribir el nombre directamente.
-                        </div>
-                      ) : (
-                        tibSearchResults.map((client) => (
-                          <div
-                            key={client.id}
-                            onClick={() => handleSelectTibClient(client)}
-                            style={{
-                              padding: '10px 12px',
-                              cursor: 'pointer',
-                              borderBottom: '1px solid #f3f4f6',
-                              transition: 'background-color 0.15s ease',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              gap: '10px'
-                            }}
-                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#fff7ed')}
-                            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#ffffff')}
-                          >
-                            <div style={{ minWidth: 0, flex: 1 }}>
-                              <div
-                                style={{
-                                  fontSize: '13px',
-                                  fontWeight: 700,
-                                  color: '#111827',
-                                  whiteSpace: 'nowrap',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis'
-                                }}
-                              >
-                                {client.nombre}
-                              </div>
-                              <div
-                                style={{
-                                  fontSize: '11px',
-                                  color: '#6b7280',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '8px',
-                                  marginTop: '2px'
-                                }}
-                              >
-                                <span>ID: #{client.iclient || 'S/ID'}</span>
-                                <span>•</span>
-                                <span style={{ color: client.recibidos > 0 ? '#ea580c' : '#6b7280' }}>
-                                  {client.recibidos} en bodega
-                                </span>
-                                <span>•</span>
-                                <span style={{ color: client.enviados > 0 ? '#2563eb' : '#6b7280' }}>
-                                  {client.enviados} en vuelo
-                                </span>
-                              </div>
-                            </div>
-                            <span
-                              style={{
-                                backgroundColor: '#ffedd5',
-                                color: '#c2410c',
-                                padding: '3px 8px',
-                                borderRadius: '12px',
-                                fontSize: '11px',
-                                fontWeight: 800,
-                                whiteSpace: 'nowrap'
-                              }}
-                            >
-                              {client.total_paquetes} paq.
-                            </span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {selectedTibClient ? (
-                  <div
-                    style={{
-                      marginTop: '6px',
-                      padding: '8px 12px',
-                      borderRadius: '6px',
-                      backgroundColor: '#ecfdf5',
-                      border: '1px solid #a7f3d0',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: '8px'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11.5px', color: '#065f46' }}>
-                      <CheckCircle2 style={{ width: '15px', height: '15px', flexShrink: 0, color: '#059669' }} />
-                      <span>
-                        Consignatario oficial TIB: <strong>{selectedTibClient.nombre}</strong> ({selectedTibClient.total_paquetes} paquetes). Todo paquete presente y futuro con este nombre se asignará automáticamente a este correo.
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedTibClient(null);
-                        setNewClientNombre('');
-                        setNewClientKeywords('');
-                      }}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#059669',
-                        fontSize: '11px',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        padding: 0
-                      }}
-                    >
-                      ✕ Cambiar
-                    </button>
-                  </div>
-                ) : (
-                  <span style={{ fontSize: '11px', color: '#6b7280', marginTop: '3px', display: 'block' }}>
-                    Selecciona un consignatario de TIB o escribe uno personalizado. Todo paquete que llegue con este nombre se vinculará automáticamente.
-                  </span>
-                )}
+              {/* Nombre Completo / Consignatario */}
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151', marginBottom: '4px' }}>
+                  Nombre Completo o Empresa (Consignatario en Guías) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newClientNombre}
+                  onChange={(e) => setNewClientNombre(e.target.value)}
+                  placeholder="Ej: AMEX JANIRA AMEX o JANIRA PAREDES"
+                  style={{ width: '100%', height: '40px', padding: '0 12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px', color: '#111827', outline: 'none' }}
+                />
+                <span style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px', display: 'block' }}>
+                  Debe coincidir con el nombre con el que llegan los paquetes a Miami/Lince.
+                </span>
               </div>
 
               {/* Email y Contraseña en 2 columnas */}
@@ -2086,18 +1894,212 @@ export default function ClienteDashboardTIB() {
                 </div>
               </div>
 
-              {/* Alias / Palabras Clave */}
-              <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151', marginBottom: '4px' }}>
-                  Variaciones o Palabras Clave (Opcional, separadas por coma)
-                </label>
-                <input
-                  type="text"
-                  value={newClientKeywords}
-                  onChange={(e) => setNewClientKeywords(e.target.value)}
-                  placeholder="Ej: JANIRA, JANIRA AMEX, AMEX JANIRA"
-                  style={{ width: '100%', height: '40px', padding: '0 12px', borderRadius: '6px', border: '1px solid #d1d5db', fontSize: '13px', color: '#111827', outline: 'none' }}
-                />
+              {/* Variaciones o Palabras Clave con Buscador TIB */}
+              <div style={{ position: 'relative' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#374151' }}>
+                    Variaciones o Palabras Clave (Opcional, separadas por coma)
+                  </label>
+                  <span style={{ fontSize: '11px', color: '#ff5722', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <Search style={{ width: '12px', height: '12px' }} />
+                    Buscador TIB (3,360 clientes)
+                  </span>
+                </div>
+
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="text"
+                    value={newClientKeywords}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setNewClientKeywords(val);
+                      // Extraer el último término que se está escribiendo
+                      const lastTerm = val.split(',').pop()?.trim() || '';
+                      if (lastTerm.length >= 2) {
+                        searchTibClients(lastTerm);
+                      } else {
+                        setIsTibDropdownOpen(false);
+                      }
+                    }}
+                    onFocus={() => {
+                      const lastTerm = newClientKeywords.split(',').pop()?.trim() || '';
+                      if (lastTerm.length >= 2) {
+                        searchTibClients(lastTerm);
+                      }
+                    }}
+                    placeholder="Ej: JANIRA, JANIRA AMEX, AMEX JANIRA (o escribe para buscar en TIB)"
+                    style={{
+                      width: '100%',
+                      height: '40px',
+                      padding: '0 36px 0 12px',
+                      borderRadius: '6px',
+                      border: '1px solid #d1d5db',
+                      fontSize: '13px',
+                      color: '#111827',
+                      outline: 'none'
+                    }}
+                  />
+
+                  {isSearchingTib ? (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        right: '12px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        width: '16px',
+                        height: '16px',
+                        border: '2px solid #ff5722',
+                        borderTopColor: 'transparent',
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite'
+                      }}
+                    />
+                  ) : (
+                    <Search
+                      style={{
+                        position: 'absolute',
+                        right: '12px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        width: '16px',
+                        height: '16px',
+                        color: '#9ca3af',
+                        pointerEvents: 'none'
+                      }}
+                    />
+                  )}
+
+                  {/* Dropdown flotante con los 3,360 clientes de TIB */}
+                  {isTibDropdownOpen && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: 'calc(100% + 4px)',
+                        left: 0,
+                        right: 0,
+                        zIndex: 60,
+                        backgroundColor: '#ffffff',
+                        borderRadius: '8px',
+                        border: '1px solid #e5e7eb',
+                        boxShadow: '0 12px 28px -4px rgba(0,0,0,0.2), 0 4px 10px rgba(0,0,0,0.06)',
+                        maxHeight: '240px',
+                        overflowY: 'auto'
+                      }}
+                    >
+                      <div
+                        style={{
+                          padding: '8px 12px',
+                          backgroundColor: '#f9fafb',
+                          borderBottom: '1px solid #f3f4f6',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between'
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: 800,
+                            color: '#4b5563',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.4px'
+                          }}
+                        >
+                          Haz clic para agregar consignatario ({tibSearchResults.length} sugerencias)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setIsTibDropdownOpen(false)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            fontSize: '11px',
+                            color: '#6b7280',
+                            cursor: 'pointer',
+                            padding: 0
+                          }}
+                        >
+                          Cerrar ✕
+                        </button>
+                      </div>
+
+                      {tibSearchResults.length === 0 ? (
+                        <div style={{ padding: '16px', textAlign: 'center', fontSize: '12px', color: '#6b7280' }}>
+                          No se encontraron consignatarios en TIB con ese término. Puedes seguir escribiendo manualmente.
+                        </div>
+                      ) : (
+                        tibSearchResults.map((client) => (
+                          <div
+                            key={client.id}
+                            onClick={() => handleAddTibKeyword(client)}
+                            style={{
+                              padding: '10px 12px',
+                              cursor: 'pointer',
+                              borderBottom: '1px solid #f3f4f6',
+                              transition: 'background-color 0.15s ease',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '10px'
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#fff7ed')}
+                            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#ffffff')}
+                          >
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div
+                                style={{
+                                  fontSize: '13px',
+                                  fontWeight: 700,
+                                  color: '#111827',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis'
+                                }}
+                              >
+                                {client.nombre}
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: '11px',
+                                  color: '#6b7280',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px',
+                                  marginTop: '2px'
+                                }}
+                              >
+                                <span>ID: #{client.iclient || 'S/ID'}</span>
+                                <span>•</span>
+                                <span style={{ color: client.recibidos > 0 ? '#ea580c' : '#6b7280' }}>
+                                  {client.recibidos} en bodega
+                                </span>
+                                <span>•</span>
+                                <span style={{ color: client.enviados > 0 ? '#2563eb' : '#6b7280' }}>
+                                  {client.enviados} en vuelo
+                                </span>
+                              </div>
+                            </div>
+                            <span
+                              style={{
+                                backgroundColor: '#ffedd5',
+                                color: '#c2410c',
+                                padding: '3px 8px',
+                                borderRadius: '12px',
+                                fontSize: '11px',
+                                fontWeight: 800,
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              + Agregar ({client.total_paquetes} paq.)
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 <span style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px', display: 'block' }}>
                   Si una caja llega con cualquiera de estas variaciones, se asignará a este correo.
                 </span>
