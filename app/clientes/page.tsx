@@ -62,12 +62,17 @@ interface ClientePortalItem {
 
 }
 
+const TIPOS_EMPAQUE = ['CAJA', 'SOBRE', 'BOLSA'];
+const ESTADOS_DISPONIBLES = ['RECIBIDO MIAMI', 'EN VUELO', 'EN ALMACÉN LINCE', 'ENTREGADO'];
+
 export default function ClienteDashboardTIB() {
   const router = useRouter();
 
   const [user, setUser] = useState<any | null>(null);
   const isSuperadmin = user?.email?.toLowerCase() === 'sistemaamexcourier@gmail.com';
   const [paquetes, setPaquetes] = useState<PaqueteTIB[]>([]);
+  const [totalSystemCount, setTotalSystemCount] = useState<number>(0);
+  const [totalFilteredCount, setTotalFilteredCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -174,7 +179,37 @@ export default function ClienteDashboardTIB() {
     };
   }, []);
 
-  const fetchPaquetes = useCallback(async (email?: string | null) => {
+  // Cargar conteo total absoluto del sistema (sin filtros)
+  const fetchTotalSystemCount = useCallback(async (email?: string | null) => {
+    if (!email) return;
+    try {
+      let query = supabasePortal
+        .from('paquetes_portal')
+        .select('id', { count: 'exact', head: true });
+
+      if (email.toLowerCase() !== 'sistemaamexcourier@gmail.com') {
+        query = query.eq('usuario_email', email);
+      }
+      const { count, error } = await query;
+      if (!error && count != null) {
+        setTotalSystemCount(count);
+      }
+    } catch (e) {
+      console.warn('Error fetching total system count:', e);
+    }
+  }, []);
+
+  const fetchPaquetes = useCallback(async (
+    email?: string | null,
+    page: number = 1,
+    customFilters?: {
+      wr?: string;
+      tracking?: string;
+      consignatario?: string;
+      tipo?: string;
+      estado?: string;
+    }
+  ) => {
     if (!email) return;
     setIsLoading(true);
     try {
@@ -194,24 +229,64 @@ export default function ClienteDashboardTIB() {
           tib_ticket_pdf_url,
           creado_en, 
           actualizado_en
-        `)
-        .order('creado_en', { ascending: false });
+        `, { count: 'exact' });
 
       // Si es cliente regular, filtrar solo los suyos; si es superadmin AMEX, permitir ver todo para supervisión
       if (email.toLowerCase() !== 'sistemaamexcourier@gmail.com') {
         query = query.eq('usuario_email', email);
       }
 
-      const { data, error } = await query;
+      const activeWr = customFilters?.wr !== undefined ? customFilters.wr : filterWr;
+      const activeTracking = customFilters?.tracking !== undefined ? customFilters.tracking : filterTracking;
+      const activeConsignatario = customFilters?.consignatario !== undefined ? customFilters.consignatario : filterConsignatario;
+      const activeTipo = customFilters?.tipo !== undefined ? customFilters.tipo : filterTipo;
+      const activeEstado = customFilters?.estado !== undefined ? customFilters.estado : filterEstado;
+
+      if (activeWr.trim()) {
+        query = query.ilike('numero_recibo_bodega', `%${activeWr.trim()}%`);
+      }
+      if (activeTracking.trim()) {
+        query = query.ilike('tracking', `%${activeTracking.trim()}%`);
+      }
+      if (activeConsignatario.trim()) {
+        query = query.ilike('nombre_consignatario', `%${activeConsignatario.trim()}%`);
+      }
+      if (activeTipo.trim()) {
+        query = query.eq('tipo_empaque', activeTipo.trim());
+      }
+      if (activeEstado.trim()) {
+        query = query.ilike('estado_visible', `%${activeEstado.trim()}%`);
+      }
+
+      const from = (page - 1) * itemsPerPage;
+      const to = from + itemsPerPage - 1;
+
+      query = query.order('creado_en', { ascending: false }).range(from, to);
+
+      const { data, count, error } = await query;
       if (error) throw error;
       setPaquetes(data || []);
+
+      const countNum = count ?? (data?.length || 0);
+      setTotalFilteredCount(countNum);
+
+      const hasFilters = Boolean(
+        activeWr.trim() ||
+        activeTracking.trim() ||
+        activeConsignatario.trim() ||
+        activeTipo.trim() ||
+        activeEstado.trim()
+      );
+      if (!hasFilters) {
+        setTotalSystemCount(countNum);
+      }
     } catch (err) {
       console.error('Error fetching paquetes cliente:', err);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, []);
+  }, [filterWr, filterTracking, filterConsignatario, filterTipo, filterEstado, itemsPerPage]);
 
   // Cargar lista de clientes registrados en el portal
   const fetchClientsList = useCallback(async () => {
@@ -248,7 +323,8 @@ export default function ClienteDashboardTIB() {
         return;
       }
       setUser(session.user);
-      fetchPaquetes(session.user.email);
+      fetchTotalSystemCount(session.user.email);
+      fetchPaquetes(session.user.email, 1);
       if (session.user.email?.toLowerCase() === 'sistemaamexcourier@gmail.com') {
         fetchClientsList();
       }
@@ -260,7 +336,8 @@ export default function ClienteDashboardTIB() {
         router.push('/clientes/login');
       } else {
         setUser(session.user);
-        fetchPaquetes(session.user.email);
+        fetchTotalSystemCount(session.user.email);
+        fetchPaquetes(session.user.email, 1);
         if (session.user.email?.toLowerCase() === 'sistemaamexcourier@gmail.com') {
           fetchClientsList();
         }
@@ -275,11 +352,22 @@ export default function ClienteDashboardTIB() {
   // Manejo de refresh manual
   const handleManualRefresh = () => {
     setIsRefreshing(true);
-    fetchPaquetes(user?.email);
+    fetchTotalSystemCount(user?.email);
+    fetchPaquetes(user?.email, currentPage);
     if (user?.email?.toLowerCase() === 'sistemaamexcourier@gmail.com') {
       fetchClientsList();
     }
   };
+
+  // Búsqueda y filtrado automático con debounce
+  useEffect(() => {
+    if (!user?.email) return;
+    const timer = setTimeout(() => {
+      fetchPaquetes(user.email, currentPage);
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [user?.email, currentPage, filterWr, filterTracking, filterConsignatario, filterTipo, filterEstado, fetchPaquetes]);
 
   const handleLogout = async () => {
     await supabasePortal.auth.signOut();
@@ -564,30 +652,8 @@ export default function ClienteDashboardTIB() {
     }
   }, [activeTab, isSuperadmin, configSubTab, tibCatalogSearch, tibCatalogPage, fetchTibCatalog]);
 
-  // Filtrado de paquetes en memoria
-  const filteredPaquetes = useMemo(() => {
-    return paquetes.filter(p => {
-      if (filterWr && !p.numero_recibo_bodega.toLowerCase().includes(filterWr.toLowerCase())) {
-        return false;
-      }
-      if (filterTracking && !p.tracking.toLowerCase().includes(filterTracking.toLowerCase())) {
-        return false;
-      }
-      if (filterConsignatario && !(p.nombre_consignatario || '').toLowerCase().includes(filterConsignatario.toLowerCase())) {
-        return false;
-      }
-      if (filterTipo && p.tipo_empaque !== filterTipo) {
-        return false;
-      }
-      if (filterEstado) {
-        const textEstado = (p.estado_visible || p.estado_amex || p.estado_tib || '').toUpperCase();
-        if (!textEstado.includes(filterEstado.toUpperCase())) {
-          return false;
-        }
-      }
-      return true;
-    });
-  }, [paquetes, filterWr, filterTracking, filterConsignatario, filterTipo, filterEstado]);
+  // Paquetes paginados (ya provistos directamente por la consulta del servidor)
+  const paginatedPaquetes = paquetes;
 
   // Filtrado de clientes para el Panel de Configuración
   const filteredClientsList = useMemo(() => {
@@ -602,34 +668,13 @@ export default function ClienteDashboardTIB() {
     );
   }, [clientsList, clientSearchQuery]);
 
-  // Opciones únicas de tipos y estados
-  const tiposUnicos = useMemo(() => {
-    const set = new Set<string>();
-    paquetes.forEach(p => {
-      if (p.tipo_empaque) set.add(p.tipo_empaque);
-    });
-    return Array.from(set);
-  }, [paquetes]);
-
-  const estadosUnicos = useMemo(() => {
-    const set = new Set<string>();
-    paquetes.forEach(p => {
-      if (p.estado_visible) set.add(p.estado_visible);
-      else if (p.estado_amex === 'entregado') set.add('ENTREGADO');
-      else if (p.estado_amex === 'en_almacen') set.add('EN ALMACÉN LINCE');
-      else if (p.estado_tib === 'Enviado') set.add('EN VUELO');
-      else set.add('RECIBIDO MIAMI');
-    });
-    return Array.from(set);
-  }, [paquetes]);
-
   const activeFiltersCount = useMemo(() => {
     let count = 0;
-    if (filterWr) count++;
-    if (filterTracking) count++;
-    if (filterConsignatario) count++;
-    if (filterTipo) count++;
-    if (filterEstado) count++;
+    if (filterWr.trim()) count++;
+    if (filterTracking.trim()) count++;
+    if (filterConsignatario.trim()) count++;
+    if (filterTipo.trim()) count++;
+    if (filterEstado.trim()) count++;
     return count;
   }, [filterWr, filterTracking, filterConsignatario, filterTipo, filterEstado]);
 
@@ -640,14 +685,22 @@ export default function ClienteDashboardTIB() {
     setFilterTipo('');
     setFilterEstado('');
     setCurrentPage(1);
+    fetchPaquetes(user?.email, 1, {
+      wr: '',
+      tracking: '',
+      consignatario: '',
+      tipo: '',
+      estado: '',
+    });
   };
 
-  // Paginación
-  const totalPages = Math.ceil(filteredPaquetes.length / itemsPerPage) || 1;
-  const paginatedPaquetes = useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage;
-    return filteredPaquetes.slice(start, start + itemsPerPage);
-  }, [filteredPaquetes, currentPage, itemsPerPage]);
+  const handleSearchClick = () => {
+    setCurrentPage(1);
+    fetchPaquetes(user?.email, 1);
+  };
+
+  // Paginación en servidor
+  const totalPages = Math.ceil(totalFilteredCount / itemsPerPage) || 1;
 
   // Cálculo de páginas visibles
   const paginationPages = useMemo(() => {
@@ -844,12 +897,12 @@ export default function ClienteDashboardTIB() {
 
               <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                 <span style={{ fontSize: '13px', color: '#6b7280', backgroundColor: '#ffffff', padding: '8px 14px', borderRadius: '6px', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
-                  Total en sistema: <strong style={{ color: '#111827', fontWeight: 800 }}>{paquetes.length}</strong>
+                  Total en sistema: <strong style={{ color: '#111827', fontWeight: 800 }}>{(totalSystemCount || totalFilteredCount).toLocaleString()}</strong>
                 </span>
 
                 {activeFiltersCount > 0 && (
                   <span style={{ fontSize: '12px', color: '#ff5722', backgroundColor: '#fff3e0', border: '1px solid #ffccbc', padding: '8px 12px', borderRadius: '6px', fontWeight: 700 }}>
-                    {filteredPaquetes.length} coincidencia(s)
+                    {totalFilteredCount.toLocaleString()} coincidencia(s)
                   </span>
                 )}
 
@@ -895,7 +948,7 @@ export default function ClienteDashboardTIB() {
                       setFilterWr(e.target.value);
                       setCurrentPage(1);
                     }}
-                    placeholder="# Warehouse"
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleSearchClick(); }} placeholder="# Warehouse"
                     style={{
                       width: '100%',
                       height: '42px',
@@ -922,7 +975,7 @@ export default function ClienteDashboardTIB() {
                       setFilterTracking(e.target.value);
                       setCurrentPage(1);
                     }}
-                    placeholder="# Tracking"
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleSearchClick(); }} placeholder="# Tracking"
                     style={{
                       width: '100%',
                       height: '42px',
@@ -949,7 +1002,7 @@ export default function ClienteDashboardTIB() {
                       setFilterConsignatario(e.target.value);
                       setCurrentPage(1);
                     }}
-                    placeholder="CONSIGNATARIO"
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleSearchClick(); }} placeholder="CONSIGNATARIO"
                     style={{
                       width: '100%',
                       height: '42px',
@@ -992,7 +1045,7 @@ export default function ClienteDashboardTIB() {
                     }}
                   >
                     <option value="">Tipo de Paquete (Todos)</option>
-                    {tiposUnicos.map(tipo => (
+                    {TIPOS_EMPAQUE.map(tipo => (
                       <option key={tipo} value={tipo}>{tipo}</option>
                     ))}
                   </select>
@@ -1020,7 +1073,7 @@ export default function ClienteDashboardTIB() {
                     }}
                   >
                     <option value="">Estado (Todos)</option>
-                    {estadosUnicos.map(estado => (
+                    {ESTADOS_DISPONIBLES.map(estado => (
                       <option key={estado} value={estado}>{estado}</option>
                     ))}
                   </select>
@@ -1031,6 +1084,7 @@ export default function ClienteDashboardTIB() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingTop: '4px' }}>
                 <button
                   type="button"
+                  onClick={handleSearchClick}
                   style={{
                     backgroundColor: '#1e2229',
                     color: '#ffffff',
@@ -1226,11 +1280,22 @@ export default function ClienteDashboardTIB() {
               {/* Paginación estilo TIB */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderTop: '1px solid #e5e7eb', backgroundColor: '#f8f9fa', flexWrap: 'wrap', gap: '10px' }}>
                 <span style={{ fontSize: '12px', color: '#6b7280' }}>
-                  Mostrando del <strong style={{ color: '#111827' }}>{filteredPaquetes.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}</strong> al <strong style={{ color: '#111827' }}>{Math.min(currentPage * itemsPerPage, filteredPaquetes.length)}</strong> de un total de <strong style={{ color: '#111827' }}>{filteredPaquetes.length}</strong> registros
+                  Mostrando del <strong style={{ color: '#111827' }}>{totalFilteredCount === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}</strong> al <strong style={{ color: '#111827' }}>{Math.min(currentPage * itemsPerPage, totalFilteredCount)}</strong> de un total de <strong style={{ color: '#111827' }}>{totalFilteredCount.toLocaleString()}</strong> registros
                 </span>
 
                 {totalPages > 1 && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    {currentPage > 3 && (
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage(1)}
+                        style={{ padding: '6px 10px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
+                        title="Primera página"
+                      >
+                        « 1
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
@@ -1247,8 +1312,9 @@ export default function ClienteDashboardTIB() {
                           type="button"
                           onClick={() => setCurrentPage(page)}
                           style={{
-                            width: '32px',
+                            minWidth: '32px',
                             height: '32px',
+                            padding: '0 6px',
                             borderRadius: '4px',
                             border: currentPage === page ? 'none' : '1px solid #d1d5db',
                             backgroundColor: currentPage === page ? '#ff5722' : '#ffffff',
@@ -1271,6 +1337,17 @@ export default function ClienteDashboardTIB() {
                     >
                       Siguiente
                     </button>
+
+                    {currentPage < totalPages - 2 && (
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage(totalPages)}
+                        style={{ padding: '6px 10px', borderRadius: '4px', backgroundColor: '#ffffff', border: '1px solid #d1d5db', color: '#374151', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}
+                        title="Última página"
+                      >
+                        {totalPages.toLocaleString()} »
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -1360,7 +1437,7 @@ export default function ClienteDashboardTIB() {
                     Inventario en Portal
                   </span>
                   <div style={{ fontSize: '26px', fontWeight: 900, color: '#111827', marginTop: '4px' }}>
-                    {paquetes.length} paquetes
+                    {(totalSystemCount || totalFilteredCount).toLocaleString()} paquetes
                   </div>
                 </div>
                 <button
