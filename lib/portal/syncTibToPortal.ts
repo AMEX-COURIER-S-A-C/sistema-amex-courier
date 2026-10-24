@@ -138,16 +138,21 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
     fetchTibStatus(credentials.url, credentials.email, credentials.password, 'ENTREGADO'),
   ]);
 
-  // Si se sincroniza para un cliente regular específico, se escanea todo el inventario.
-  // Si es sincronización general / Admin Master, tomamos todo RECIBIDO (bodega Miami activa),
-  // y las tandas más recientes de ENVIADOS y ENTREGADOS para alta velocidad y evitar timeouts.
+  // Para el Admin Master y clientes, procesar todos los paquetes del año 2026 (RECIBIDO, ENVIADO y ENTREGADO)
   let allTibPackages: RawTibItem[] = [];
   if (isSpecificRegularClient) {
     allTibPackages = [...recibidos, ...enviados, ...entregados];
   } else {
-    const recentEnviados = enviados.slice(0, 2000);
-    const recentEntregados = entregados.slice(0, 500);
-    allTibPackages = [...recibidos, ...recentEnviados, ...recentEntregados];
+    const is2026OrActive = (it: RawTibItem) => {
+      const d = it.fecRegister || it.fecModify || '';
+      return d.startsWith('2026') || !d;
+    };
+
+    allTibPackages = [
+      ...recibidos,
+      ...enviados.filter(is2026OrActive),
+      ...entregados.filter(is2026OrActive),
+    ];
   }
 
   // 4. Filtrar y procesar según las reglas de asignación

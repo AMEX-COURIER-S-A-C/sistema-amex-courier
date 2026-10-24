@@ -2092,8 +2092,8 @@
     "semantic_hash": ""
   },
   "lib/email/resend.ts": {
-    "mtime": 1792385085.8327248,
-    "ast_hash": "f873722563d9b0dcd17431d01512b6c7",
+    "mtime": 1792880090.2228587,
+    "ast_hash": "f7b49fee60224fa34a9b867f6a6b454c",
     "semantic_hash": ""
   },
   "lib/email/securityAlerts.ts": {
@@ -2312,8 +2312,8 @@
     "semantic_hash": ""
   },
   "app/clientes/page.tsx": {
-    "mtime": 1792870331.5043716,
-    "ast_hash": "9f1fec420b89a0a7fa8012ec9de23b3d",
+    "mtime": 1792880099.3376758,
+    "ast_hash": "4b9972c2e80c8fdb2a7293d615d9ef7e",
     "semantic_hash": ""
   },
   "app/clientes/registro/page.tsx": {
@@ -2437,8 +2437,8 @@
     "semantic_hash": ""
   },
   "lib/portal/syncTibToPortal.ts": {
-    "mtime": 1792862367.1250112,
-    "ast_hash": "e8e7223a3954b7f74fb5616672dcd727",
+    "mtime": 1792882580.6017487,
+    "ast_hash": "5242b7f679ccffdd4e5f969190836037",
     "semantic_hash": ""
   },
   "scripts/setup-hosts.ps1": {
@@ -2477,8 +2477,8 @@
     "semantic_hash": ""
   },
   "lib/portal/portal-urls.ts": {
-    "mtime": 1792869937.0102336,
-    "ast_hash": "a45c7704c80d9bdbae8ffd148167a419",
+    "mtime": 1792881260.6860096,
+    "ast_hash": "6515ed6f75a9bf454bc6afbf4bf6b0c4",
     "semantic_hash": ""
   }
 }
