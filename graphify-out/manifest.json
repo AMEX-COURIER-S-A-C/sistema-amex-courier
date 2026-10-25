@@ -1086,8 +1086,8 @@
     "semantic_hash": ""
   },
   "package.json": {
-    "mtime": 1792887376.4545286,
-    "ast_hash": "0a6f4805547f0c5c748b64a511740c25",
+    "mtime": 1792891085.9708643,
+    "ast_hash": "dd54819896c801eacc157a8ae2b63964",
     "semantic_hash": ""
   },
   "postcss.config.mjs": {
@@ -2247,8 +2247,8 @@
     "semantic_hash": ""
   },
   "app/api/clientes/auth/login/route.ts": {
-    "mtime": 1792860887.5941312,
-    "ast_hash": "056b35d9c71699163c20c6978325917a",
+    "mtime": 1792890926.9481368,
+    "ast_hash": "ba2d89047069dd9c23a5a8973c1b317d",
     "semantic_hash": ""
   },
   "app/api/clientes/crear-usuario/route.ts": {
@@ -2257,8 +2257,8 @@
     "semantic_hash": ""
   },
   "app/api/clientes/listado-amex/route.ts": {
-    "mtime": 1792860887.5995388,
-    "ast_hash": "3e8b68b5b402501392b82599da2dd9b3",
+    "mtime": 1792890217.7093372,
+    "ast_hash": "2b513a2afd83f9f7daa3cb4f63694eac",
     "semantic_hash": ""
   },
   "app/api/clientes/route.ts": {
@@ -2362,13 +2362,13 @@
     "semantic_hash": ""
   },
   "lib/supabase/portal-admin.ts": {
-    "mtime": 1792860887.665237,
-    "ast_hash": "3e947c7ec7347e9746f0729288f7d716",
+    "mtime": 1792890862.8578813,
+    "ast_hash": "ba93d86a47cfd7ecf8edb42d53c23812",
     "semantic_hash": ""
   },
   "lib/supabase/portal-client.ts": {
-    "mtime": 1792860887.6655774,
-    "ast_hash": "7536f3fd397afae47ec2c5d964c419b1",
+    "mtime": 1792890872.9801974,
+    "ast_hash": "b9f69a254945ee306076325ccba4ff60",
     "semantic_hash": ""
   },
   "lib/tib/apiClient.ts": {
@@ -2452,8 +2452,8 @@
     "semantic_hash": ""
   },
   "app/clientes/configurar/[id]/page.tsx": {
-    "mtime": 1792870379.703292,
-    "ast_hash": "a0674b71996ce447a8e85181997947b8",
+    "mtime": 1792890321.7242608,
+    "ast_hash": "8dce43552c1576d71835250847206e13",
     "semantic_hash": ""
   },
   "app/api/clientes/listar-portal/route.ts": {
@@ -2487,13 +2487,33 @@
     "semantic_hash": ""
   },
   "worker/tib-mirror-daemon.mjs": {
-    "mtime": 1792887445.364323,
-    "ast_hash": "ce0ae124fb5a336fcb4dcf8979e3d9f4",
+    "mtime": 1792889560.1744118,
+    "ast_hash": "7ae8cac489936a8c09f3d8bea8eeb11e",
     "semantic_hash": ""
   },
   "scripts/deploy-tib-mirror.ps1": {
-    "mtime": 1792887999.032204,
-    "ast_hash": "2b2bd1d0c32571736048453a2e662a02",
+    "mtime": 1792888709.78789,
+    "ast_hash": "8fd69e67c75517a5ab5169ac0c2356f4",
+    "semantic_hash": ""
+  },
+  "lib/email/packageDeliveredClient.ts": {
+    "mtime": 1792889463.5293453,
+    "ast_hash": "08357857f2ae4d7eaa4db18d2636ebeb",
+    "semantic_hash": ""
+  },
+  "lib/email/packageFlightClient.ts": {
+    "mtime": 1792889449.209479,
+    "ast_hash": "9740b1c3d0a763ada7ef3c09c7bd34ad",
+    "semantic_hash": ""
+  },
+  "scripts/security-check.mjs": {
+    "mtime": 1792890996.7181473,
+    "ast_hash": "5efa3ea12219be626abf366615fc435b",
+    "semantic_hash": ""
+  },
+  ".agents/rules/security-secrets.md": {
+    "mtime": 1792891061.2200875,
+    "ast_hash": "d9e85077b34803d48fad3dea1a14bdc7",
     "semantic_hash": ""
   }
 }
