@@ -1,7 +1,7 @@
-# Graph Report - sistema-amex-courier  (2026-10-24)
+# Graph Report - sistema-amex-courier  (2026-10-25)
 
 ## Corpus Check
-- 520 files · ~568,656 words
+- 520 files · ~568,702 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
@@ -10,7 +10,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `852b3d31`
+- Built from commit: `5bae74ee`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -108,7 +108,7 @@
 - batch-sync/route.ts
 - supabase.ts
 - excelCobroParser.ts
-- useDashboardData.ts
+- parseWarehouseLocation
 - Despliegue en VPS (Hostinger / Ubuntu)
 - extract_table_rows
 - sync-vercel-envs.mjs
@@ -131,13 +131,13 @@
 - .WarmUpSources
 - analyze-oct-week.mjs
 - security-check.mjs
-- test-api-scanner-batch.mjs
+- useDashboardData.ts
 - check-vercel-envs.mjs
 - inspect-usuarios.mjs
 - test-admin-capabilities.mjs
 - test-generate-link.mjs
 - .PatchInventory
-- test-daily-tib-flow.mjs
+- ref_node_path
 - shalom-boletas/route.ts
 - resend
 - ProcessorDaemon
@@ -152,7 +152,7 @@
 - write-excel-file
 - file-saver
 - lucide-react
-- zod
+- docx
 - xlsx
 
 ## God Nodes (most connected - your core abstractions)
@@ -193,7 +193,7 @@ Cohesion: 0.06
 Nodes (61): features_dni_matrix_components_dni_matrix, DniDropzonePanel(), DniDropzonePanelProps, toDisplayAngle(), DniMatrixTab(), DniSlotEditor(), DniSlotEditorProps, DniSlotsGrid() (+53 more)
 
 ### Community 2 - "Program"
-Cohesion: 0.11
+Cohesion: 0.12
 Nodes (17): int, long, object, CellData, CellKind, JsonSerializerOptions, string, HeaderColumn (+9 more)
 
 ### Community 3 - "useLiveSheetsData.ts"
@@ -274,7 +274,7 @@ Nodes (29): Badge(), BadgeProps, DOT_MAP, getVariantFromStatus(), VARIANT_MAP, B
 
 ### Community 22 - "dependencies"
 Cohesion: 0.07
-Nodes (29): @aws-sdk/s3-request-presigner, docx, html5-qrcode, jspdf, jszip, lenis, next, openai (+21 more)
+Nodes (29): @aws-sdk/s3-request-presigner, html5-qrcode, jspdf, jszip, lenis, next, openai, dependencies (+21 more)
 
 ### Community 23 - "HalloweenBackdrop.tsx"
 Cohesion: 0.08
@@ -341,8 +341,8 @@ Cohesion: 0.50
 Nodes (3): framework, outputDirectory, version
 
 ### Community 44 - "ref_node_fs"
-Cohesion: 0.18
-Nodes (8): ref_node_fs, invHeaders, invRows, outDir, localQueue, resilientDB, resilientQueue, uploadedToDB
+Cohesion: 0.17
+Nodes (8): ref_node_fs, adminSupabase, envContent, serviceKey, localQueue, resilientDB, resilientQueue, uploadedToDB
 
 ### Community 45 - "r2/client.ts"
 Cohesion: 0.17
@@ -353,8 +353,8 @@ Cohesion: 0.20
 Nodes (12): NewClientModal, NewPackageModal, HeaderBar(), HeaderBarProps, NewClientFormData, NewClientModalProps, NewPkgFormData, DashboardTabContent() (+4 more)
 
 ### Community 47 - "cleanup-test-data.mjs"
-Cohesion: 0.12
-Nodes (12): ref_node_child_process, ref_node_os, ref_node_path, ref_node_url, __dirname, envPath, envVars, __filename (+4 more)
+Cohesion: 0.20
+Nodes (8): ref_node_url, __dirname, envPath, envVars, __filename, isProdSupabase, s3, supabase
 
 ### Community 48 - "request-context.ts"
 Cohesion: 0.17
@@ -397,8 +397,8 @@ Cohesion: 0.22
 Nodes (8): graphify reference: extra exports and benchmark, Step 6b - Wiki (only if --wiki flag), Step 7 - Neo4j export (only if --neo4j or --neo4j-push flag), Step 7a - FalkorDB export (only if --falkordb or --falkordb-push flag), Step 7b - SVG export (only if --svg flag), Step 7c - GraphML export (only if --graphml flag), Step 7d - MCP server (only if --mcp flag), Step 8 - Token reduction benchmark (only if total_words > 5000)
 
 ### Community 61 - "local-doctor.mjs"
-Cohesion: 0.50
-Nodes (4): checks, commandAvailable(), localCommandAvailable(), root
+Cohesion: 0.22
+Nodes (7): ref_node_child_process, ref_node_os, checks, commandAvailable(), localCommandAvailable(), root, tmpDir
 
 ### Community 62 - "graphify reference: query, path, explain"
 Cohesion: 0.33
@@ -504,9 +504,9 @@ Nodes (10): CompositeTypes, Constants, Database, DatabaseWithoutInternals, Defau
 Cohesion: 0.38
 Nodes (8): RegistrarCobroDiarioModalContent(), extractWeightsList(), ParsedExcelCobroResult, ParsedWrRow, parseExcelCobroBlock(), parseNumericValue(), parsePesoTotal(), splitTsvRows()
 
-### Community 98 - "useDashboardData.ts"
-Cohesion: 0.16
-Nodes (17): mapCliente(), mapPaquete(), mapRealtimeCliente(), mapRealtimePaquete(), useDashboardData(), mapPaqueteDbRow(), mapEstadoEntrega(), normalizeKey() (+9 more)
+### Community 98 - "parseWarehouseLocation"
+Cohesion: 0.20
+Nodes (11): mapPaqueteDbRow(), mapEstadoEntrega(), normalizeKey(), ParsedRow, syncCompletedExcelToDatabase(), SyncDbResult, LEVEL_LESS_LOCATIONS, LevelLessLocation (+3 more)
 
 ### Community 101 - "Despliegue en VPS (Hostinger / Ubuntu)"
 Cohesion: 0.33
@@ -573,8 +573,8 @@ Cohesion: 0.06
 Nodes (46): dynamic, POST(), dynamic, getDeviceSummary(), POST(), requestCooldownMap, GET(), PUT() (+38 more)
 
 ### Community 125 - ".WarmUpSources"
-Cohesion: 0.24
-Nodes (5): Action, CachedSourceData, SharedStringTablePart, WorkbookPart, WorksheetInfo
+Cohesion: 0.22
+Nodes (4): CachedSourceData, SharedStringTablePart, WorkbookPart, WorksheetInfo
 
 ### Community 126 - "analyze-oct-week.mjs"
 Cohesion: 0.29
@@ -584,9 +584,9 @@ Nodes (7): downloadR2Buffer(), env, envContent, envPath, r2AccountId, run(), s3
 Cohesion: 0.40
 Nodes (5): getStagedOrTrackedFiles(), IGNORE_DIRS, IGNORE_FILES, runCheck(), SECRET_PATTERNS
 
-### Community 128 - "test-api-scanner-batch.mjs"
-Cohesion: 0.33
-Nodes (3): adminSupabase, envContent, serviceKey
+### Community 128 - "useDashboardData.ts"
+Cohesion: 0.57
+Nodes (6): mapCliente(), mapPaquete(), mapRealtimeCliente(), mapRealtimePaquete(), useDashboardData(), TipoMetodoEntrega
 
 ### Community 129 - "check-vercel-envs.mjs"
 Cohesion: 0.29
@@ -608,9 +608,9 @@ Nodes (3): envContent, serviceKey, supabaseAdmin
 Cohesion: 0.33
 Nodes (3): CellData, Dictionary, PatchCounts
 
-### Community 134 - "test-daily-tib-flow.mjs"
-Cohesion: 0.33
-Nodes (4): envContent, supabase, supabaseKey, supabaseUrl
+### Community 134 - "ref_node_path"
+Cohesion: 0.15
+Nodes (8): ref_node_path, invHeaders, invRows, outDir, envContent, supabase, supabaseKey, supabaseUrl
 
 ### Community 135 - "shalom-boletas/route.ts"
 Cohesion: 0.48
@@ -634,7 +634,7 @@ Nodes (5): cleanedMap, containAmex, data, duplicates, notContainAmex
 
 ### Community 148 - ".CopyXmlNode"
 Cohesion: 0.40
-Nodes (3): Stream, XmlReader, XmlWriter
+Nodes (4): Action, Stream, XmlReader, XmlWriter
 
 ### Community 150 - "CachedSourceData"
 Cohesion: 0.40
@@ -648,9 +648,9 @@ Nodes (4): DateTime, SourceRecord, WorkbookValidation, CachedSourceData
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Paquete` connect `Paquete` to `components/DniMatrixTab.tsx`, `useLiveSheetsData.ts`, `useFormatoEntrega.ts`, `getSupabaseAdmin`, `excelExport.ts`, `types/index.ts`, `ConfiguracionTab.tsx`, `components/ScannerTab.tsx`, `registry.ts`, `DashboardTabContent.tsx`, `app/page.tsx`, `wr.ts`, `cobros/types.ts`, `live-sheets/types.ts`, `components/LiveSheetsTab.tsx`, `components/CobrosTab.tsx`, `inventory/index.ts`, `alertDialog`, `Cliente`, `useDashboardData.ts`, `useInventoryData.ts`, `inventory.service.ts`, `scanner.ts`, `InventoryTable.tsx`?**
+- **Why does `Paquete` connect `Paquete` to `useDashboardData.ts`, `components/DniMatrixTab.tsx`, `useLiveSheetsData.ts`, `useFormatoEntrega.ts`, `getSupabaseAdmin`, `excelExport.ts`, `types/index.ts`, `ConfiguracionTab.tsx`, `components/ScannerTab.tsx`, `registry.ts`, `DashboardTabContent.tsx`, `app/page.tsx`, `wr.ts`, `cobros/types.ts`, `live-sheets/types.ts`, `components/LiveSheetsTab.tsx`, `components/CobrosTab.tsx`, `inventory/index.ts`, `alertDialog`, `Cliente`, `useInventoryData.ts`, `inventory.service.ts`, `scanner.ts`, `InventoryTable.tsx`?**
   _High betweenness centrality (0.076) - this node is a cross-community bridge._
-- **Why does `getSupabaseAdmin()` connect `getSupabaseAdmin` to `constants.ts`, `useDashboardData.ts`, `uploadFileToR2`, `users/route.ts`, `analyzer.ts`, `cruzar-planilla/route.ts`, `wr.ts`, `sync-inventario/route.ts`, `inventario-jobs/route.ts`, `sendEmail`, `batch-sync/route.ts`?**
+- **Why does `getSupabaseAdmin()` connect `getSupabaseAdmin` to `constants.ts`, `parseWarehouseLocation`, `uploadFileToR2`, `users/route.ts`, `analyzer.ts`, `cruzar-planilla/route.ts`, `wr.ts`, `sync-inventario/route.ts`, `inventario-jobs/route.ts`, `sendEmail`, `batch-sync/route.ts`?**
   _High betweenness centrality (0.048) - this node is a cross-community bridge._
 - **Why does `authorizeUser()` connect `getSupabaseAdmin` to `shalom-boletas/route.ts`, `uploadFileToR2`, `r2/client.ts`, `users/route.ts`, `tarifas/route.ts`, `wr.ts`, `sync-inventario/route.ts`, `inventario-jobs/route.ts`, `batch-sync/route.ts`?**
   _High betweenness centrality (0.036) - this node is a cross-community bridge._
@@ -659,6 +659,6 @@ _Questions this graph is uniquely positioned to answer:_
 - **Should `components/DniMatrixTab.tsx` be split into smaller, more focused modules?**
   _Cohesion score 0.05542283803153368 - nodes in this community are weakly interconnected._
 - **Should `Program` be split into smaller, more focused modules?**
-  _Cohesion score 0.1111111111111111 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.11764705882352941 - nodes in this community are weakly interconnected._
 - **Should `main.py` be split into smaller, more focused modules?**
   _Cohesion score 0.08571428571428572 - nodes in this community are weakly interconnected._

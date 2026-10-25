@@ -461,7 +461,7 @@
       "label": "PUT()",
       "file_type": "code",
       "source_file": "app/api/clientes/actualizar-usuario/route.ts",
-      "source_location": "L37",
+      "source_location": "L42",
       "_callable": true,
       "_origin": "ast",
       "id": "app_api_clientes_actualizar_usuario_route_put",
@@ -7003,7 +7003,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "features_dashboard_hooks_usedashboarddata",
-      "community": 98,
+      "community": 128,
       "community_name": "useDashboardData.ts",
       "norm_label": "usedashboarddata.ts"
     },
@@ -7015,7 +7015,7 @@
       "_callable": true,
       "_origin": "ast",
       "id": "features_dashboard_hooks_usedashboarddata_mapcliente",
-      "community": 98,
+      "community": 128,
       "community_name": "useDashboardData.ts",
       "norm_label": "mapcliente()"
     },
@@ -7027,7 +7027,7 @@
       "_callable": true,
       "_origin": "ast",
       "id": "features_dashboard_hooks_usedashboarddata_mappaquete",
-      "community": 98,
+      "community": 128,
       "community_name": "useDashboardData.ts",
       "norm_label": "mappaquete()"
     },
@@ -7039,7 +7039,7 @@
       "_callable": true,
       "_origin": "ast",
       "id": "features_dashboard_hooks_usedashboarddata_maprealtimecliente",
-      "community": 98,
+      "community": 128,
       "community_name": "useDashboardData.ts",
       "norm_label": "maprealtimecliente()"
     },
@@ -7051,7 +7051,7 @@
       "_callable": true,
       "_origin": "ast",
       "id": "features_dashboard_hooks_usedashboarddata_maprealtimepaquete",
-      "community": 98,
+      "community": 128,
       "community_name": "useDashboardData.ts",
       "norm_label": "maprealtimepaquete()"
     },
@@ -7063,7 +7063,7 @@
       "_callable": true,
       "_origin": "ast",
       "id": "features_dashboard_hooks_usedashboarddata_usedashboarddata",
-      "community": 98,
+      "community": 128,
       "community_name": "useDashboardData.ts",
       "norm_label": "usedashboarddata()"
     },
@@ -10078,7 +10078,7 @@
       "_origin": "ast",
       "id": "features_inventory_services_inventory_service_mappaquetedbrow",
       "community": 98,
-      "community_name": "useDashboardData.ts",
+      "community_name": "parseWarehouseLocation",
       "norm_label": "mappaquetedbrow()"
     },
     {
@@ -14205,7 +14205,7 @@
       "_origin": "ast",
       "id": "lib_inventory_jobs_syncdb",
       "community": 98,
-      "community_name": "useDashboardData.ts",
+      "community_name": "parseWarehouseLocation",
       "norm_label": "syncdb.ts"
     },
     {
@@ -14218,7 +14218,7 @@
       "_origin": "ast",
       "id": "lib_inventory_jobs_syncdb_syncdbresult",
       "community": 98,
-      "community_name": "useDashboardData.ts",
+      "community_name": "parseWarehouseLocation",
       "norm_label": "syncdbresult"
     },
     {
@@ -14231,7 +14231,7 @@
       "_origin": "ast",
       "id": "lib_inventory_jobs_syncdb_parsedrow",
       "community": 98,
-      "community_name": "useDashboardData.ts",
+      "community_name": "parseWarehouseLocation",
       "norm_label": "parsedrow"
     },
     {
@@ -14243,7 +14243,7 @@
       "_origin": "ast",
       "id": "lib_inventory_jobs_syncdb_normalizekey",
       "community": 98,
-      "community_name": "useDashboardData.ts",
+      "community_name": "parseWarehouseLocation",
       "norm_label": "normalizekey()"
     },
     {
@@ -14255,7 +14255,7 @@
       "_origin": "ast",
       "id": "lib_inventory_jobs_syncdb_mapestadoentrega",
       "community": 98,
-      "community_name": "useDashboardData.ts",
+      "community_name": "parseWarehouseLocation",
       "norm_label": "mapestadoentrega()"
     },
     {
@@ -14267,7 +14267,7 @@
       "_origin": "ast",
       "id": "lib_inventory_jobs_syncdb_synccompletedexceltodatabase",
       "community": 98,
-      "community_name": "useDashboardData.ts",
+      "community_name": "parseWarehouseLocation",
       "norm_label": "synccompletedexceltodatabase()"
     },
     {
@@ -17065,7 +17065,7 @@
       "_origin": "ast",
       "id": "lib_validations_locations",
       "community": 98,
-      "community_name": "useDashboardData.ts",
+      "community_name": "parseWarehouseLocation",
       "norm_label": "locations.ts"
     },
     {
@@ -17076,7 +17076,7 @@
       "_origin": "ast",
       "id": "lib_validations_locations_level_less_locations",
       "community": 98,
-      "community_name": "useDashboardData.ts",
+      "community_name": "parseWarehouseLocation",
       "norm_label": "level_less_locations"
     },
     {
@@ -17089,7 +17089,7 @@
       "_origin": "ast",
       "id": "lib_validations_locations_levellesslocation",
       "community": 98,
-      "community_name": "useDashboardData.ts",
+      "community_name": "parseWarehouseLocation",
       "norm_label": "levellesslocation"
     },
     {
@@ -17101,7 +17101,7 @@
       "_origin": "ast",
       "id": "lib_validations_locations_islevellesslocation",
       "community": 98,
-      "community_name": "useDashboardData.ts",
+      "community_name": "parseWarehouseLocation",
       "norm_label": "islevellesslocation()"
     },
     {
@@ -17113,7 +17113,7 @@
       "_origin": "ast",
       "id": "lib_validations_locations_normalizewarehouselocation",
       "community": 98,
-      "community_name": "useDashboardData.ts",
+      "community_name": "parseWarehouseLocation",
       "norm_label": "normalizewarehouselocation()"
     },
     {
@@ -17126,7 +17126,7 @@
       "_origin": "ast",
       "id": "lib_validations_locations_parsedwarehouselocation",
       "community": 98,
-      "community_name": "useDashboardData.ts",
+      "community_name": "parseWarehouseLocation",
       "norm_label": "parsedwarehouselocation"
     },
     {
@@ -17138,7 +17138,7 @@
       "_origin": "ast",
       "id": "lib_validations_locations_parsewarehouselocation",
       "community": 98,
-      "community_name": "useDashboardData.ts",
+      "community_name": "parseWarehouseLocation",
       "norm_label": "parsewarehouselocation()"
     },
     {
@@ -18393,8 +18393,8 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "package_dependencies_docx",
-      "community": 22,
-      "community_name": "dependencies",
+      "community": 159,
+      "community_name": "docx",
       "norm_label": "docx"
     },
     {
@@ -18404,8 +18404,8 @@
       "source_location": "L28",
       "_origin": "ast",
       "id": "docx",
-      "community": 22,
-      "community_name": "dependencies",
+      "community": 159,
+      "community_name": "docx",
       "norm_label": "docx"
     },
     {
@@ -18701,8 +18701,8 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "package_dependencies_zod",
-      "community": 159,
-      "community_name": "zod",
+      "community": 22,
+      "community_name": "dependencies",
       "norm_label": "zod"
     },
     {
@@ -18712,8 +18712,8 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "zod",
-      "community": 159,
-      "community_name": "zod",
+      "community": 22,
+      "community_name": "dependencies",
       "norm_label": "zod"
     },
     {
@@ -19737,8 +19737,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "scripts_generate_benchmark_data",
-      "community": 44,
-      "community_name": "ref_node_fs",
+      "community": 134,
+      "community_name": "ref_node_path",
       "norm_label": "generate-benchmark-data.mjs"
     },
     {
@@ -19748,8 +19748,8 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "scripts_generate_benchmark_data_outdir",
-      "community": 44,
-      "community_name": "ref_node_fs",
+      "community": 134,
+      "community_name": "ref_node_path",
       "norm_label": "outdir"
     },
     {
@@ -19759,8 +19759,8 @@
       "source_location": "L13",
       "_origin": "ast",
       "id": "scripts_generate_benchmark_data_invheaders",
-      "community": 44,
-      "community_name": "ref_node_fs",
+      "community": 134,
+      "community_name": "ref_node_path",
       "norm_label": "invheaders"
     },
     {
@@ -19770,8 +19770,8 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "scripts_generate_benchmark_data_invrows",
-      "community": 44,
-      "community_name": "ref_node_fs",
+      "community": 134,
+      "community_name": "ref_node_path",
       "norm_label": "invrows"
     },
     {
@@ -19782,8 +19782,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "scripts_generate_benchmark_data_generatetib",
-      "community": 44,
-      "community_name": "ref_node_fs",
+      "community": 134,
+      "community_name": "ref_node_path",
       "norm_label": "generatetib()"
     },
     {
@@ -20335,8 +20335,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "scripts_test_api_scanner_batch",
-      "community": 128,
-      "community_name": "test-api-scanner-batch.mjs",
+      "community": 44,
+      "community_name": "ref_node_fs",
       "norm_label": "test-api-scanner-batch.mjs"
     },
     {
@@ -20346,8 +20346,8 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "scripts_test_api_scanner_batch_envcontent",
-      "community": 128,
-      "community_name": "test-api-scanner-batch.mjs",
+      "community": 44,
+      "community_name": "ref_node_fs",
       "norm_label": "envcontent"
     },
     {
@@ -20358,8 +20358,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "scripts_test_api_scanner_batch_getenv",
-      "community": 128,
-      "community_name": "test-api-scanner-batch.mjs",
+      "community": 44,
+      "community_name": "ref_node_fs",
       "norm_label": "getenv()"
     },
     {
@@ -20369,8 +20369,8 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "scripts_test_api_scanner_batch_servicekey",
-      "community": 128,
-      "community_name": "test-api-scanner-batch.mjs",
+      "community": 44,
+      "community_name": "ref_node_fs",
       "norm_label": "servicekey"
     },
     {
@@ -20380,8 +20380,8 @@
       "source_location": "L14",
       "_origin": "ast",
       "id": "scripts_test_api_scanner_batch_adminsupabase",
-      "community": 128,
-      "community_name": "test-api-scanner-batch.mjs",
+      "community": 44,
+      "community_name": "ref_node_fs",
       "norm_label": "adminsupabase"
     },
     {
@@ -20392,8 +20392,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "scripts_test_api_scanner_batch_testapiendpoint",
-      "community": 128,
-      "community_name": "test-api-scanner-batch.mjs",
+      "community": 44,
+      "community_name": "ref_node_fs",
       "norm_label": "testapiendpoint()"
     },
     {
@@ -20727,7 +20727,7 @@
       "_origin": "ast",
       "id": "scripts_test_daily_tib_flow",
       "community": 134,
-      "community_name": "test-daily-tib-flow.mjs",
+      "community_name": "ref_node_path",
       "norm_label": "test-daily-tib-flow.mjs"
     },
     {
@@ -20738,7 +20738,7 @@
       "_origin": "ast",
       "id": "scripts_test_daily_tib_flow_envcontent",
       "community": 134,
-      "community_name": "test-daily-tib-flow.mjs",
+      "community_name": "ref_node_path",
       "norm_label": "envcontent"
     },
     {
@@ -20750,7 +20750,7 @@
       "_origin": "ast",
       "id": "scripts_test_daily_tib_flow_getenv",
       "community": 134,
-      "community_name": "test-daily-tib-flow.mjs",
+      "community_name": "ref_node_path",
       "norm_label": "getenv()"
     },
     {
@@ -20761,7 +20761,7 @@
       "_origin": "ast",
       "id": "scripts_test_daily_tib_flow_supabaseurl",
       "community": 134,
-      "community_name": "test-daily-tib-flow.mjs",
+      "community_name": "ref_node_path",
       "norm_label": "supabaseurl"
     },
     {
@@ -20772,7 +20772,7 @@
       "_origin": "ast",
       "id": "scripts_test_daily_tib_flow_supabasekey",
       "community": 134,
-      "community_name": "test-daily-tib-flow.mjs",
+      "community_name": "ref_node_path",
       "norm_label": "supabasekey"
     },
     {
@@ -20783,7 +20783,7 @@
       "_origin": "ast",
       "id": "scripts_test_daily_tib_flow_supabase",
       "community": 134,
-      "community_name": "test-daily-tib-flow.mjs",
+      "community_name": "ref_node_path",
       "norm_label": "supabase"
     },
     {
@@ -21785,8 +21785,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "tests_unit_inventoryjobsworkflow_test",
-      "community": 47,
-      "community_name": "cleanup-test-data.mjs",
+      "community": 61,
+      "community_name": "local-doctor.mjs",
       "norm_label": "inventoryjobsworkflow.test.ts"
     },
     {
@@ -21796,8 +21796,8 @@
       "source_location": "L9",
       "_origin": "ast",
       "id": "tests_unit_inventoryjobsworkflow_test_tmpdir",
-      "community": 47,
-      "community_name": "cleanup-test-data.mjs",
+      "community": 61,
+      "community_name": "local-doctor.mjs",
       "norm_label": "tmpdir"
     },
     {
@@ -21808,8 +21808,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "tests_unit_inventoryjobsworkflow_test_normalizekey",
-      "community": 47,
-      "community_name": "cleanup-test-data.mjs",
+      "community": 61,
+      "community_name": "local-doctor.mjs",
       "norm_label": "normalizekey()"
     },
     {
@@ -22751,7 +22751,7 @@
       "_callable_class": true,
       "_origin": "ast",
       "id": "types_index_tipometodoentrega",
-      "community": 98,
+      "community": 128,
       "community_name": "useDashboardData.ts",
       "norm_label": "tipometodoentrega"
     },
@@ -23489,8 +23489,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "vitest_config",
-      "community": 47,
-      "community_name": "cleanup-test-data.mjs",
+      "community": 134,
+      "community_name": "ref_node_path",
       "norm_label": "vitest.config.ts"
     },
     {
@@ -24202,8 +24202,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "worker_processor_amexinventoryprocessor_program_program_main",
-      "community": 2,
-      "community_name": "Program",
+      "community": 125,
+      "community_name": ".WarmUpSources",
       "norm_label": ".main()"
     },
     {
@@ -24214,8 +24214,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "worker_processor_amexinventoryprocessor_program_program_runcli",
-      "community": 2,
-      "community_name": "Program",
+      "community": 125,
+      "community_name": ".WarmUpSources",
       "norm_label": ".runcli()"
     },
     {
@@ -24237,8 +24237,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "action",
-      "community": 125,
-      "community_name": ".WarmUpSources",
+      "community": 148,
+      "community_name": ".CopyXmlNode",
       "norm_label": "action"
     },
     {
@@ -27305,8 +27305,8 @@
     {
       "label": "ref_node_path",
       "_origin": "semantic",
-      "community": 47,
-      "community_name": "cleanup-test-data.mjs",
+      "community": 134,
+      "community_name": "ref_node_path",
       "external": true,
       "file_type": "concept",
       "norm_label": "ref_node_path",
@@ -27401,8 +27401,8 @@
     {
       "label": "ref_node_child_process",
       "_origin": "semantic",
-      "community": 47,
-      "community_name": "cleanup-test-data.mjs",
+      "community": 61,
+      "community_name": "local-doctor.mjs",
       "external": true,
       "file_type": "concept",
       "norm_label": "ref_node_child_process",
@@ -27425,8 +27425,8 @@
     {
       "label": "ref_node_os",
       "_origin": "semantic",
-      "community": 47,
-      "community_name": "cleanup-test-data.mjs",
+      "community": 61,
+      "community_name": "local-doctor.mjs",
       "external": true,
       "file_type": "concept",
       "norm_label": "ref_node_os",
@@ -29046,7 +29046,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "app/api/clientes/actualizar-usuario/route.ts",
-      "source_location": "L37",
+      "source_location": "L42",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_api_clientes_actualizar_usuario_route",
@@ -29131,7 +29131,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "app/api/clientes/actualizar-usuario/route.ts",
-      "source_location": "L74",
+      "source_location": "L84",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_api_clientes_actualizar_usuario_route_put",
@@ -29143,7 +29143,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "app/api/clientes/actualizar-usuario/route.ts",
-      "source_location": "L129",
+      "source_location": "L139",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_api_clientes_actualizar_usuario_route_put",
@@ -29155,7 +29155,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "app/api/clientes/actualizar-usuario/route.ts",
-      "source_location": "L54",
+      "source_location": "L59",
       "weight": 1.0,
       "_origin": "ast",
       "source": "app_api_clientes_actualizar_usuario_route_put",
@@ -89604,5 +89604,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "852b3d31a9b9e970b641c04d8ebecf8d785e6bc9"
+  "built_at_commit": "5bae74eebc7cdbbda256df7d55c300dbfaaa9e74"
 }

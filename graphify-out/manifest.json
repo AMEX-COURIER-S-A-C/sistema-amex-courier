@@ -2447,8 +2447,8 @@
     "semantic_hash": ""
   },
   "app/api/clientes/actualizar-usuario/route.ts": {
-    "mtime": 1792864358.8115098,
-    "ast_hash": "5ec1565194c9a030edfc845604a518d4",
+    "mtime": 1792909631.754541,
+    "ast_hash": "fbda86238bbc9e09262a1243bfc9754c",
     "semantic_hash": ""
   },
   "app/clientes/configurar/[id]/page.tsx": {

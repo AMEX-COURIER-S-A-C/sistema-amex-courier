@@ -15,9 +15,14 @@ export async function GET(req: Request) {
       .from('clientes_portal')
       .select('*')
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
-    if (error || !client) {
+    if (error) {
+      console.error('[ActualizarUsuario GET] Error en consulta clientes_portal:', error);
+      return NextResponse.json({ error: `Error en base de datos: ${error.message}` }, { status: 500 });
+    }
+
+    if (!client) {
       return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 });
     }
 
@@ -58,9 +63,14 @@ export async function PUT(req: Request) {
       .from('clientes_portal')
       .select('*')
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
-    if (fetchErr || !existingClient) {
+    if (fetchErr) {
+      console.error('[ActualizarUsuario PUT] Error en consulta clientes_portal:', fetchErr);
+      return NextResponse.json({ error: `Error en base de datos: ${fetchErr.message}` }, { status: 500 });
+    }
+
+    if (!existingClient) {
       return NextResponse.json({ error: 'Cliente no encontrado en el portal.' }, { status: 404 });
     }
 
