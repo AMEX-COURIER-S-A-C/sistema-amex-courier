@@ -213,9 +213,201 @@ async function notifyClientNewPackage(email, nombreCompleto, wr, tracking, pesoK
       html: htmlContent,
     });
 
-    console.log(`[NOTIFICACIÓN ✅] Email enviado a ${email} para el paquete ${wr}`);
+    console.log(`[NOTIFICACIÓN ✅] Email 'RECIBIDO' enviado a ${email} para el paquete ${wr}`);
   } catch (err) {
-    console.error(`[NOTIFICACIÓN ❌] Error al enviar email a ${email}:`, err.message);
+    console.error(`[NOTIFICACIÓN ❌] Error al enviar email 'RECIBIDO' a ${email}:`, err.message);
+  }
+}
+
+/**
+ * Notificación express por correo con Resend al cliente cuando su paquete va en vuelo a Lima (EN VUELO)
+ */
+async function notifyClientFlightPackage(email, nombreCompleto, wr, tracking, pesoKg) {
+  if (!resend) {
+    console.warn(`[NOTIFICACIÓN] Resend no configurado. Omitiendo email a ${email}`);
+    return;
+  }
+
+  try {
+    const trackingText = tracking && tracking !== '—' ? tracking : 'Sin Tracking Asignado';
+    const pesoText = pesoKg != null && pesoKg > 0 ? `${Number(pesoKg).toFixed(2)} kg` : null;
+    const portalUrl = 'https://clientes.sistemaamexcourier.online/clientes';
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Paquete en Vuelo a Lima - AMEX Courier</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #0b1329; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1e293b;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #0b1329; padding: 40px 15px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="580" cellspacing="0" cellpadding="0" style="background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.35); max-width: 580px; width: 100%;">
+          <tr>
+            <td style="background: linear-gradient(135deg, #1e2229 0%, #0f172a 60%, #0284c7 100%); padding: 36px 30px; text-align: center; border-bottom: 3px solid #0284c7;">
+              <img src="https://www.sistemaamexcourier.online/images/logo-amex-clean.png" alt="AMEX Courier" width="160" style="display: block; margin: 0 auto 14px auto;" />
+              <span style="display: inline-block; background: rgba(2, 132, 199, 0.25); border: 1px solid rgba(2, 132, 199, 0.5); color: #bae6fd; padding: 4px 14px; border-radius: 20px; font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 12px;">
+                ✈️ Despacho Aéreo • En Vuelo
+              </span>
+              <h1 style="color: #ffffff; margin: 0; font-size: 23px; font-weight: 900;">¡Tu paquete va en camino a Lima!</h1>
+              <p style="color: #cbd5e1; margin: 8px 0 0 0; font-size: 13.5px;">Ha salido de nuestro almacén de Miami en vuelo directo hacia Perú.</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 32px 30px 24px 30px;">
+              <p style="margin: 0 0 16px 0; font-size: 15px; color: #334155;">Hola <strong>${nombreCompleto}</strong>,</p>
+              <p style="margin: 0 0 20px 0; font-size: 14px; color: #475569;">Te confirmamos que tu paquete ya despegó y se encuentra en tránsito internacional hacia Lima:</p>
+              
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 24px;">
+                <tr>
+                  <td style="padding: 16px 20px; border-bottom: 1px solid #e2e8f0;">
+                    <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b;">Número de Warehouse (WR)</span>
+                    <div style="font-size: 17px; font-weight: 900; color: #0284c7; font-family: monospace; margin-top: 2px;">${wr}</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 14px 20px; border-bottom: 1px solid #e2e8f0;">
+                    <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b;">Número de Tracking Original</span>
+                    <div style="font-size: 13.5px; font-weight: 700; color: #1e293b; font-family: monospace; margin-top: 2px;">${trackingText}</div>
+                  </td>
+                </tr>
+                ${pesoText ? `
+                <tr>
+                  <td style="padding: 14px 20px; border-bottom: 1px solid #e2e8f0;">
+                    <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b;">Peso Registrado</span>
+                    <div style="font-size: 14px; font-weight: 800; color: #1e293b; margin-top: 2px;">${pesoText}</div>
+                  </td>
+                </tr>` : ''}
+                <tr>
+                  <td style="padding: 14px 20px;">
+                    <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b;">Estado Actual</span>
+                    <div style="margin-top: 4px;">
+                      <span style="display: inline-block; background-color: #eff6ff; color: #1d4ed8; border: 1px solid #dbeafe; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 800;">
+                        ✈️ EN VUELO A PERÚ
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+
+              <div style="text-align: center; margin: 28px 0;">
+                <a href="${portalUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; padding: 14px 34px; font-size: 14.5px; font-weight: 800; color: #ffffff; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); text-decoration: none; border-radius: 8px;">
+                  Rastrear en mi Portal →
+                </a>
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+    await resend.emails.send({
+      from: RESEND_FROM,
+      to: [email],
+      subject: `✈️ ¡Tu paquete va en camino a Lima! [${wr}]`,
+      html: htmlContent,
+    });
+
+    console.log(`[NOTIFICACIÓN ✅] Email 'EN VUELO' enviado a ${email} para el paquete ${wr}`);
+  } catch (err) {
+    console.error(`[NOTIFICACIÓN ❌] Error al enviar email 'EN VUELO' a ${email}:`, err.message);
+  }
+}
+
+/**
+ * Notificación ultra-concisa por correo con Resend al cliente cuando su paquete ha sido entregado (ENTREGADO)
+ */
+async function notifyClientDeliveredPackage(email, nombreCompleto, wr, tracking) {
+  if (!resend) {
+    console.warn(`[NOTIFICACIÓN] Resend no configurado. Omitiendo email a ${email}`);
+    return;
+  }
+
+  try {
+    const trackingText = tracking && tracking !== '—' ? tracking : 'Sin Tracking Asignado';
+    const portalUrl = 'https://clientes.sistemaamexcourier.online/clientes';
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Paquete Entregado - AMEX Courier</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #0b1329; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1e293b;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #0b1329; padding: 40px 15px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="580" cellspacing="0" cellpadding="0" style="background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.35); max-width: 580px; width: 100%;">
+          <tr>
+            <td style="background: linear-gradient(135deg, #1e2229 0%, #0f172a 60%, #059669 100%); padding: 36px 30px; text-align: center; border-bottom: 3px solid #059669;">
+              <img src="https://www.sistemaamexcourier.online/images/logo-amex-clean.png" alt="AMEX Courier" width="160" style="display: block; margin: 0 auto 14px auto;" />
+              <span style="display: inline-block; background: rgba(5, 150, 105, 0.25); border: 1px solid rgba(5, 150, 105, 0.5); color: #a7f3d0; padding: 4px 14px; border-radius: 20px; font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 12px;">
+                ✅ Entrega Exitosa • Finalizada
+              </span>
+              <h1 style="color: #ffffff; margin: 0; font-size: 23px; font-weight: 900;">¡Tu paquete ha sido entregado!</h1>
+              <p style="color: #cbd5e1; margin: 8px 0 0 0; font-size: 13.5px;">El servicio ha sido completado satisfactoriamente.</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 32px 30px 24px 30px;">
+              <p style="margin: 0 0 16px 0; font-size: 15px; color: #334155;">Hola <strong>${nombreCompleto}</strong>,</p>
+              <p style="margin: 0 0 20px 0; font-size: 14px; color: #475569;">Te confirmamos que la entrega de tu paquete ha sido efectuada exitosamente:</p>
+              
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 24px;">
+                <tr>
+                  <td style="padding: 16px 20px; border-bottom: 1px solid #e2e8f0;">
+                    <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b;">Número de Warehouse (WR)</span>
+                    <div style="font-size: 17px; font-weight: 900; color: #059669; font-family: monospace; margin-top: 2px;">${wr}</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 14px 20px; border-bottom: 1px solid #e2e8f0;">
+                    <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b;">Número de Tracking Original</span>
+                    <div style="font-size: 13.5px; font-weight: 700; color: #1e293b; font-family: monospace; margin-top: 2px;">${trackingText}</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 14px 20px;">
+                    <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b;">Estado</span>
+                    <div style="margin-top: 4px;">
+                      <span style="display: inline-block; background-color: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 800;">
+                        ● ENTREGADO
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+
+              <div style="text-align: center; margin: 28px 0;">
+                <a href="${portalUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; padding: 14px 34px; font-size: 14.5px; font-weight: 800; color: #ffffff; background: linear-gradient(135deg, #059669 0%, #047857 100%); text-decoration: none; border-radius: 8px;">
+                  Ver en mi Portal →
+                </a>
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+    await resend.emails.send({
+      from: RESEND_FROM,
+      to: [email],
+      subject: `✅ ¡Tu paquete ha sido entregado! [${wr}]`,
+      html: htmlContent,
+    });
+
+    console.log(`[NOTIFICACIÓN ✅] Email 'ENTREGADO' enviado a ${email} para el paquete ${wr}`);
+  } catch (err) {
+    console.error(`[NOTIFICACIÓN ❌] Error al enviar email 'ENTREGADO' a ${email}:`, err.message);
   }
 }
 
@@ -363,7 +555,7 @@ async function runMirrorSyncCycle() {
       });
     }
 
-    // 4. Detección Inteligente de Cambios (Delta):
+    // 4. Detección Inteligente de Cambios (Delta) y Transiciones de Estado:
     // Solo escribimos en la base de datos lo que es nuevo o lo que cambió de estado
     const recordsToUpsert = [];
     const clientCandidatesToNotify = [];
@@ -376,13 +568,31 @@ async function runMirrorSyncCycle() {
         recordsToUpsert.push(entry.record);
         daemonWrStatusCache.set(canonicalWr, entry.statusTib);
 
-        if (entry.matchedEmail !== ADMIN_MASTER_EMAIL && entry.statusTib === 'RECIBIDO') {
-          clientCandidatesToNotify.push(entry);
+        // Si no es el ciclo de arranque inicial y pertenece a un cliente regular registrado
+        if (!isInitialRun && entry.matchedEmail !== ADMIN_MASTER_EMAIL) {
+          clientCandidatesToNotify.push({
+            type: entry.statusTib, // 'RECIBIDO' | 'ENVIADO' | 'ENTREGADO'
+            entry,
+          });
         }
       } else if (cachedStatus !== entry.statusTib) {
         // WR existente cuyo estado avanzó (ej. RECIBIDO -> ENVIADO o ENVIADO -> ENTREGADO)
         recordsToUpsert.push(entry.record);
         daemonWrStatusCache.set(canonicalWr, entry.statusTib);
+
+        if (!isInitialRun && entry.matchedEmail !== ADMIN_MASTER_EMAIL) {
+          if (entry.statusTib === 'ENVIADO') {
+            clientCandidatesToNotify.push({
+              type: 'ENVIADO',
+              entry,
+            });
+          } else if (entry.statusTib === 'ENTREGADO') {
+            clientCandidatesToNotify.push({
+              type: 'ENTREGADO',
+              entry,
+            });
+          }
+        }
       }
     }
 
@@ -407,46 +617,30 @@ async function runMirrorSyncCycle() {
       }
     }
 
-    // 6. Si hay paquetes en RECIBIDO de clientes regulares, verificar si son nuevos en BD antes de notificar
-    const newPackagesToNotify = [];
-    if (clientCandidatesToNotify.length > 0) {
-      for (const entry of clientCandidatesToNotify) {
+    // 6. Si hay candidatos a notificar y no es el ciclo inicial, despachar correos según tipo de evento
+    let sentEmailsCount = 0;
+    if (clientCandidatesToNotify.length > 0 && !isInitialRun) {
+      console.log(`[TIB-MIRROR ✉️] Procesando ${clientCandidatesToNotify.length} alertas para clientes...`);
+      for (const item of clientCandidatesToNotify) {
+        const { type, entry } = item;
+        const email = entry.matchedEmail;
+        const nombreCompleto = clientDetailsMap.get(email) || 'Cliente AMEX';
         const wr = entry.record.numero_recibo_bodega;
-        const { data: existingPkg } = await sb
-          .from('paquetes_portal')
-          .select('id, creado_en')
-          .eq('numero_recibo_bodega', wr)
-          .maybeSingle();
+        const tracking = entry.record.tracking;
+        const pesoKg = entry.record.peso_kg;
+        const tipoEmpaque = entry.record.tipo_empaque;
+        const fotoUrl = entry.record.tib_imagen_url;
 
-        // Si el paquete fue creado hace menos de 10 minutos o no existía, es nuevo ingreso a Miami
-        const isRecentlyCreated = existingPkg && (Date.now() - new Date(existingPkg.creado_en).getTime()) < 10 * 60 * 1000;
-        if (!existingPkg || isRecentlyCreated) {
-          newPackagesToNotify.push({
-            email: entry.matchedEmail,
-            nombreCompleto: clientDetailsMap.get(entry.matchedEmail) || 'Cliente AMEX',
-            wr,
-            tracking: entry.record.tracking,
-            pesoKg: entry.record.peso_kg,
-            tipoEmpaque: entry.record.tipo_empaque,
-            fotoUrl: entry.record.tib_imagen_url,
-          });
+        if (type === 'RECIBIDO') {
+          await notifyClientNewPackage(email, nombreCompleto, wr, tracking, pesoKg, tipoEmpaque, fotoUrl);
+          sentEmailsCount++;
+        } else if (type === 'ENVIADO') {
+          await notifyClientFlightPackage(email, nombreCompleto, wr, tracking, pesoKg);
+          sentEmailsCount++;
+        } else if (type === 'ENTREGADO') {
+          await notifyClientDeliveredPackage(email, nombreCompleto, wr, tracking);
+          sentEmailsCount++;
         }
-      }
-    }
-
-    // Enviar notificaciones por correo
-    if (newPackagesToNotify.length > 0 && !isInitialRun) {
-      console.log(`[TIB-MIRROR ✉️] Enviando ${newPackagesToNotify.length} alertas de llegada a Miami...`);
-      for (const notif of newPackagesToNotify) {
-        await notifyClientNewPackage(
-          notif.email,
-          notif.nombreCompleto,
-          notif.wr,
-          notif.tracking,
-          notif.pesoKg,
-          notif.tipoEmpaque,
-          notif.fotoUrl
-        );
       }
     }
 
@@ -454,7 +648,7 @@ async function runMirrorSyncCycle() {
     const elapsed = ((Date.now() - cycleStart) / 1000).toFixed(1);
     console.log(`[TIB-MIRROR ✅] Ciclo completado en ${elapsed}s.`);
     console.log(`  - Paquetes actualizados en Supabase: ${upsertedCount}`);
-    console.log(`  - Nuevas alertas enviadas por email: ${newPackagesToNotify.length}`);
+    console.log(`  - Alertas enviadas por email: ${sentEmailsCount}`);
     console.log(`[TIB-MIRROR ⏳] Próximo ciclo en ${POLL_INTERVAL_MINUTES} minutos.`);
   } catch (err) {
     console.error(`[TIB-MIRROR ❌ Error]:`, err.message);
