@@ -8,6 +8,7 @@
     "dev:https": "node scripts/gen-certs.mjs && next dev --experimental-https --experimental-https-key ./certificates/localhost-key.pem --experimental-https-cert ./certificates/localhost.pem",
     "doctor": "node scripts/local-doctor.mjs",
     "worker": "node worker/worker.js",
+    "worker:tib-mirror": "node worker/tib-mirror-daemon.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
