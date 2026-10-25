@@ -413,6 +413,48 @@ export default function Sidebar({
           </div>
         </div>
 
+        {/* Acceso Directo al Portal de Clientes */}
+        <a
+          href="https://clientes.sistemaamexcourier.online"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            padding: '9px 12px',
+            borderRadius: '8px',
+            fontSize: '12px',
+            fontWeight: 800,
+            cursor: 'pointer',
+            background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(6, 95, 70, 0.3) 100%)',
+            border: '1.5px solid rgba(16, 185, 129, 0.45)',
+            color: '#6ee7b7',
+            textDecoration: 'none',
+            marginBottom: '8px',
+            transition: 'all 0.18s ease',
+            boxShadow: '0 2px 6px rgba(16, 185, 129, 0.15)'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+            e.currentTarget.style.color = '#ffffff';
+            e.currentTarget.style.borderColor = '#10b981';
+            e.currentTarget.style.boxShadow = '0 4px 12px rgba(16, 185, 129, 0.4)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(6, 95, 70, 0.3) 100%)';
+            e.currentTarget.style.color = '#6ee7b7';
+            e.currentTarget.style.borderColor = 'rgba(16, 185, 129, 0.45)';
+            e.currentTarget.style.boxShadow = '0 2px 6px rgba(16, 185, 129, 0.15)';
+          }}
+          title="Abrir Portal Oficial de Clientes en nueva pestaña"
+        >
+          <i className="fa-solid fa-arrow-up-right-from-square" style={{ fontSize: '11px' }}></i>
+          <span>Portal de Clientes ↗</span>
+        </a>
+
         {/* Único Botón de Cerrar Sesión */}
         <button
           onClick={handleLogoutClick}

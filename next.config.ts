@@ -32,6 +32,20 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async redirects() {
+    return [
+      {
+        source: '/clientes',
+        destination: 'https://clientes.sistemaamexcourier.online',
+        permanent: false,
+      },
+      {
+        source: '/clientes/:path*',
+        destination: 'https://clientes.sistemaamexcourier.online/:path*',
+        permanent: false,
+      },
+    ];
+  },
   async rewrites() {
     return {
       beforeFiles: [],
@@ -45,7 +59,6 @@ const nextConfig: NextConfig = {
         { source: '/directorio', destination: '/' },
         { source: '/clientes-360', destination: '/' },
         { source: '/clientes360', destination: '/' },
-        { source: '/clientes', destination: '/' },
         { source: '/crm-clientes', destination: '/' },
         { source: '/escaner', destination: '/' },
         { source: '/matriz-dni', destination: '/' },
