@@ -110,8 +110,8 @@
     "semantic_hash": ""
   },
   "components/Sidebar.tsx": {
-    "mtime": 1792389619.026396,
-    "ast_hash": "39328f4fbae50c19198bd011820446bf",
+    "mtime": 1792912364.690666,
+    "ast_hash": "760877e52836c5294f6e43cc6997d054",
     "semantic_hash": ""
   },
   "components/modals/NewClientModal.tsx": {
@@ -1081,8 +1081,8 @@
     "semantic_hash": ""
   },
   "next.config.ts": {
-    "mtime": 1792732650.8170516,
-    "ast_hash": "f63ccd95d56fa07d119dbeadc7d405cb",
+    "mtime": 1792912418.381435,
+    "ast_hash": "3fd1f5a0b2841fdef4c10625ad1869fb",
     "semantic_hash": ""
   },
   "package.json": {
@@ -2246,39 +2246,14 @@
     "ast_hash": "c93f1f75ecab24108e927fc1504f487a",
     "semantic_hash": ""
   },
-  "app/api/clientes/auth/login/route.ts": {
-    "mtime": 1792890926.9481368,
-    "ast_hash": "ba2d89047069dd9c23a5a8973c1b317d",
-    "semantic_hash": ""
-  },
-  "app/api/clientes/crear-usuario/route.ts": {
-    "mtime": 1792870014.927544,
-    "ast_hash": "94f2863049f8f36fa2b55274377b6323",
-    "semantic_hash": ""
-  },
-  "app/api/clientes/listado-amex/route.ts": {
-    "mtime": 1792890217.7093372,
-    "ast_hash": "2b513a2afd83f9f7daa3cb4f63694eac",
-    "semantic_hash": ""
-  },
   "app/api/clientes/route.ts": {
     "mtime": 1792732650.639454,
     "ast_hash": "1152d649f8a6a147a05f695ba087f60e",
     "semantic_hash": ""
   },
-  "app/api/clientes/sync-all/route.ts": {
-    "mtime": 1792862391.6992474,
-    "ast_hash": "6b52eae1f2a204ee7315fda776defa6b",
-    "semantic_hash": ""
-  },
   "app/api/clientes/tarifas/route.ts": {
     "mtime": 1792732650.6460538,
     "ast_hash": "50d1a400761a2afcdd0e39986931c4c9",
-    "semantic_hash": ""
-  },
-  "app/api/clientes/tracking/route.ts": {
-    "mtime": 1792860887.6018822,
-    "ast_hash": "8a2e1a5bc4e4dda28deec19a802d2988",
     "semantic_hash": ""
   },
   "app/api/despacho/rutas/[id]/fotos/route.ts": {
@@ -2304,21 +2279,6 @@
   "app/api/usuarios/route.ts": {
     "mtime": 1792860887.6157444,
     "ast_hash": "455e1e1d1b5e39b085405bf19295b33d",
-    "semantic_hash": ""
-  },
-  "app/clientes/login/page.tsx": {
-    "mtime": 1792860887.6204824,
-    "ast_hash": "ddd55522b1f7d048e1e3e217842c7868",
-    "semantic_hash": ""
-  },
-  "app/clientes/page.tsx": {
-    "mtime": 1792884765.71034,
-    "ast_hash": "f3f33b7ec496c87fabbe227c8d0ae972",
-    "semantic_hash": ""
-  },
-  "app/clientes/registro/page.tsx": {
-    "mtime": 1792860887.6243565,
-    "ast_hash": "7f18b42feee4d5054d7613d9a11142e4",
     "semantic_hash": ""
   },
   "app/global-error.tsx": {
@@ -2444,31 +2404,6 @@
   "scripts/setup-hosts.ps1": {
     "mtime": 1792861245.6473985,
     "ast_hash": "a4a1b0d170c6cd71d042af7659676d08",
-    "semantic_hash": ""
-  },
-  "app/api/clientes/actualizar-usuario/route.ts": {
-    "mtime": 1792909631.754541,
-    "ast_hash": "fbda86238bbc9e09262a1243bfc9754c",
-    "semantic_hash": ""
-  },
-  "app/clientes/configurar/[id]/page.tsx": {
-    "mtime": 1792890321.7242608,
-    "ast_hash": "8dce43552c1576d71835250847206e13",
-    "semantic_hash": ""
-  },
-  "app/api/clientes/listar-portal/route.ts": {
-    "mtime": 1792870043.6974943,
-    "ast_hash": "738e57f46cc1ab27f7553eeaafb9387f",
-    "semantic_hash": ""
-  },
-  "app/api/clientes/reenviar-activacion/route.ts": {
-    "mtime": 1792870035.959875,
-    "ast_hash": "24b196d3ca0d3ac9742fac26767af06a",
-    "semantic_hash": ""
-  },
-  "app/clientes/establecer-password/page.tsx": {
-    "mtime": 1792869975.9677303,
-    "ast_hash": "4030b93c5931f861623f15ba87401858",
     "semantic_hash": ""
   },
   "lib/email/welcomeClient.ts": {

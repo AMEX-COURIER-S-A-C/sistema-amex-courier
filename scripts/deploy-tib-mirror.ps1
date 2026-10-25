@@ -50,7 +50,8 @@ $pkgJsonEncoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($pkgJ
 ssh -n -o StrictHostKeyChecking=no -o ConnectTimeout=15 "root@$VpsHost" "echo $pkgJsonEncoded | base64 -d > /opt/amex-tib-mirror/package.json"
 
 Write-Host "4. Configurando variables de entorno en /opt/amex-tib-mirror/.env..."
-$tibEmail = "operaciones@amexcourierperu.com"
+$tibEmailMatch = Select-String -Path $envLocalPath -Pattern "^TIB_API_EMAIL=(.*)$"
+$tibEmail = if ($tibEmailMatch) { $tibEmailMatch.Matches[0].Groups[1].Value.Trim() } else { "" }
 $tibUrl = "https://www.tibcourier.com/api/list-warehouse"
 $tibPassMatch = Select-String -Path $envLocalPath -Pattern "^TIB_API_PASSWORD=(.*)$"
 if ($tibPassMatch) { $tibPass = $tibPassMatch.Matches[0].Groups[1].Value.Trim() }

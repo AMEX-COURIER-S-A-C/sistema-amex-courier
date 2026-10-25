@@ -32,6 +32,14 @@ const SECRET_PATTERNS = [
     name: 'Contraseña o Credencial en URL de PostgreSQL',
     regex: /postgres(ql)?:\/\/[^:]+:[^@\s]{6,}@[^:\s]+:[0-9]+/g,
   },
+  {
+    name: 'Company Email Password / Hardcoded Password Literal',
+    regex: /(password|passwd|pwd)\s*[:=]\s*['"][^'"]{4,}['"]/gi,
+  },
+  {
+    name: 'TIB or Service Password Fallback',
+    regex: /(TIB_API_PASSWORD|TIB_PASSWORD|VPS_ROOT_PASSWORD)\s*\|\|\s*['"][^'"]+['"]/gi,
+  },
 ];
 
 // Archivos o extensiones permitidas / ignoradas

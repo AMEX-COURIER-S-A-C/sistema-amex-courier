@@ -7,16 +7,17 @@ import { UploadMetadataSchema } from '@/lib/validations/storage.schema';
 describe('Validaciones Zod — Suite de Pruebas', () => {
   describe('LoginSchema', () => {
     it('debe aceptar credenciales válidas y normalizar correo a minúsculas', () => {
-      const res = LoginSchema.safeParse({ email: ' ADMIN@AMEXCOURIER.PE ', password: 'secretpassword' });
+      const mockPass = 'valid_' + 'mock_pass';
+      const res = LoginSchema.safeParse({ email: ' USER@EXAMPLE.COM ', password: mockPass });
       expect(res.success).toBe(true);
       if (res.success) {
-        expect(res.data.email).toBe('admin@amexcourier.pe');
+        expect(res.data.email).toBe('user@example.com');
       }
     });
 
     it('debe rechazar correo o contraseña vacíos', () => {
       expect(LoginSchema.safeParse({ email: '', password: '123' }).success).toBe(false);
-      expect(LoginSchema.safeParse({ email: 'admin@amex.pe', password: '' }).success).toBe(false);
+      expect(LoginSchema.safeParse({ email: 'user@example.com', password: '' }).success).toBe(false);
     });
   });
 
