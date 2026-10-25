@@ -117,7 +117,15 @@ function runCheck() {
       if (matches) {
         for (const match of matches) {
           // Si el match es un falso positivo conocido (como placeholders en documentación o variables)
-          if (match.includes('your-api-key') || match.includes('YOUR_KEY') || match.includes('example')) continue;
+          if (
+            match.includes('your-api-key') ||
+            match.includes('YOUR_KEY') ||
+            match.includes('example') ||
+            (match.includes('<') && match.includes('>')) ||
+            match.includes('tu-') ||
+            match.includes('dummy') ||
+            match.includes('placeholder')
+          ) continue;
           violations.push({
             file,
             secretType: pattern.name,

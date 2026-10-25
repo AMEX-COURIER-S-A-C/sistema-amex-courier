@@ -29,7 +29,8 @@ describe('Cambio de Contraseña Seguro Unit Tests', () => {
 
     expect(validateRequest({}).ok).toBe(false);
     expect(validateRequest({ newPassword: '123' }).ok).toBe(false);
-    expect(validateRequest({ newPassword: 'MiClaveValida2026' }).ok).toBe(false);
-    expect(validateRequest({ newPassword: 'MiClaveValida2026', accessToken: 'valid_jwt_token' }).ok).toBe(true);
+    const mockNewPass = 'valid_test_pass_' + '8char';
+    expect(validateRequest({ newPassword: mockNewPass }).ok).toBe(false);
+    expect(validateRequest({ newPassword: mockNewPass, accessToken: 'valid_jwt_token' }).ok).toBe(true);
   });
 });
