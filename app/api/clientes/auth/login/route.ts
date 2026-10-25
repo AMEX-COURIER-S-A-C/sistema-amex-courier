@@ -9,7 +9,7 @@ const PORTAL_URL =
 
 const PORTAL_ANON_KEY =
   process.env.NEXT_PUBLIC_PORTAL_SUPABASE_ANON_KEY ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpmdGtib2xnY25ua2tkZnptdGl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI4MDIyMDUsImV4cCI6MjEwODM3ODIwNX0.aywGB_4VCyu-1VvhvjrGkyWQf2bAPGomIl08FxFh6uM';
+  '';
 
 const MASTER_URL =
   process.env.SUPABASE_URL ||
@@ -19,7 +19,7 @@ const MASTER_URL =
 const MASTER_ANON_KEY =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   process.env.SUPABASE_ANON_KEY ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRsaXViZnllcGltemxpbXhycXV6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc1MTc2MTIsImV4cCI6MjEwMzA5MzYxMn0.OztB0G_V7l0ootg-bh0kIM-WCXzGoROrrD19z6PkIZc';
+  '';
 
 export async function POST(req: NextRequest) {
   try {
