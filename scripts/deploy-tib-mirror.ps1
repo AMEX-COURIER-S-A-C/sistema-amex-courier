@@ -61,6 +61,9 @@ if ($portalKeyMatch) { $portalKey = $portalKeyMatch.Matches[0].Groups[1].Value.T
 $resendKeyMatch = Select-String -Path $envLocalPath -Pattern "^RESEND_API_KEY=(.*)$"
 if ($resendKeyMatch) { $resendKey = $resendKeyMatch.Matches[0].Groups[1].Value.Trim() }
 
+$resendFromMatch = Select-String -Path $envLocalPath -Pattern "^RESEND_FROM_EMAIL=(.*)$"
+$resendFrom = if ($resendFromMatch) { $resendFromMatch.Matches[0].Groups[1].Value.Trim() } else { "notificaciones@sistemaamexcourier.online" }
+
 $envLines = @(
     "PORTAL_SUPABASE_URL=https://zftkbolgcnnkkdfzmtix.supabase.co",
     "PORTAL_SUPABASE_SERVICE_ROLE_KEY=$portalKey",
@@ -68,7 +71,7 @@ $envLines = @(
     "TIB_API_EMAIL=$tibEmail",
     "TIB_API_PASSWORD=$tibPass",
     "RESEND_API_KEY=$resendKey",
-    "RESEND_FROM_EMAIL=info@sistemaamexcourier.online",
+    "RESEND_FROM_EMAIL=$resendFrom",
     "SYNC_INTERVAL_MINUTES=5"
 )
 $envContent = $envLines -join "`n"

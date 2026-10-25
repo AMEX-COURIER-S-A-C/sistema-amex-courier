@@ -74,7 +74,10 @@ const TIB_EMAIL = process.env.TIB_API_EMAIL || '';
 const TIB_PASSWORD = process.env.TIB_API_PASSWORD || '';
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
-const RESEND_FROM = process.env.RESEND_FROM_EMAIL || 'info@sistemaamexcourier.online';
+const rawResendFrom = process.env.RESEND_FROM_EMAIL || 'notificaciones@sistemaamexcourier.online';
+const RESEND_FROM = rawResendFrom.includes('<') && rawResendFrom.includes('>')
+  ? rawResendFrom
+  : `AMEX Courier <${rawResendFrom}>`;
 
 const ADMIN_MASTER_EMAIL = 'sistemaamexcourier@gmail.com';
 const TIB_MEDIA_BASE_URL = 'https://www.tibcourier.com/global-courier/ajax/';
@@ -204,7 +207,7 @@ async function notifyClientNewPackage(email, nombreCompleto, wr, tracking, pesoK
 </html>`;
 
     await resend.emails.send({
-      from: `AMEX Courier <${RESEND_FROM}>`,
+      from: RESEND_FROM,
       to: [email],
       subject: `📦 ¡Tu paquete ha llegado a nuestro almacén de Miami! [${wr}]`,
       html: htmlContent,
