@@ -13,7 +13,7 @@ const portalKey =
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const search = (searchParams.get('search') || '').trim();
+    const search = (searchParams.get('search') || searchParams.get('q') || '').trim();
     const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '50', 10), 1), 500);
     const offset = Math.max(parseInt(searchParams.get('offset') || '0', 10), 0);
 
@@ -24,7 +24,10 @@ export async function GET(req: Request) {
       .select('*', { count: 'exact' });
 
     if (search) {
-      query = query.ilike('nombre', `%${search}%`);
+      const terms = search.split(/\s+/).filter(Boolean);
+      for (const term of terms) {
+        query = query.ilike('nombre', `%${term}%`);
+      }
     }
 
     query = query
