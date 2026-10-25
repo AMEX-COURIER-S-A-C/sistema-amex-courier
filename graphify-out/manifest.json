@@ -2490,5 +2490,10 @@
     "mtime": 1792887445.364323,
     "ast_hash": "ce0ae124fb5a336fcb4dcf8979e3d9f4",
     "semantic_hash": ""
+  },
+  "scripts/deploy-tib-mirror.ps1": {
+    "mtime": 1792887999.032204,
+    "ast_hash": "2b2bd1d0c32571736048453a2e662a02",
+    "semantic_hash": ""
   }
 }

@@ -1,16 +1,16 @@
 # Graph Report - sistema-amex-courier  (2026-10-24)
 
 ## Corpus Check
-- 515 files · ~564,912 words
+- 516 files · ~565,251 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2327 nodes · 5274 edges · 151 communities (126 shown, 25 thin omitted)
+- 2328 nodes · 5274 edges · 152 communities (128 shown, 24 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 18 edges (avg confidence: 0.62)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `303c167a`
+- Built from commit: `8716871f`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -126,7 +126,7 @@
 - ref_fs
 - useCobrosOperaciones.ts
 - read-excel-file
-- .TryFindHeaders
+- .ReadRowValues
 - getPortalAdmin
 - .WarmUpSources
 - analyze-oct-week.mjs
@@ -141,7 +141,7 @@
 - analisis-clientes.mjs
 - .CopyXmlNode
 - register
-- WorkbookValidation
+- CachedSourceData
 - listado-amex/route.ts
 - file-saver
 - lucide-react
@@ -173,7 +173,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (151 total, 25 thin omitted)
+## Communities (152 total, 24 thin omitted)
 
 ### Community 0 - "constants.ts"
 Cohesion: 0.26
@@ -543,9 +543,9 @@ Nodes (10): ref_fs, env, fetchStatus(), main(), env, supabase, envContent, match
 Cohesion: 0.10
 Nodes (33): CobroDeliveryModal(), CobroDeliveryModalProps, CobroPaymentModal(), CobroPaymentModalProps, CobrosExcelImporterModalContent(), CobrosExcelImporterModalProps, INITIAL_COBROS_LOTES, ExcelCobrosParser (+25 more)
 
-### Community 123 - ".TryFindHeaders"
-Cohesion: 0.27
-Nodes (4): HeaderInfo, IEnumerable, WorksheetPart, XElement
+### Community 123 - ".ReadRowValues"
+Cohesion: 0.26
+Nodes (5): HeaderInfo, IEnumerable, List, WorksheetPart, XElement
 
 ### Community 124 - "getPortalAdmin"
 Cohesion: 0.13
@@ -576,8 +576,8 @@ Cohesion: 0.33
 Nodes (3): envContent, serviceKey, supabaseAdmin
 
 ### Community 133 - ".PatchInventory"
-Cohesion: 0.23
-Nodes (7): CellData, DateTime, Dictionary, List, PatchCounts, SourceRecord, CachedSourceData
+Cohesion: 0.33
+Nodes (3): CellData, Dictionary, PatchCounts
 
 ### Community 137 - "ProcessorDaemon"
 Cohesion: 0.27
@@ -595,20 +595,24 @@ Nodes (5): cleanedMap, containAmex, data, duplicates, notContainAmex
 Cohesion: 0.40
 Nodes (3): Stream, XmlReader, XmlWriter
 
+### Community 150 - "CachedSourceData"
+Cohesion: 0.40
+Nodes (4): DateTime, SourceRecord, WorkbookValidation, CachedSourceData
+
 ## Knowledge Gaps
 - **609 isolated node(s):** `dynamic`, `AnalyzeShalomSchema`, `ExtractDniSchema`, `ParseRotuloSchema`, `RESTORABLE_MODULES` (+604 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **25 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **24 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `Paquete` connect `Paquete` to `components/DniMatrixTab.tsx`, `components/LiveSheetsTab.tsx`, `useFormatoEntrega.ts`, `getSupabaseAdmin`, `excelExport.ts`, `types/index.ts`, `useInventoryData.ts`, `supabase/client.ts`, `registry.ts`, `DashboardTabContent.tsx`, `app/page.tsx`, `wr.ts`, `cobros/types.ts`, `components/CobrosTab.tsx`, `ClipboardCopyDropdown.tsx`, `Cliente`, `InventoryToolbar.tsx`, `InventoryHeader.tsx`, `scanner.ts`?**
-  _High betweenness centrality (0.074) - this node is a cross-community bridge._
+  _High betweenness centrality (0.070) - this node is a cross-community bridge._
 - **Why does `getSupabaseAdmin()` connect `getSupabaseAdmin` to `constants.ts`, `uploadFileToR2`, `r2/client.ts`, `analyzer.ts`, `users/route.ts`, `cruzar-planilla/route.ts`, `inventario-jobs/route.ts`, `batch-sync/route.ts`?**
-  _High betweenness centrality (0.051) - this node is a cross-community bridge._
+  _High betweenness centrality (0.050) - this node is a cross-community bridge._
 - **Why does `Cliente` connect `Cliente` to `RegistrarCobroDiarioModal.tsx`, `DashboardTabContent.tsx`, `components/DniMatrixTab.tsx`, `components/LiveSheetsTab.tsx`, `useFormatoEntrega.ts`, `useInvoice.ts`, `components/RotulosA4Tab.tsx`, `components/CobrosTab.tsx`, `excelExport.ts`, `scanner.ts`, `wr.ts`, `cobros/types.ts`, `types/index.ts`, `useInventoryData.ts`, `supabase/client.ts`, `Paquete`?**
-  _High betweenness centrality (0.036) - this node is a cross-community bridge._
+  _High betweenness centrality (0.034) - this node is a cross-community bridge._
 - **What connects `dynamic`, `AnalyzeShalomSchema`, `ExtractDniSchema` to the rest of the system?**
   _609 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `components/DniMatrixTab.tsx` be split into smaller, more focused modules?**

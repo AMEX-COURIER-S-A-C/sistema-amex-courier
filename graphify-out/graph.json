@@ -19535,6 +19535,17 @@
       "norm_label": "main()"
     },
     {
+      "label": "deploy-tib-mirror.ps1",
+      "file_type": "code",
+      "source_file": "scripts/deploy-tib-mirror.ps1",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "scripts_deploy_tib_mirror",
+      "community": 121,
+      "community_name": "deploy-tib-mirror.ps1",
+      "norm_label": "deploy-tib-mirror.ps1"
+    },
+    {
       "label": "extraer-clientes-tib.mjs",
       "file_type": "code",
       "source_file": "scripts/extraer-clientes-tib.mjs",
@@ -23984,8 +23995,8 @@
       "_callable_class": true,
       "_origin": "ast",
       "id": "worker_processor_amexinventoryprocessor_program_cachedsourcedata",
-      "community": 133,
-      "community_name": ".PatchInventory",
+      "community": 150,
+      "community_name": "CachedSourceData",
       "norm_label": "cachedsourcedata"
     },
     {
@@ -24006,8 +24017,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "list",
-      "community": 133,
-      "community_name": ".PatchInventory",
+      "community": 123,
+      "community_name": ".ReadRowValues",
       "norm_label": "list"
     },
     {
@@ -24017,8 +24028,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "datetime",
-      "community": 133,
-      "community_name": ".PatchInventory",
+      "community": 150,
+      "community_name": "CachedSourceData",
       "norm_label": "datetime"
     },
     {
@@ -24112,7 +24123,7 @@
       "_origin": "ast",
       "id": "worker_processor_amexinventoryprocessor_program_program_reportprogress",
       "community": 150,
-      "community_name": "WorkbookValidation",
+      "community_name": "CachedSourceData",
       "norm_label": ".reportprogress()"
     },
     {
@@ -24124,7 +24135,7 @@
       "_origin": "ast",
       "id": "worker_processor_amexinventoryprocessor_program_program_createvalidation",
       "community": 123,
-      "community_name": ".TryFindHeaders",
+      "community_name": ".ReadRowValues",
       "norm_label": ".createvalidation()"
     },
     {
@@ -24135,7 +24146,7 @@
       "_origin": "ast",
       "id": "ienumerable",
       "community": 123,
-      "community_name": ".TryFindHeaders",
+      "community_name": ".ReadRowValues",
       "norm_label": "ienumerable"
     },
     {
@@ -24181,7 +24192,7 @@
       "_origin": "ast",
       "id": "worksheetpart",
       "community": 123,
-      "community_name": ".TryFindHeaders",
+      "community_name": ".ReadRowValues",
       "norm_label": "worksheetpart"
     },
     {
@@ -24228,7 +24239,7 @@
       "_origin": "ast",
       "id": "worker_processor_amexinventoryprocessor_program_program_readrows",
       "community": 123,
-      "community_name": ".TryFindHeaders",
+      "community_name": ".ReadRowValues",
       "norm_label": ".readrows()"
     },
     {
@@ -24239,7 +24250,7 @@
       "_origin": "ast",
       "id": "xelement",
       "community": 123,
-      "community_name": ".TryFindHeaders",
+      "community_name": ".ReadRowValues",
       "norm_label": "xelement"
     },
     {
@@ -24251,7 +24262,7 @@
       "_origin": "ast",
       "id": "worker_processor_amexinventoryprocessor_program_program_findheaders",
       "community": 123,
-      "community_name": ".TryFindHeaders",
+      "community_name": ".ReadRowValues",
       "norm_label": ".findheaders()"
     },
     {
@@ -24263,7 +24274,7 @@
       "_origin": "ast",
       "id": "worker_processor_amexinventoryprocessor_program_program_tryfindheaders",
       "community": 123,
-      "community_name": ".TryFindHeaders",
+      "community_name": ".ReadRowValues",
       "norm_label": ".tryfindheaders()"
     },
     {
@@ -24274,8 +24285,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "worker_processor_amexinventoryprocessor_program_program_readrowvalues",
-      "community": 133,
-      "community_name": ".PatchInventory",
+      "community": 123,
+      "community_name": ".ReadRowValues",
       "norm_label": ".readrowvalues()"
     },
     {
@@ -24286,8 +24297,8 @@
       "_callable": true,
       "_origin": "ast",
       "id": "worker_processor_amexinventoryprocessor_program_program_readcell",
-      "community": 133,
-      "community_name": ".PatchInventory",
+      "community": 123,
+      "community_name": ".ReadRowValues",
       "norm_label": ".readcell()"
     },
     {
@@ -24335,7 +24346,7 @@
       "_origin": "ast",
       "id": "worker_processor_amexinventoryprocessor_program_program_normalizeheader",
       "community": 123,
-      "community_name": ".TryFindHeaders",
+      "community_name": ".ReadRowValues",
       "norm_label": ".normalizeheader()"
     },
     {
@@ -24347,7 +24358,7 @@
       "_origin": "ast",
       "id": "worker_processor_amexinventoryprocessor_program_program_rownumber",
       "community": 123,
-      "community_name": ".TryFindHeaders",
+      "community_name": ".ReadRowValues",
       "norm_label": ".rownumber()"
     },
     {
@@ -24359,7 +24370,7 @@
       "_origin": "ast",
       "id": "worker_processor_amexinventoryprocessor_program_program_columnnumber",
       "community": 123,
-      "community_name": ".TryFindHeaders",
+      "community_name": ".ReadRowValues",
       "norm_label": ".columnnumber()"
     },
     {
@@ -24371,7 +24382,7 @@
       "_origin": "ast",
       "id": "worker_processor_amexinventoryprocessor_program_program_columnname",
       "community": 123,
-      "community_name": ".TryFindHeaders",
+      "community_name": ".ReadRowValues",
       "norm_label": ".columnname()"
     },
     {
@@ -24468,7 +24479,7 @@
       "_origin": "ast",
       "id": "worker_processor_amexinventoryprocessor_program_program_setcell",
       "community": 123,
-      "community_name": ".TryFindHeaders",
+      "community_name": ".ReadRowValues",
       "norm_label": ".setcell()"
     },
     {
@@ -26592,8 +26603,8 @@
       "source_location": "",
       "_origin": "ast",
       "id": "sourcerecord",
-      "community": 133,
-      "community_name": ".PatchInventory",
+      "community": 150,
+      "community_name": "CachedSourceData",
       "norm_label": "sourcerecord"
     },
     {
@@ -26604,7 +26615,7 @@
       "_origin": "ast",
       "id": "workbookvalidation",
       "community": 150,
-      "community_name": "WorkbookValidation",
+      "community_name": "CachedSourceData",
       "norm_label": "workbookvalidation"
     },
     {
@@ -26626,7 +26637,7 @@
       "_origin": "ast",
       "id": "headerinfo",
       "community": 123,
-      "community_name": ".TryFindHeaders",
+      "community_name": ".ReadRowValues",
       "norm_label": "headerinfo"
     },
     {
@@ -89121,5 +89132,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "303c167a8fc56fb8fcb183828d4700a110ec7582"
+  "built_at_commit": "8716871f20e1b1d14b19fd16b54e15308f4e2035"
 }
