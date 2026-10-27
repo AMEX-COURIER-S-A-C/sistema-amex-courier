@@ -21,6 +21,7 @@ import { DespachoParada, EstadoParada } from '@/types/despacho';
 import { getWhatsAppUrl, getGoogleMapsUrl, normalizePhoneNumber, parseWrAndBultos } from '@/lib/utils/phoneUtils';
 import { confirmDialog, alertDialog } from '@/lib/dialog';
 import { compressImageFile } from '@/lib/utils/imageCompressor';
+import EvidenciaPhotoModal from '@/components/modals/EvidenciaPhotoModal';
 
 interface ChoferCardParadaProps {
   parada: DespachoParada;
@@ -153,8 +154,7 @@ export default function ChoferCardParada({
         flexDirection: 'column',
         gap: '12px',
         boxShadow: isEntregado ? 'none' : '0 2px 8px rgba(15,23,42,0.06)',
-        opacity: isEntregado ? 0.9 : 1,
-        transition: 'all 0.2s ease'
+                transition: 'all 0.2s ease'
       }}
     >
       {/* Cabecera de la Parada */}
@@ -627,111 +627,16 @@ export default function ChoferCardParada({
         )}
       </div>
 
-      {/* Modal Fullscreen de Visualización de Foto */}
-      {selectedFotoModal && (
-        <div
-          onClick={() => setSelectedFotoModal(null)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(15, 23, 42, 0.85)',
-            backdropFilter: 'blur(4px)',
-            zIndex: 9999,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '16px'
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              position: 'relative',
-              maxWidth: '92vw',
-              maxHeight: '90vh',
-              background: '#0f172a',
-              borderRadius: '16px',
-              overflow: 'hidden',
-              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5)',
-              display: 'flex',
-              flexDirection: 'column'
-            }}
-          >
-            {/* Header del modal */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '12px 16px',
-                background: '#1e293b',
-                color: '#f8fafc',
-                borderBottom: '1px solid #334155'
-              }}
-            >
-              <div style={{ fontSize: '13px', fontWeight: 700 }}>
-                Evidencia: <span style={{ color: '#38bdf8' }}>{parada.destinatario}</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <a
-                  href={selectedFotoModal}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    color: '#94a3b8',
-                    display: 'flex',
-                    alignItems: 'center',
-                    padding: '4px',
-                    borderRadius: '6px'
-                  }}
-                  title="Abrir imagen original"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                </a>
-                <button
-                  onClick={() => setSelectedFotoModal(null)}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#ffffff',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    padding: '4px',
-                    borderRadius: '6px'
-                  }}
-                  title="Cerrar"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Imagen centrada */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '12px',
-                background: '#020617'
-              }}
-            >
-              <img
-                src={selectedFotoModal}
-                alt={`Evidencia ${parada.destinatario}`}
-                style={{
-                  maxWidth: '100%',
-                  maxHeight: '75vh',
-                  objectFit: 'contain',
-                  borderRadius: '8px'
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Modal Fullscreen de Visualización de Foto (Portal a document.body) */}
+      <EvidenciaPhotoModal
+        isOpen={Boolean(selectedFotoModal)}
+        onClose={() => setSelectedFotoModal(null)}
+        title={`Evidencia: ${parada.destinatario}`}
+        subtitle={`Parada #${parada.orden} · ${parada.distrito}`}
+        photos={fotos.length > 0 ? fotos : (selectedFotoModal ? [selectedFotoModal] : [])}
+        initialIndex={selectedFotoModal ? Math.max(0, fotos.indexOf(selectedFotoModal)) : 0}
+        onDeletePhoto={onEliminarFoto ? handleEliminar : undefined}
+      />
 
       {/* Acciones de Entrega para el Chofer */}
       {!isEntregado && !isPromptingNoEntrega && (

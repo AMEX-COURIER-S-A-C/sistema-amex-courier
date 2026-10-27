@@ -24,6 +24,7 @@ import {
 import { useDespachoRutas } from '../hooks/useDespachoRutas';
 import RutaBuilderModal from './RutaBuilderModal';
 import ChoferCardParada from './ChoferCardParada';
+import EvidenciaPhotoModal from '@/components/modals/EvidenciaPhotoModal';
 import { DespachoRuta } from '@/types/despacho';
 import { confirmDialog, alertDialog } from '@/lib/dialog';
 import { compressImageFile } from '@/lib/utils/imageCompressor';
@@ -750,108 +751,16 @@ export default function DespachoRutasTab() {
             </div>
           </div>
 
-          {/* Modal Fullscreen para Fotos de la Ruta */}
-          {selectedRutaFotoModal && (
-            <div
-              onClick={() => setSelectedRutaFotoModal(null)}
-              style={{
-                position: 'fixed',
-                inset: 0,
-                backgroundColor: 'rgba(15, 23, 42, 0.85)',
-                backdropFilter: 'blur(4px)',
-                zIndex: 9999,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '16px'
-              }}
-            >
-              <div
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  position: 'relative',
-                  maxWidth: '92vw',
-                  maxHeight: '90vh',
-                  background: '#0f172a',
-                  borderRadius: '16px',
-                  overflow: 'hidden',
-                  boxShadow: '0 20px 25px -5px rgba(0,0,0,0.5)',
-                  display: 'flex',
-                  flexDirection: 'column'
-                }}
-              >
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '12px 16px',
-                    background: '#1e293b',
-                    color: '#f8fafc',
-                    borderBottom: '1px solid #334155'
-                  }}
-                >
-                  <div style={{ fontSize: '13px', fontWeight: 700 }}>
-                    Foto de Ruta: <span style={{ color: '#38bdf8' }}>{selectedRuta.nombreRuta}</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <a
-                      href={selectedRutaFotoModal}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        color: '#94a3b8',
-                        display: 'flex',
-                        alignItems: 'center',
-                        padding: '4px',
-                        borderRadius: '6px'
-                      }}
-                      title="Abrir imagen original"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                    </a>
-                    <button
-                      onClick={() => setSelectedRutaFotoModal(null)}
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: '#ffffff',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        padding: '4px',
-                        borderRadius: '6px'
-                      }}
-                      title="Cerrar"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
-                  </div>
-                </div>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '12px',
-                    background: '#020617'
-                  }}
-                >
-                  <img
-                    src={selectedRutaFotoModal}
-                    alt="Foto de la ruta"
-                    style={{
-                      maxWidth: '100%',
-                      maxHeight: '75vh',
-                      objectFit: 'contain',
-                      borderRadius: '8px'
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Modal Fullscreen para Fotos de la Ruta (Portal a document.body) */}
+          <EvidenciaPhotoModal
+            isOpen={Boolean(selectedRutaFotoModal)}
+            onClose={() => setSelectedRutaFotoModal(null)}
+            title={`Foto de Ruta: ${selectedRuta.nombreRuta}`}
+            subtitle="Carga del camión / planilla física"
+            photos={selectedRuta.fotos && selectedRuta.fotos.length > 0 ? selectedRuta.fotos : (selectedRutaFotoModal ? [selectedRutaFotoModal] : [])}
+            initialIndex={selectedRutaFotoModal && selectedRuta.fotos ? Math.max(0, selectedRuta.fotos.indexOf(selectedRutaFotoModal)) : 0}
+            onDeletePhoto={handleEliminarFotoRutaClick}
+          />
 
           {/* Filtros rápidos de Paradas para el Chofer */}
           <div style={{ display: 'flex', gap: '8px' }}>

@@ -1257,8 +1257,8 @@
     "semantic_hash": ""
   },
   "tests/unit/validations.test.ts": {
-    "mtime": 1791519104.716006,
-    "ast_hash": "3a65c5a9e2748d28fe25f423826c3438",
+    "mtime": 1792950358.3178785,
+    "ast_hash": "8c266922654946ae3bee0c94d5d1b29b",
     "semantic_hash": ""
   },
   "vitest.config.ts": {
@@ -1607,13 +1607,13 @@
     "semantic_hash": ""
   },
   "features/despacho-rutas/components/ChoferCardParada.tsx": {
-    "mtime": 1792860887.6382232,
-    "ast_hash": "211c2dbfd93174f6393a91276cbe999b",
+    "mtime": 1793077082.3909009,
+    "ast_hash": "30f12c2f674983bedf487f57c6253081",
     "semantic_hash": ""
   },
   "features/despacho-rutas/components/DespachoRutasTab.tsx": {
-    "mtime": 1792860887.6406121,
-    "ast_hash": "84c8e66fa25668a54593df93305d1c13",
+    "mtime": 1793077082.4068513,
+    "ast_hash": "ea8e7030175f8077dd9c1c58aa926c13",
     "semantic_hash": ""
   },
   "features/despacho-rutas/components/RutaBuilderModal.tsx": {
@@ -2172,8 +2172,8 @@
     "semantic_hash": ""
   },
   "tests/unit/cambiarPassword.test.ts": {
-    "mtime": 1792360174.555412,
-    "ast_hash": "ceb5a837abecc64f05e9bb68b25fc982",
+    "mtime": 1792950481.9506953,
+    "ast_hash": "ba4fd8e4bd9dc8f47a5d9daa84b4dd2b",
     "semantic_hash": ""
   },
   "tests/unit/clipboardFormats.test.ts": {
@@ -2427,8 +2427,8 @@
     "semantic_hash": ""
   },
   "scripts/deploy-tib-mirror.ps1": {
-    "mtime": 1792888709.78789,
-    "ast_hash": "8fd69e67c75517a5ab5169ac0c2356f4",
+    "mtime": 1792950258.848682,
+    "ast_hash": "8ca2d40f0f949ec9a631c339d30422fe",
     "semantic_hash": ""
   },
   "lib/email/packageDeliveredClient.ts": {
@@ -2442,13 +2442,23 @@
     "semantic_hash": ""
   },
   "scripts/security-check.mjs": {
-    "mtime": 1792890996.7181473,
-    "ast_hash": "5efa3ea12219be626abf366615fc435b",
+    "mtime": 1792950503.9811325,
+    "ast_hash": "5dc510959d85c1e04d395352fad344b7",
     "semantic_hash": ""
   },
   ".agents/rules/security-secrets.md": {
     "mtime": 1792891061.2200875,
     "ast_hash": "d9e85077b34803d48fad3dea1a14bdc7",
+    "semantic_hash": ""
+  },
+  "scripts/enviar-wr-kenneth.mjs": {
+    "mtime": 1792959106.9281106,
+    "ast_hash": "b5dab8f5b1417af4b5bd9fc86d4907d7",
+    "semantic_hash": ""
+  },
+  "components/modals/EvidenciaPhotoModal.tsx": {
+    "mtime": 1793076868.3949833,
+    "ast_hash": "727b78582b07f9c016437d8bff063406",
     "semantic_hash": ""
   }
 }
