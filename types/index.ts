@@ -55,6 +55,7 @@ export interface Paquete {
   creadoPor?: string;
   creadoEn: string;
   actualizadoEn?: string;
+  eliminadoEn?: string | null;
 }
 
 export interface EmbarqueMaster {

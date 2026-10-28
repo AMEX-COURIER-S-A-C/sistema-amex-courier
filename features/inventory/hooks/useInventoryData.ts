@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   Paquete,
   TipoUbicacion,
@@ -184,9 +184,147 @@ export function useInventoryData({
     };
   }, [fetchData]);
 
-  // Búsqueda Server-Side con PostgreSQL RPC + GIN Trigram
+  // Filtrado instantáneo en memoria RAM (< 1ms, 0ms latencia) sobre el catálogo de paquetes
+  const clientFilteredPaquetes = useMemo(() => {
+    if (!paquetes || paquetes.length === 0) return [];
+
+    const query = searchTerm.trim();
+    const hasSearch = query !== '';
+    const hasLocation = locationFilter !== 'ALL';
+    const hasStatusAmex = statusAmexFilter !== 'ALL';
+    const hasDeliveryType = deliveryTypeFilter !== 'ALL';
+    const hasShelf = shelfFilter !== 'ALL';
+    const hasFloor = floorFilter !== 'ALL';
+    const hasPackageType = packageTypeFilter !== 'ALL';
+    const hasStatusTib = statusFilter !== 'ALL';
+    const hasDate = Boolean(dateFilter && dateFilter.type !== 'ALL');
+
+    return paquetes.filter(p => {
+      // 1. Descartar eliminados (Soft Delete)
+      if (p.eliminadoEn) return false;
+
+      // 2. Preservar temporalmente en la vista aquellos paquetes recién entregados para animación fluida
+      if (recentlyDeliveredIds.includes(p.id)) return true;
+
+      // 3. Búsqueda de texto (WR, Tracking, Consignatario, Descripción, Posición)
+      if (hasSearch) {
+        const matches = matchesFuzzySearch(query, [
+          p.numeroReciboBodega,
+          p.tracking,
+          p.nombreConsignatario,
+          p.descripcion,
+          p.posicionEstante,
+          p.anaquel,
+          p.piso,
+          p.tipoEmpaque,
+          p.tipoEntrega
+        ]);
+        if (!matches) return false;
+      }
+
+      // 4. Filtro Sede
+      if (hasLocation) {
+        if (locationFilter === 'AmexLince' && p.ubicacionActual === 'Entregado') return false;
+        if (locationFilter === 'Entregado' && p.ubicacionActual !== 'Entregado') return false;
+        if (
+          locationFilter !== 'AmexLince' &&
+          locationFilter !== 'Entregado' &&
+          p.ubicacionActual !== locationFilter
+        ) {
+          return false;
+        }
+      }
+
+      // 5. Filtro Estado AMEX
+      if (hasStatusAmex) {
+        if (statusAmexFilter === 'en_almacen') {
+          if (p.estadoAmex !== 'en_almacen' && p.estadoAmex !== 'recibido') return false;
+        } else if (p.estadoAmex !== statusAmexFilter) {
+          return false;
+        }
+      }
+
+      // 6. Filtro Tipo de Entrega
+      if (hasDeliveryType) {
+        if (p.tipoEntrega !== deliveryTypeFilter) return false;
+      }
+
+      // 7. Filtro Anaquel
+      if (hasShelf) {
+        const pShelf = p.anaquel || (p.posicionEstante ? p.posicionEstante.split('-')[0] : '');
+        if (pShelf !== shelfFilter) return false;
+      }
+
+      // 8. Filtro Piso
+      if (hasFloor) {
+        const pFloor =
+          p.piso ||
+          (p.posicionEstante && p.posicionEstante.includes('-')
+            ? p.posicionEstante.split('-')[1]
+            : '');
+        if (pFloor !== floorFilter) return false;
+      }
+
+      // 9. Filtro Tipo Empaque
+      if (hasPackageType) {
+        if ((p.tipoEmpaque || '').toUpperCase() !== packageTypeFilter.toUpperCase()) return false;
+      }
+
+      // 10. Filtro Estado TIB
+      if (hasStatusTib) {
+        if (p.estadoTib !== statusFilter && p.estadoEntrega !== statusFilter) return false;
+      }
+
+      // 11. Filtro Fecha
+      if (hasDate) {
+        if (!isPackageInDateFilter(p.creadoEn, dateFilter)) return false;
+      }
+
+      return true;
+    });
+  }, [
+    paquetes,
+    searchTerm,
+    locationFilter,
+    statusAmexFilter,
+    deliveryTypeFilter,
+    shelfFilter,
+    floorFilter,
+    packageTypeFilter,
+    statusFilter,
+    dateFilter,
+    recentlyDeliveredIds
+  ]);
+
+  const hasClientPaquetes = Boolean(paquetes && paquetes.length > 0);
+
+  // Total de paquetes efectivo y total de páginas
+  const effectiveTotal = hasClientPaquetes ? clientFilteredPaquetes.length : serverTotal;
+  const totalPages = Math.max(1, Math.ceil(effectiveTotal / pageSize));
+
+  // Lista completa filtrada (para exportaciones, selección masiva, conteos)
+  const filteredPaquetes = useMemo(() => {
+    if (hasClientPaquetes) {
+      return clientFilteredPaquetes;
+    }
+    return serverPaquetes;
+  }, [hasClientPaquetes, clientFilteredPaquetes, serverPaquetes]);
+
+  // Lista paginada reactiva para la tabla activa (50 por página con 0ms de retardo)
+  const paginatedPaquetes = useMemo(() => {
+    if (hasClientPaquetes) {
+      const startIndex = (currentPage - 1) * pageSize;
+      return clientFilteredPaquetes.slice(startIndex, startIndex + pageSize);
+    }
+    return serverPaquetes;
+  }, [hasClientPaquetes, clientFilteredPaquetes, currentPage, pageSize, serverPaquetes]);
+
+  // Búsqueda y Estadísticas Server-Side con PostgreSQL RPC + GIN Trigram
+  const requestIdRef = useRef(0);
+
   const fetchServerPaquetes = useCallback(async (isSilent = false) => {
-    if (!isSilent) setIsLoadingServer(true);
+    const currentRequestId = ++requestIdRef.current;
+    if (!isSilent && !hasClientPaquetes) setIsLoadingServer(true);
     try {
       const { fechaDesde, fechaHasta } = resolveDateFilterRange(dateFilter);
       const res = await inventoryService.searchPaquetesServerSide({
@@ -203,8 +341,10 @@ export function useInventoryData({
         pageSize
       });
 
+      // Si llegó una consulta posterior más reciente mientras esta viajaba, descartar
+      if (currentRequestId !== requestIdRef.current) return;
+
       setServerPaquetes(prev => {
-        // Preservar temporalmente en la vista aquellos paquetes recién entregados para que no desaparezcan bruscamente
         const activeRecent = prev.filter(p => recentlyDeliveredIds.includes(p.id));
         const merged = [...res.paquetes];
         for (const recent of activeRecent) {
@@ -218,9 +358,13 @@ export function useInventoryData({
       setServerExistenciasActivas(res.existenciasActivas);
       setServerPesoTotalKg(res.pesoTotalKg);
     } catch (err) {
-      console.error('Error fetching server-side packages:', err);
+      if (currentRequestId === requestIdRef.current) {
+        console.error('Error fetching server-side packages:', err);
+      }
     } finally {
-      if (!isSilent) setIsLoadingServer(false);
+      if (currentRequestId === requestIdRef.current && !isSilent) {
+        setIsLoadingServer(false);
+      }
     }
   }, [
     searchTerm,
@@ -233,11 +377,17 @@ export function useInventoryData({
     dateFilter,
     currentPage,
     pageSize,
-    recentlyDeliveredIds
+    recentlyDeliveredIds,
+    hasClientPaquetes
   ]);
 
+  // Sincronización debounced con el servidor para métricas y consistencia
   useEffect(() => {
-    fetchServerPaquetes();
+    const timer = setTimeout(() => {
+      fetchServerPaquetes(true);
+    }, 250);
+
+    return () => clearTimeout(timer);
   }, [fetchServerPaquetes]);
 
   // Suscripción Realtime a cambios en la tabla 'paquetes'
@@ -263,47 +413,6 @@ export function useInventoryData({
     setCurrentPage(1);
   }, [searchTerm, locationFilter, shelfFilter, floorFilter, packageTypeFilter, statusFilter, statusAmexFilter, deliveryTypeFilter, dateFilter, pageSize]);
 
-  // Total de páginas determinado por el total devuelto por Supabase PostgreSQL
-  const totalPages = Math.max(1, Math.ceil((serverTotal || serverPaquetes.length || paquetes.length) / pageSize));
-
-  // Paquetes paginados directos del servidor (50 registros bajo demanda)
-  const paginatedPaquetes = useMemo(() => {
-    if (
-      serverPaquetes.length > 0 ||
-      searchTerm.trim() !== '' ||
-      locationFilter !== 'ALL' ||
-      statusAmexFilter !== 'ALL' ||
-      deliveryTypeFilter !== 'ALL' ||
-      shelfFilter !== 'ALL' ||
-      floorFilter !== 'ALL' ||
-      packageTypeFilter !== 'ALL' ||
-      dateFilter.type !== 'ALL'
-    ) {
-      return serverPaquetes;
-    }
-    // Fallback únicamente si es el montaje inicial antes de que termine el primer RPC
-    if (isLoadingServer && paquetes.length > 0) {
-      return paquetes.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-    }
-    return serverPaquetes;
-  }, [
-    serverPaquetes,
-    searchTerm,
-    locationFilter,
-    statusAmexFilter,
-    deliveryTypeFilter,
-    shelfFilter,
-    floorFilter,
-    packageTypeFilter,
-    dateFilter.type,
-    isLoadingServer,
-    paquetes,
-    currentPage,
-    pageSize
-  ]);
-
-  const filteredPaquetes = paginatedPaquetes;
-
   // Conteos en tiempo real por Estado AMEX para píldoras rápidas
   const amexStatusCounts = useMemo(() => {
     let en_almacen = 0;
@@ -324,7 +433,7 @@ export function useInventoryData({
       : paquetes.filter(p => p.estadoAmex !== 'entregado' && p.ubicacionActual !== 'Entregado').length;
 
     return {
-      total: serverTotal > 0 ? serverTotal : paquetes.length,
+      total: paquetes.length > 0 ? paquetes.length : serverTotal,
       activas,
       recibido: 0,
       en_almacen,
@@ -1001,7 +1110,7 @@ export function useInventoryData({
     paginatedPaquetes,
 
     // Server-Side Search & Métricas Agregadas
-    serverTotal,
+    serverTotal: effectiveTotal,
     serverExistenciasActivas,
     serverPesoTotalKg,
     isLoadingServer,

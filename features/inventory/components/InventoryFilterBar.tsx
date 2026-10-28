@@ -71,9 +71,23 @@ export default function InventoryFilterBar({
     setLocalSearch(searchTerm);
   }, [searchTerm]);
 
+  // Búsqueda en vivo (Live Search) con debounce reactivo de 200ms
+  useEffect(() => {
+    const trimmed = localSearch.trim();
+    if (trimmed === searchTerm) return;
+
+    const timer = setTimeout(() => {
+      setSearchTerm(trimmed);
+    }, 200);
+
+    return () => clearTimeout(timer);
+  }, [localSearch, searchTerm, setSearchTerm]);
+
   const handleCommitSearch = () => {
     const trimmed = localSearch.trim();
-    setSearchTerm(trimmed);
+    if (trimmed !== searchTerm) {
+      setSearchTerm(trimmed);
+    }
   };
 
   const handleClearSearch = () => {
