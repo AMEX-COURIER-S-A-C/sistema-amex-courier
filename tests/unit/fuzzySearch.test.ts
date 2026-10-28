@@ -37,4 +37,24 @@ describe('Fuzzy Search — Motor de Búsqueda Inteligente', () => {
     // Búsqueda no coincidente
     expect(matchesFuzzySearch('rodriguez', fields)).toBe(false);
   });
+
+  it('debe buscar códigos alfanuméricos como "tce19" respetando letras y evitando falsos positivos', () => {
+    const pkg1 = ['WR000486530', 'TTCE19A2', 'AMEX JANIRA AMEX'];
+    const pkg2 = ['WR000486286', 'TCE19A6', 'AMEX JANIRA AMEX'];
+    const pkg3 = ['WR000190799', 'TBA312433818928', 'OTRO CLIENTE'];
+    const pkg4 = ['WR000482073', 'GCE19A3', 'AMEX JANIRA AMEX'];
+
+    // Debe coincidir con paquetes que realmente contengan "tce19" dentro del tracking
+    expect(matchesFuzzySearch('tce19', pkg1)).toBe(true);
+    expect(matchesFuzzySearch('tce19', pkg2)).toBe(true);
+
+    // NO debe coincidir con paquetes que solo tienen "19" en el WR o en otro tracking como "GCE19"
+    expect(matchesFuzzySearch('tce19', pkg3)).toBe(false);
+    expect(matchesFuzzySearch('tce19', pkg4)).toBe(false);
+  });
+
+  it('debe buscar con prefijo WR "wr486530" omitiendo ceros', () => {
+    const pkg = ['WR000486530', 'TTCE19A2', 'AMEX JANIRA AMEX'];
+    expect(matchesFuzzySearch('wr486530', pkg)).toBe(true);
+  });
 });

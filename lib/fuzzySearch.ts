@@ -46,14 +46,13 @@ export function stripLeadingZeros(text: string | number | null | undefined): str
 }
 
 /**
- * Evalúa si un registro coincide con la consulta de búsqueda usando múltiples estrategias inteligentes:
-/**
  * Evalúa si un registro coincide con la consulta de búsqueda usando criterios inteligentes:
  * 1. Búsqueda multi-término: CADA término ingresado (separado por espacio) debe coincidir en el registro.
  * 2. Coincidencia directa de subcadena normalizada (ignora mayúsculas y tildes).
- * 3. Coincidencia alfanumérica sin guiones ni espacios (ej: "wr448379" o "a1p1").
- * 4. Coincidencia numérica: si el término es un número (ej: "448379" o "452"), algún campo numérico del
+ * 3. Coincidencia alfanumérica sin guiones ni espacios (ej: "wr448379" o "tce19" en "ttce19a2").
+ * 4. Coincidencia numérica pura: si el término es un número (ej: "448379" o "452"), algún campo numérico del
  *    registro debe CONTENER esa secuencia numérica (ej: "WR-000448379" contiene "448379").
+ * 5. Coincidencia de código WR (ej: "wr448379" buscando "448379" sin los ceros de relleno).
  * 
  * Si un registro no coincide con todos los términos, se descarta (desaparece de la tabla).
  *
@@ -85,21 +84,34 @@ export function matchesFuzzySearch(
   // CADA término ingresado debe cumplirse en el registro
   return queryTerms.every(term => {
     const termClean = cleanAlphanumeric(term);
-    const termDigits = extractDigits(term);
-    const termDigitsNoZero = stripLeadingZeros(term);
+    const isPureDigits = /^\d+$/.test(termClean);
+    const isWrPrefixDigits = /^wr\d+$/i.test(termClean);
 
-    // 1. Coincidencia directa en el texto normalizado (ej: "448379" en "wr-448379")
+    // 1. Coincidencia directa en el texto normalizado (ej: "tce19" en "ttce19a2", "janira" en "amex janira amex")
     if (fullRowText.includes(term)) return true;
 
-    // 2. Coincidencia alfanumérica limpia sin guiones (ej: "wr448379" en "wr448379")
+    // 2. Coincidencia alfanumérica limpia sin guiones (ej: "wr448379" en "wr448379", "tce19" en "ttce19a2")
     if (termClean && fullRowClean.includes(termClean)) return true;
 
-    // 3. Coincidencia numérica: si el término tiene al menos 2 dígitos numéricos,
-    // algún campo del registro debe CONTENER esos dígitos (ej: "000448379" contiene "448379")
-    if (termDigitsNoZero && termDigitsNoZero.length >= 2) {
-      const matchInDigits = digitFields.some(df => df.includes(termDigitsNoZero) || df.includes(termDigits));
-      const matchInNoZero = noZeroDigitFields.some(nz => nz.includes(termDigitsNoZero));
-      if (matchInDigits || matchInNoZero) return true;
+    // 3. Coincidencia numérica pura: SOLO cuando el término buscado es exclusivamente numérico (ej: "448379" o "452"),
+    // algún campo numérico del registro debe CONTENER esa secuencia numérica (ej: "WR-000448379" contiene "448379")
+    if (isPureDigits) {
+      const termDigitsNoZero = stripLeadingZeros(termClean);
+      if (termDigitsNoZero && termDigitsNoZero.length >= 2) {
+        const matchInDigits = digitFields.some(df => df.includes(termDigitsNoZero) || df.includes(termClean));
+        const matchInNoZero = noZeroDigitFields.some(nz => nz.includes(termDigitsNoZero));
+        if (matchInDigits || matchInNoZero) return true;
+      }
+    }
+
+    // 4. Coincidencia de prefijo WR con número (ej: "wr448379" busca "448379" omitiendo ceros de la guía)
+    if (isWrPrefixDigits) {
+      const numOnly = stripLeadingZeros(termClean.replace(/^wr/i, ''));
+      if (numOnly && numOnly.length >= 2) {
+        const matchInDigits = digitFields.some(df => df.includes(numOnly));
+        const matchInNoZero = noZeroDigitFields.some(nz => nz.includes(numOnly));
+        if (matchInDigits || matchInNoZero) return true;
+      }
     }
 
     return false;
