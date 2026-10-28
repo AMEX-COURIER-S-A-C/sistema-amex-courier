@@ -146,7 +146,7 @@ export default function LoginPage() {
     setSuccessMessage(null);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data: signInData, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password
       });
@@ -161,6 +161,41 @@ export default function LoginPage() {
         document.cookie = `${SESSION_START_COOKIE}=${Date.now()}; path=/; max-age=${SESSION_MAX_AGE_SECONDS}; SameSite=Lax; ${secureFlag}`;
       }
 
+      // Pre-hidratar sesión en sessionStorage para apertura instantánea (0ms) en el panel
+      if (typeof window !== 'undefined' && signInData?.user) {
+        try {
+          const authUser = signInData.user;
+          const metadata = authUser.user_metadata || {};
+          const appMetadata = authUser.app_metadata || {};
+          const emailLower = (authUser.email || '').trim().toLowerCase();
+          const rol =
+            (appMetadata.rol as string) ||
+            (metadata.rol as string) ||
+            (emailLower === 'sistemaamexcourier@gmail.com' ? 'Administrador' : 'Operador Logístico');
+          const normRole = rol.trim().toLowerCase();
+          const isAdmin =
+            normRole === 'admin' ||
+            normRole === 'administrador' ||
+            emailLower === 'sistemaamexcourier@gmail.com';
+
+          sessionStorage.setItem(
+            'amex_cached_session_user',
+            JSON.stringify({
+              id: authUser.id,
+              nombre:
+                (metadata.nombre_completo as string) ||
+                (metadata.nombre as string) ||
+                authUser.email?.split('@')[0] ||
+                'Administrador AMEX',
+              email: authUser.email || '',
+              rol,
+              permisos: {},
+              isAdmin,
+            })
+          );
+        } catch {}
+      }
+
       // Activar cortina de entrada fluida (manteniendo el estado ocupado hasta completar la navegación)
       setIsTransitioningIn(true);
       const nextPath = new URLSearchParams(window.location.search).get('next');
@@ -168,7 +203,7 @@ export default function LoginPage() {
 
       setTimeout(() => {
         window.location.replace(targetPath);
-      }, 220);
+      }, 60);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al iniciar sesión';
       setErrorMessage(msg === 'Invalid login credentials' ? 'Correo o contraseña incorrectos.' : msg);

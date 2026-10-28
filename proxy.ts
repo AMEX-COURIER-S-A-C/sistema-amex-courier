@@ -9,7 +9,6 @@ import {
 } from '@/lib/observability/request-context';
 import {
   SESSION_MAX_AGE_SECONDS,
-  SESSION_MAX_AGE_MS,
   SESSION_START_COOKIE,
   isSessionExpired,
   isSessionRevoked,
@@ -45,7 +44,7 @@ export async function proxy(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
-  // Permitir t�nel de monitoreo de Sentry sin interferencia de auth
+  // Permitir túnel de monitoreo de Sentry sin interferencia de auth
   if (pathname.startsWith('/monitoring') || pathname === '/sentry-example-page' || pathname === '/api/sentry-test') {
     return response;
   }
@@ -56,10 +55,6 @@ export async function proxy(request: NextRequest) {
     hostname.startsWith('cliente.') ||
     request.nextUrl.searchParams.get('portal') === 'clientes';
   const isClientPortal = pathname.startsWith('/clientes');
-  const isClientPublicRoute =
-    pathname.startsWith('/clientes/login') ||
-    pathname.startsWith('/clientes/registro') ||
-    pathname.startsWith('/clientes/establecer-password');
   const isLoginPage = pathname.startsWith('/login') && !isClientPortal;
   const isApiRoute = pathname.startsWith('/api');
   const isPublicAuthRoute =
@@ -111,16 +106,22 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  // Refrescar sesión de Supabase si existe cookie o encabezado Bearer
+  // Resolver sesión de Supabase rápidamente desde cookies (getSession) con fallback seguro a getUser
   let user = null;
   const authHeader = request.headers.get('authorization');
+  const hasSbCookies = request.cookies.getAll().some((c) => c.name.startsWith('sb-'));
+
   if (authHeader?.startsWith('Bearer ')) {
     const token = authHeader.substring(7);
     const { data: tokenData } = await supabase.auth.getUser(token);
     user = tokenData?.user || null;
-  } else {
-    const { data: cookieData } = await supabase.auth.getUser();
-    user = cookieData?.user || null;
+  } else if (hasSbCookies) {
+    const { data: sessionData } = await supabase.auth.getSession();
+    user = sessionData?.session?.user || null;
+    if (!user) {
+      const { data: cookieData } = await supabase.auth.getUser();
+      user = cookieData?.user || null;
+    }
   }
 
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
@@ -179,7 +180,6 @@ export async function proxy(request: NextRequest) {
     });
   }
 
-  // Si está en login y ya está autenticado con sesión vigente, redirigir al panel
   // Subdominio de clientes: aislar totalmente del ERP interno
   if (isClientsSubdomain) {
     if (!pathname.startsWith('/clientes') && !pathname.startsWith('/api')) {
@@ -189,7 +189,6 @@ export async function proxy(request: NextRequest) {
       if (pathname === '/registro') {
         return setRequestIdHeader(NextResponse.redirect(new URL('/clientes/registro', request.url)));
       }
-      // Cualquier otra ruta en clientes.sistemaamexcourier.online se reescribe al portal
       const targetPath = pathname === '/' || pathname === '' ? '/clientes' : `/clientes${pathname}`;
       return setRequestIdHeader(NextResponse.rewrite(new URL(targetPath, request.url)));
     }
@@ -197,7 +196,6 @@ export async function proxy(request: NextRequest) {
 
   // Comportamiento del portal de clientes (aislado de la sesión interna de ERP)
   if (isClientPortal) {
-    // La sesión del portal se valida directamente con supabasePortal
     return response;
   }
 

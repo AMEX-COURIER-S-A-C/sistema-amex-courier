@@ -7,6 +7,8 @@ import {
   isSessionExpired,
 } from '@/lib/auth/constants';
 
+export const SESSION_USER_CACHE_KEY = 'amex_cached_session_user';
+
 export interface DashboardUser {
   id?: string;
   nombre: string;
@@ -17,14 +19,94 @@ export interface DashboardUser {
   isAdmin?: boolean;
 }
 
+function buildFallbackUserFromAuth(authUser: {
+  id: string;
+  email?: string;
+  user_metadata?: Record<string, unknown>;
+  app_metadata?: Record<string, unknown>;
+}): DashboardUser {
+  const metadata = authUser.user_metadata || {};
+  const appMetadata = authUser.app_metadata || {};
+  const emailLower = (authUser.email || '').trim().toLowerCase();
+  const rol =
+    (appMetadata.rol as string) ||
+    (metadata.rol as string) ||
+    (emailLower === 'sistemaamexcourier@gmail.com' ? 'Administrador' : 'Operador Logístico');
+  const normRole = rol.trim().toLowerCase();
+  const isAdmin =
+    normRole === 'admin' ||
+    normRole === 'administrador' ||
+    emailLower === 'sistemaamexcourier@gmail.com';
+
+  return {
+    id: authUser.id,
+    nombre:
+      (metadata.nombre_completo as string) ||
+      (metadata.nombre as string) ||
+      authUser.email?.split('@')[0] ||
+      'Administrador AMEX',
+    email: authUser.email || '',
+    rol,
+    permisos: {},
+    isAdmin,
+  };
+}
+
+function getSessionStartCookie(): string | null {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(new RegExp('(^|;\\s*)' + SESSION_START_COOKIE + '=([^;]*)'));
+  return match ? match[2] : null;
+}
+
+function readCachedUser(): DashboardUser | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const sessionStart = getSessionStartCookie();
+    if (sessionStart && isSessionExpired(sessionStart)) {
+      sessionStorage.removeItem(SESSION_USER_CACHE_KEY);
+      return null;
+    }
+    const raw = sessionStorage.getItem(SESSION_USER_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as DashboardUser;
+    if (parsed && parsed.email) {
+      return parsed;
+    }
+  } catch {}
+  return null;
+}
+
+function saveCachedUser(user: DashboardUser | null) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (user) {
+      sessionStorage.setItem(SESSION_USER_CACHE_KEY, JSON.stringify(user));
+    } else {
+      sessionStorage.removeItem(SESSION_USER_CACHE_KEY);
+    }
+  } catch {}
+}
+
 export function useDashboardSession() {
-  const [currentUser, setCurrentUser] = useState<DashboardUser | null>(null);
-  const [isLoadingSession, setIsLoadingSession] = useState(true);
+  const [currentUser, setCurrentUser] = useState<DashboardUser | null>(() => readCachedUser());
+  const [isLoadingSession, setIsLoadingSession] = useState<boolean>(() => readCachedUser() === null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const currentUserRef = useRef<DashboardUser | null>(currentUser);
   const isLoggingOutRef = useRef(false);
   const isFetchingSessionRef = useRef(false);
   const lastCheckTimeRef = useRef(0);
   const focusDebounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+
+  const applyUser = useCallback((user: DashboardUser) => {
+    currentUserRef.current = user;
+    setCurrentUser(user);
+    setIsLoadingSession(false);
+    saveCachedUser(user);
+  }, []);
 
   const logout = useCallback(async (reason?: string) => {
     if (isLoggingOutRef.current) return;
@@ -38,13 +120,14 @@ export function useDashboardSession() {
       if (typeof window !== 'undefined') {
         try {
           sessionStorage.removeItem('amex_recovery_token');
+          sessionStorage.removeItem(SESSION_USER_CACHE_KEY);
           localStorage.removeItem('amex_active_tab');
         } catch {}
       }
       await Promise.allSettled([
         supabase.auth.signOut(),
         fetch('/api/auth/logout', { method: 'POST', cache: 'no-store' }),
-        new Promise((resolve) => setTimeout(resolve, 360)),
+        new Promise((resolve) => setTimeout(resolve, 250)),
       ]);
     } catch {}
 
@@ -67,7 +150,6 @@ export function useDashboardSession() {
   const fetchSession = useCallback(async () => {
     if (isLoggingOutRef.current || isFetchingSessionRef.current) return;
 
-    // Si hay una extracción con AMEXito IA o una exportación pesada activa en el cliente, pausar el sondeo
     if (
       typeof window !== 'undefined' &&
       ((window as any).__AMEX_AI_EXTRACTION_ACTIVE__ || (window as any).__AMEX_EXPORT_ACTIVE__)
@@ -76,46 +158,50 @@ export function useDashboardSession() {
     }
 
     isFetchingSessionRef.current = true;
+    let fastUnlockTimer: NodeJS.Timeout | null = null;
 
     try {
       // 0. Comprobar tiempo de vida de la sesión (8 horas límite estricto de jornada)
-      let sessionStartTime: string | null = null;
-      if (typeof document !== 'undefined') {
-        const match = document.cookie.match(new RegExp('(^|;\\s*)' + SESSION_START_COOKIE + '=([^;]*)'));
-        sessionStartTime = match ? match[2] : null;
-
-        if (sessionStartTime && isSessionExpired(sessionStartTime)) {
-          await logout('session-expired');
-          return;
-        }
+      const sessionStartTime = getSessionStartCookie();
+      if (sessionStartTime && isSessionExpired(sessionStartTime)) {
+        await logout('session-expired');
+        return;
       }
 
-      // Si el navegador está completamente offline (sin conexión a internet o reconectando Wi-Fi tras reposo),
-      // NO cerrar sesión; preservar el usuario localmente hasta que la red se restablezca.
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
         console.warn('[useDashboardSession] Navegador offline. Preservando sesión local activa de 8 horas.');
         return;
       }
 
-      // 1. Consultar sesión en cliente Supabase local
-      const { data: authData, error: authError } = await supabase.auth.getUser();
-      if (isLoggingOutRef.current) return;
+      // 1. Leer sesión local en memoria/cookies sin bloquear red y lanzar /api/auth/me en paralelo
+      const localSessionPromise = supabase.auth
+        .getSession()
+        .then((r) => r.data?.session?.user || null)
+        .catch(() => null);
 
-      // Si no hay usuario y no existe cookie de inicio de 8 horas, redirigir a login
-      if (!authData?.user && !sessionStartTime) {
-        await logout('unauthenticated');
-        return;
+      // Si /api/auth/me tarda más de 1.5s pero ya tenemos sesión local válida en cookies,
+      // desbloquear la pantalla de inmediato para no hacer esperar al usuario.
+      if (!currentUserRef.current) {
+        fastUnlockTimer = setTimeout(async () => {
+          if (isLoggingOutRef.current || currentUserRef.current) return;
+          const localUser = await localSessionPromise;
+          if (localUser && !currentUserRef.current && !isLoggingOutRef.current) {
+            applyUser(buildFallbackUserFromAuth(localUser));
+          }
+        }, 1500);
       }
 
-      // 2. Obtener perfil persistido y permisos vigentes desde el backend seguro
+      // 2. Obtener perfil persistido y permisos vigentes desde el backend seguro con timeout
       try {
-        const res = await fetch('/api/auth/me', { cache: 'no-store' });
+        const res = await fetch('/api/auth/me', {
+          cache: 'no-store',
+          signal: AbortSignal.timeout(8000),
+        });
         if (isLoggingOutRef.current) return;
 
         if (res.status === 401 || res.status === 403) {
           const json = await res.json().catch(() => ({}));
 
-          // Revocación o desactivación administrativa expresa: cerrar sesión de inmediato
           if (json.code === 'SESSION_REVOKED' || json.error?.includes('actualizados') || json.error?.includes('reiniciada')) {
             await logout('permissions-updated');
             return;
@@ -129,14 +215,17 @@ export function useDashboardSession() {
             return;
           }
 
-          // Si es un 401 transitorio (ej: refresco de token concurrente o microcorte)
-          // pero el usuario tiene su cookie de 8 horas activa y usuario en pantalla, NO expulsarlo.
-          if (sessionStartTime && !isSessionExpired(sessionStartTime)) {
+          const localUser = await localSessionPromise;
+
+          // Solo mantener sesión viva si ya existe usuario hidratado en pantalla o sesión local válida
+          if (sessionStartTime && !isSessionExpired(sessionStartTime) && (currentUserRef.current || localUser)) {
+            if (!currentUserRef.current && localUser) {
+              applyUser(buildFallbackUserFromAuth(localUser));
+            }
             console.warn('[useDashboardSession] Respuesta 401 transitoria durante sesión activa de 8 horas. Manteniendo sesión viva.');
             return;
           }
 
-          // Solo si no hay sesión válida ni cookie de 8 horas
           await logout('unauthenticated');
           return;
         }
@@ -145,51 +234,47 @@ export function useDashboardSession() {
           const json = await res.json();
           if (json.user && !isLoggingOutRef.current) {
             lastCheckTimeRef.current = Date.now();
-            setCurrentUser(json.user);
-            setIsLoadingSession(false);
+            applyUser(json.user);
             return;
           }
         }
       } catch (apiErr) {
-        console.warn('[useDashboardSession] No se pudo contactar /api/auth/me (posible reconexión o reposo), usando sesión local:', apiErr);
+        console.warn('[useDashboardSession] No se pudo contactar /api/auth/me a tiempo, usando sesión local:', apiErr);
       }
 
       if (isLoggingOutRef.current) return;
 
-      // 3. Fallback de contingencia con metadatos del token local de Auth
-      if (authData?.user) {
-        lastCheckTimeRef.current = Date.now();
-        const metadata = authData.user.user_metadata || {};
-        const appMetadata = authData.user.app_metadata || {};
-        const rol =
-          (appMetadata.rol as string) ||
-          (metadata.rol as string) ||
-          'Operador Logístico';
-        const normRole = rol.trim().toLowerCase();
-        const isAdmin = normRole === 'admin' || normRole === 'administrador';
+      // 3. Fallback con sesión local (getSession o getUser)
+      let fallbackAuthUser = await localSessionPromise;
+      if (!fallbackAuthUser) {
+        const { data: authData } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
+        fallbackAuthUser = authData?.user || null;
+      }
 
-        setCurrentUser({
-          id: authData.user.id,
-          nombre:
-            (metadata.nombre_completo as string) ||
-            (metadata.nombre as string) ||
-            authData.user.email?.split('@')[0] ||
-            'Operador AMEX',
-          email: authData.user.email || '',
-          rol,
-          permisos: {},
-          isAdmin,
-        });
+      if (fallbackAuthUser) {
+        lastCheckTimeRef.current = Date.now();
+        applyUser(buildFallbackUserFromAuth(fallbackAuthUser));
+        return;
+      }
+
+      // 4. Si no hay usuario en /api/auth/me ni en Supabase Auth ni en caché, redirigir a /login
+      // para nunca quedar atrapado en "Preparando estación de trabajo"
+      if (!currentUserRef.current) {
+        await logout('unauthenticated');
       }
     } catch (err) {
       console.error('[useDashboardSession] Error verificando sesión de usuario:', err);
+      if (!currentUserRef.current) {
+        await logout('unauthenticated');
+      }
     } finally {
+      if (fastUnlockTimer) clearTimeout(fastUnlockTimer);
       isFetchingSessionRef.current = false;
       if (!isLoggingOutRef.current) {
         setIsLoadingSession(false);
       }
     }
-  }, [logout]);
+  }, [applyUser, logout]);
 
   useEffect(() => {
     void fetchSession();
@@ -201,7 +286,6 @@ export function useDashboardSession() {
       if (event === 'INITIAL_SESSION') return;
 
       if (event === 'SIGNED_OUT') {
-        // Solo desloguear si la sesión realmente fue terminada
         void (async () => {
           try {
             const { data } = await supabase.auth.getSession();
@@ -215,8 +299,6 @@ export function useDashboardSession() {
       }
     });
 
-    // Monitor activo de jornada: Comprueba periódicamente cada 60s
-    // REGLA CLAVE: Si la pestaña está oculta o en reposo (inactiva), NO sondear la red para no generar colisiones
     const sessionTimer = setInterval(() => {
       if (isLoggingOutRef.current) return;
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
@@ -227,20 +309,14 @@ export function useDashboardSession() {
         return;
       }
 
-      if (typeof document !== 'undefined') {
-        const match = document.cookie.match(new RegExp('(^|;\\s*)' + SESSION_START_COOKIE + '=([^;]*)'));
-        if (match && isSessionExpired(match[2])) {
-          void logout('session-expired');
-          return;
-        }
+      const sessionStart = getSessionStartCookie();
+      if (sessionStart && isSessionExpired(sessionStart)) {
+        void logout('session-expired');
+        return;
       }
       void fetchSession();
     }, 60000);
 
-    // Al regresar a la pestaña tras inactividad o cambio de ventana:
-    // 1. Si la pestaña sigue oculta, no hacer nada.
-    // 2. Si ya se verificó hace menos de 60 segundos, omitir para no saturar.
-    // 3. Aplicar debounce de 2500ms para permitir que la conexión Wi-Fi / sockets se reanuden limpiamente.
     const handleFocus = () => {
       if (isLoggingOutRef.current) return;
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;

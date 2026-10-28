@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Cliente,
   CobroVoucher,
@@ -10,7 +10,6 @@ import {
   TipoEstadoTib,
   TipoEstadoEntrega,
   TipoEstadoAmex,
-  TipoMetodoEntrega,
   TipoUbicacion
 } from '@/types';
 import { supabase } from '@/lib/supabase/client';
@@ -88,11 +87,11 @@ export function useDashboardData(currentUser?: { nombre?: string; email?: string
   const [scannedLogs, setScannedLogs] = useState<ScannedLog[]>([]);
   const [isLoadingInitialData, setIsLoadingInitialData] = useState(true);
   const [isGlobalRefreshing, setIsGlobalRefreshing] = useState(false);
+  const hasLoadedOnceRef = useRef(false);
 
   useEffect(() => {
     let isMounted = true;
     async function loadQueue() {
-      // 1. Intentar cargar desde la nube si hay usuario
       if (currentUser?.email) {
         const cloudQueue = await ScannerQueueCloudService.loadStagingQueueFromCloud(currentUser.email);
         if (isMounted && cloudQueue && Array.isArray(cloudQueue)) {
@@ -104,7 +103,6 @@ export function useDashboardData(currentUser?: { nombre?: string; email?: string
         }
       }
 
-      // 2. Fallback a localStorage
       try {
         const stored = localStorage.getItem('amex_scanner_staging_queue_v2');
         if (!stored) return;
@@ -122,29 +120,29 @@ export function useDashboardData(currentUser?: { nombre?: string; email?: string
     };
   }, [currentUser?.email]);
 
-async function fetchAllPaquetesChunks(): Promise<Record<string, unknown>[]> {
-  const PAGE_SIZE = 1000;
-  let offset = 0;
-  const allRows: Record<string, unknown>[] = [];
-  while (true) {
-    const { data, error } = await supabase
-      .from('paquetes')
-      .select('*')
-      .is('eliminado_en', null)
-      .order('creado_en', { ascending: false })
-      .range(offset, offset + PAGE_SIZE - 1);
+  async function fetchAllPaquetesChunks(): Promise<Record<string, unknown>[]> {
+    const PAGE_SIZE = 1000;
+    let offset = 0;
+    const allRows: Record<string, unknown>[] = [];
+    while (true) {
+      const { data, error } = await supabase
+        .from('paquetes')
+        .select('*')
+        .is('eliminado_en', null)
+        .order('creado_en', { ascending: false })
+        .range(offset, offset + PAGE_SIZE - 1);
 
-    if (error) {
-      console.warn('Error en paginación de paquetes Supabase:', error);
-      break;
+      if (error) {
+        console.warn('Error en paginación de paquetes Supabase:', error);
+        break;
+      }
+      if (!data || data.length === 0) break;
+      allRows.push(...(data as Record<string, unknown>[]));
+      if (data.length < PAGE_SIZE) break;
+      offset += PAGE_SIZE;
     }
-    if (!data || data.length === 0) break;
-    allRows.push(...(data as Record<string, unknown>[]));
-    if (data.length < PAGE_SIZE) break;
-    offset += PAGE_SIZE;
+    return allRows;
   }
-  return allRows;
-}
 
   const fetchSupabaseData = useCallback(async () => {
     try {
@@ -161,20 +159,20 @@ async function fetchAllPaquetesChunks(): Promise<Record<string, unknown>[]> {
       ]);
 
       let clientesData: Record<string, unknown>[] = [];
-      try {
-        const apiRes = await fetch('/api/clientes', { cache: 'no-store' });
-        if (apiRes.ok) {
-          const json = await apiRes.json();
-          if (Array.isArray(json.clientes) && json.clientes.length > 0) {
-            clientesData = json.clientes;
-          }
-        }
-      } catch (e) {
-        console.warn('Fallback a supabase directo para clientes:', e);
-      }
-
-      if (clientesData.length === 0 && clientesRes.data) {
+      if (clientesRes.data && clientesRes.data.length > 0) {
         clientesData = clientesRes.data as Record<string, unknown>[];
+      } else {
+        try {
+          const apiRes = await fetch('/api/clientes', { cache: 'no-store' });
+          if (apiRes.ok) {
+            const json = await apiRes.json();
+            if (Array.isArray(json.clientes) && json.clientes.length > 0) {
+              clientesData = json.clientes;
+            }
+          }
+        } catch (e) {
+          console.warn('Fallback a /api/clientes:', e);
+        }
       }
 
       setClientes(clientesData.map((row) => mapCliente(row)));
@@ -190,14 +188,19 @@ async function fetchAllPaquetesChunks(): Promise<Record<string, unknown>[]> {
   }, []);
 
   useEffect(() => {
-    void fetchSupabaseData();
+    if (!currentUser?.email) return;
+
+    if (!hasLoadedOnceRef.current) {
+      hasLoadedOnceRef.current = true;
+      void fetchSupabaseData();
+    }
 
     const realtimeChannel = supabase
       .channel('amex-erp-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'paquetes' }, (payload) => {
         if (payload.eventType === 'INSERT') {
           const raw = payload.new as Record<string, unknown>;
-          if (raw.eliminado_en) return; // Si nace ya eliminado, ignorar
+          if (raw.eliminado_en) return;
           const paquete = mapRealtimePaquete(raw);
           setPaquetes((previous) => {
             if (previous.some((item) => item.id === paquete.id)) {
@@ -208,7 +211,6 @@ async function fetchAllPaquetesChunks(): Promise<Record<string, unknown>[]> {
         } else if (payload.eventType === 'UPDATE') {
           const raw = payload.new as Record<string, unknown>;
           if (raw.eliminado_en) {
-            // Si fue eliminado lógicamente, retirarlo del estado activo
             setPaquetes((previous) => previous.filter((item) => item.id !== raw.id));
             return;
           }
@@ -218,7 +220,6 @@ async function fetchAllPaquetesChunks(): Promise<Record<string, unknown>[]> {
             if (exists) {
               return previous.map((item) => (item.id === paquete.id ? { ...item, ...paquete } : item));
             }
-            // Si fue reactivado o no estaba en memoria, agregarlo
             return [paquete, ...previous];
           });
         } else if (payload.eventType === 'DELETE') {
@@ -263,7 +264,7 @@ async function fetchAllPaquetesChunks(): Promise<Record<string, unknown>[]> {
     return () => {
       supabase.removeChannel(realtimeChannel);
     };
-  }, [fetchSupabaseData]);
+  }, [currentUser?.email, fetchSupabaseData]);
 
   return {
     clientes,
