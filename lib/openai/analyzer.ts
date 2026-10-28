@@ -1,16 +1,22 @@
-import OpenAI, { toFile } from 'openai';
+import OpenAI from 'openai';
 
 function getOpenAiKey(): string {
   return process.env.OPENAI_API_KEY || '';
 }
 
-// Modelos por defecto y enrutamiento inteligente
-export const DEFAULT_OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-6-luna';
-export const FAST_TEXT_MODEL = process.env.OPENAI_FAST_MODEL || 'gpt-6-luna';
-export const MANIFEST_AI_MODEL = process.env.OPENAI_MANIFEST_MODEL || 'gpt-6.1-sol';
-export const SHALOM_AI_MODEL = process.env.OPENAI_SHALOM_MODEL || 'gpt-6-luna';
-export const ROTULO_AI_MODEL = process.env.OPENAI_ROTULO_MODEL || 'gpt-6.1-sol';
-export const DNI_AI_MODEL = process.env.OPENAI_DNI_MODEL || 'gpt-6.1-sol';
+/**
+ * Modelo único y exclusivo para todo el sistema: GPT-6.1 Sol en modo Ultrafast.
+ * Se fuerza en código para garantizar que ningún módulo ni fallback utilice otro modelo.
+ */
+export const OPENAI_SOL_ULTIMATE_MODEL = 'gpt-6.1-sol' as const;
+export const OPENAI_ULTIMATE_SERVICE_TIER = 'ultrafast' as const;
+
+export const DEFAULT_OPENAI_MODEL = OPENAI_SOL_ULTIMATE_MODEL;
+export const FAST_TEXT_MODEL = OPENAI_SOL_ULTIMATE_MODEL;
+export const MANIFEST_AI_MODEL = OPENAI_SOL_ULTIMATE_MODEL;
+export const SHALOM_AI_MODEL = OPENAI_SOL_ULTIMATE_MODEL;
+export const ROTULO_AI_MODEL = OPENAI_SOL_ULTIMATE_MODEL;
+export const DNI_AI_MODEL = OPENAI_SOL_ULTIMATE_MODEL;
 
 /**
  * Esquemas JSON estrictos (Structured Outputs)
@@ -137,27 +143,12 @@ export function getOpenAiClient(): OpenAI {
 }
 
 /**
- * Opciones dinámicas para el modelo OpenAI configurado.
- * Aplica temperatura 0.0 para muestreo determinista y límite de tokens ajustado.
+ * Opciones dinámicas para el modelo OpenAI configurado (GPT-6.1 Sol).
  */
-export function getOpenAiModelOptions(maxTokens = 500, modelOverride?: string) {
-  const modelName = (modelOverride || DEFAULT_OPENAI_MODEL).toLowerCase();
-  const isReasoningModel =
-    modelName.includes('luna') ||
-    modelName.includes('sol') ||
-    modelName.includes('o1') ||
-    modelName.includes('o3') ||
-    modelName.startsWith('gpt-6');
-
-  if (isReasoningModel) {
-    return {
-      max_completion_tokens: maxTokens,
-      reasoning_effort: 'low' as const
-    };
-  }
+export function getOpenAiModelOptions(maxTokens = 500, _modelOverride?: string) {
   return {
-    max_tokens: maxTokens,
-    temperature: 0.0
+    max_completion_tokens: maxTokens,
+    reasoning_effort: 'low' as const
   };
 }
 
@@ -193,8 +184,155 @@ function parseAiJsonResponse<T = any>(rawText?: string | null): T {
   return JSON.parse(cleanJson || '{}');
 }
 
+export interface UltrafastResponseResult {
+  text: string;
+  usage: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    model: string;
+    service_tier: string;
+  };
+}
+
 /**
- * Analiza facturas de compra/invoices para el módulo de inventario
+ * Ejecuta una llamada exclusiva usando la Responses API (/v1/responses) de OpenAI
+ * con el modelo fijo `gpt-6.1-sol`, `service_tier: "ultrafast"`, `reasoning: { effort: "low" }`
+ * y Structured Outputs (JSON Schema estricto). No realiza fallback a ningún otro modelo.
+ */
+export async function callOpenAiResponsesUltrafast(params: {
+  prompt: string;
+  text?: string;
+  imageBase64?: string;
+  imageMimeType?: string;
+  pdfBase64?: string;
+  pdfFilename?: string;
+  maxOutputTokens?: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  jsonSchema?: { name: string; strict?: boolean; schema: Record<string, any> };
+}): Promise<UltrafastResponseResult> {
+  const apiKey = getOpenAiKey();
+  if (!apiKey) {
+    throw new Error('OPENAI_API_KEY no está configurada en las variables de entorno.');
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const contentList: any[] = [];
+
+  if (params.text && params.text.trim()) {
+    contentList.push({
+      type: 'input_text',
+      text: `Texto del pedido a interpretar:\n${params.text.trim()}`
+    });
+  }
+
+  if (params.imageBase64) {
+    const parsed = parseBase64Data(params.imageBase64);
+    const mimeType = params.imageMimeType || parsed.mimeType || 'image/jpeg';
+    contentList.push({
+      type: 'input_image',
+      image_url: `data:${mimeType};base64,${parsed.base64}`,
+      detail: 'high'
+    });
+  }
+
+  if (params.pdfBase64) {
+    const parsed = parseBase64Data(params.pdfBase64);
+    contentList.push({
+      type: 'input_file',
+      filename: params.pdfFilename || 'document.pdf',
+      file_data: `data:application/pdf;base64,${parsed.base64}`
+    });
+  }
+
+  contentList.push({
+    type: 'input_text',
+    text: params.prompt
+  });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const payload: Record<string, any> = {
+    model: OPENAI_SOL_ULTIMATE_MODEL,
+    service_tier: OPENAI_ULTIMATE_SERVICE_TIER,
+    reasoning: { effort: 'low' },
+    input: [
+      {
+        role: 'user',
+        content: contentList
+      }
+    ]
+  };
+
+  if (params.maxOutputTokens) {
+    payload.max_output_tokens = params.maxOutputTokens;
+  }
+
+  if (params.jsonSchema) {
+    payload.text = {
+      format: {
+        type: 'json_schema',
+        name: params.jsonSchema.name,
+        strict: params.jsonSchema.strict ?? true,
+        schema: params.jsonSchema.schema
+      }
+    };
+  }
+
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await fetch('https://api.openai.com/v1/responses', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`[GPT-6.1 Sol Ultrafast HTTP ${res.status}]: ${errText.substring(0, 300)}`);
+      }
+
+      const json = await res.json();
+      let outputText = '';
+
+      for (const item of json.output || []) {
+        if (item.type === 'message') {
+          for (const c of item.content || []) {
+            if (c.type === 'output_text' && c.text) {
+              outputText = c.text;
+              break;
+            }
+          }
+        }
+        if (outputText) break;
+      }
+
+      const usage = json.usage || {};
+      return {
+        text: outputText || '{}',
+        usage: {
+          prompt_tokens: Number(usage.input_tokens || 0),
+          completion_tokens: Number(usage.output_tokens || 0),
+          total_tokens: Number(usage.total_tokens || 0),
+          model: OPENAI_SOL_ULTIMATE_MODEL,
+          service_tier: json.service_tier || OPENAI_ULTIMATE_SERVICE_TIER
+        }
+      };
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      console.warn(`[GPT-6.1 Sol Ultrafast Intento ${attempt}/2]:`, lastError.message);
+    }
+  }
+
+  throw lastError || new Error('Error al invocar GPT-6.1 Sol Ultrafast en OpenAI Responses API.');
+}
+
+/**
+ * Analiza facturas de compra/invoices para el módulo de inventario usando exclusivamente GPT-6.1 Sol Ultrafast
  */
 export async function analyzeInvoiceDocument(fileBase64: string, mimeType: string) {
   const prompt = `Analiza esta factura de compra/invoice de paquete importado. 
@@ -209,57 +347,18 @@ Extrae la siguiente información en formato JSON estricto:
 Si algún valor no es visible, retorna cadena vacía o 0.
 Devuelve exclusivamente un objeto JSON válido con los campos solicitados.`;
 
-  const client = getOpenAiClient();
   const isPdf = (mimeType || '').toLowerCase().includes('pdf');
 
-  if (isPdf) {
-    const buffer = Buffer.from(fileBase64, 'base64');
-    const file = await toFile(buffer, 'invoice.pdf', { type: 'application/pdf' });
-    const uploaded = await client.files.create({ file, purpose: 'user_data' });
-
-    try {
-      const response = await client.chat.completions.create({
-        model: DEFAULT_OPENAI_MODEL,
-        response_format: { type: 'json_schema', json_schema: INVOICE_JSON_SCHEMA },
-        ...getOpenAiModelOptions(300),
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: prompt },
-              { type: 'file', file: { file_id: uploaded.id } }
-            ]
-          }
-        ]
-      });
-      return parseAiJsonResponse(response.choices[0]?.message?.content);
-    } finally {
-      await client.files.delete(uploaded.id).catch(() => {});
-    }
-  }
-
-  const response = await client.chat.completions.create({
-    model: DEFAULT_OPENAI_MODEL,
-    response_format: { type: 'json_schema', json_schema: INVOICE_JSON_SCHEMA },
-    ...getOpenAiModelOptions(300),
-    messages: [
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: prompt },
-          {
-            type: 'image_url',
-            image_url: {
-              url: `data:${mimeType || 'image/jpeg'};base64,${fileBase64}`,
-              detail: 'high'
-            }
-          }
-        ]
-      }
-    ]
+  const response = await callOpenAiResponsesUltrafast({
+    prompt,
+    ...(isPdf
+      ? { pdfBase64: fileBase64, pdfFilename: 'invoice.pdf' }
+      : { imageBase64: fileBase64, imageMimeType: mimeType || 'image/jpeg' }),
+    maxOutputTokens: 350,
+    jsonSchema: INVOICE_JSON_SCHEMA
   });
 
-  return parseAiJsonResponse(response.choices[0]?.message?.content);
+  return parseAiJsonResponse(response.text);
 }
 
 /**
@@ -278,80 +377,7 @@ export interface ExtractedDniResult {
   };
 }
 
-/**
- * Ejecuta una llamada ultra-rápida usando la Responses API de OpenAI con service_tier=ultrafast
- */
-async function callOpenAiResponsesUltrafast(params: {
-  model: string;
-  prompt: string;
-  text?: string;
-  imageBase64?: string;
-}): Promise<string | null> {
-  const apiKey = getOpenAiKey();
-  if (!apiKey) return null;
-
-  try {
-    const contentList: any[] = [];
-    if (params.text && params.text.trim()) {
-      contentList.push({
-        type: 'input_text',
-        text: `Texto del pedido a interpretar:\n${params.text.trim()}`
-      });
-    }
-    if (params.imageBase64) {
-      const { mimeType, base64 } = parseBase64Data(params.imageBase64);
-      contentList.push({
-        type: 'input_image',
-        image_url: `data:${mimeType};base64,${base64}`
-      });
-    }
-    contentList.push({
-      type: 'input_text',
-      text: params.prompt
-    });
-
-    const res = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: params.model,
-        service_tier: 'ultrafast',
-        input: [
-          {
-            role: 'user',
-            content: contentList
-          }
-        ]
-      })
-    });
-
-    if (res.ok) {
-      const json = await res.json();
-      for (const item of json.output || []) {
-        if (item.type === 'message') {
-          for (const c of item.content || []) {
-            if (c.type === 'output_text' && c.text) {
-              return c.text;
-            }
-          }
-        }
-      }
-    } else {
-      const errText = await res.text();
-      console.warn('[Ultrafast Responses API Status ' + res.status + ']:', errText.substring(0, 200));
-    }
-  } catch (e) {
-    console.warn('[Ultrafast Responses API Error]:', e);
-  }
-  return null;
-}
-
 export async function extractDniNameFromImage(imageInput: string): Promise<ExtractedDniResult> {
-  const { mimeType, base64 } = parseBase64Data(imageInput);
-
   const prompt = `Analiza con máxima precisión la imagen de este Documento de Identidad del Perú (DNI 1.0 clásico azul/amarillo, DNIe 2.0/3.0 electrónico blanco, o Carnet de Extranjería CE).
 
 Tu objetivo es leer y extraer con la máxima fidelidad:
@@ -396,54 +422,15 @@ Reglas estrictas:
 3. Todo el texto de nombres debe estar 100% en MAYÚSCULAS y limpio de símbolos extraños o puntuaciones innecesarias.
 4. Si la imagen no es un documento o resulta totalmente ilegible, devuelve en formato JSON: {"dni": "", "nombre_completo": ""}.`;
 
-  let responseRaw = '';
-  const selectedModel = DNI_AI_MODEL;
-  const isUltrafast = (process.env.OPENAI_SERVICE_TIER === 'ultrafast' || selectedModel.includes('sol'));
-
-  if (isUltrafast) {
-    const ultrafastResult = await callOpenAiResponsesUltrafast({
-      model: selectedModel,
-      prompt,
-      imageBase64: imageInput
-    });
-    if (ultrafastResult) {
-      responseRaw = ultrafastResult;
-    }
-  }
-
-  if (!responseRaw) {
-    const client = getOpenAiClient();
-    const fallbackModel = FAST_TEXT_MODEL || 'gpt-6-luna';
-    const response = await client.chat.completions.create(
-      {
-        model: fallbackModel,
-        response_format: { type: 'json_schema', json_schema: DNI_JSON_SCHEMA },
-        ...getOpenAiModelOptions(120, fallbackModel),
-        messages: [
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: prompt },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: `data:${mimeType};base64,${base64}`,
-                  detail: 'high'
-                }
-              }
-            ]
-          }
-        ]
-      },
-      {
-        timeout: 20000
-      }
-    );
-    responseRaw = response.choices[0]?.message?.content || '{}';
-  }
+  const ultrafastResult = await callOpenAiResponsesUltrafast({
+    prompt,
+    imageBase64: imageInput,
+    maxOutputTokens: 200,
+    jsonSchema: DNI_JSON_SCHEMA
+  });
 
   try {
-    const parsed = parseAiJsonResponse(responseRaw);
+    const parsed = parseAiJsonResponse(ultrafastResult.text);
     const nombreCompleto = (parsed.nombre_completo || '').trim().toUpperCase();
     let rawDni = (parsed.dni || '').toString().replace(/[^0-9A-Za-z]/g, '').trim();
 
@@ -464,14 +451,14 @@ Reglas estrictas:
       nombres: (parsed.nombres || '').trim().toUpperCase(),
       apellidos: (parsed.apellidos || '').trim().toUpperCase(),
       usage: {
-        prompt_tokens: 300,
-        completion_tokens: 60,
-        total_tokens: 360,
-        model: selectedModel
+        prompt_tokens: ultrafastResult.usage.prompt_tokens || 300,
+        completion_tokens: ultrafastResult.usage.completion_tokens || 60,
+        total_tokens: ultrafastResult.usage.total_tokens || 360,
+        model: OPENAI_SOL_ULTIMATE_MODEL
       }
     };
   } catch (err) {
-    console.error('Error al parsear respuesta JSON de IA para DNI:', responseRaw, err);
+    console.error('Error al parsear respuesta JSON de IA para DNI:', ultrafastResult.text, err);
     throw new Error('No se pudo procesar la respuesta de la Inteligencia Artificial.');
   }
 }
@@ -490,12 +477,9 @@ export interface ExtractedRotuloData {
 }
 
 /**
- * AMEXito IA: Interpreta capturas de pantalla de WhatsApp o textos no estructurados
+ * AMEXito IA (GPT-6.1 Sol Ultrafast): Interpreta capturas de pantalla de WhatsApp o textos no estructurados
  * y extrae todos los campos requeridos para el rótulo de agencias (individual o lista múltiple)
  */
-
-
-
 export async function parseRotuloWithAi(input: {
   text?: string;
   imageBase64?: string;
@@ -528,65 +512,19 @@ Reglas estrictas:
 3. Si algún campo no se encuentra en el texto o imagen, devuelve cadena vacía "".
 4. No inventes información; solo extrae lo que esté presente o se deduzca claramente del contexto.`;
 
-  let responseRaw = '';
+  const isTextOnly = !input.imageBase64 && Boolean(input.text && input.text.trim());
+  const maxTokens = isTextOnly ? 400 : 600;
 
-  const client = getOpenAiClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const contentParts: any[] = [];
-
-  if (input.imageBase64) {
-    const { mimeType, base64 } = parseBase64Data(input.imageBase64);
-    contentParts.push({
-      type: 'image_url',
-      image_url: { url: `data:${mimeType};base64,${base64}` }
-    });
-  }
-
-  if (input.text && input.text.trim()) {
-    contentParts.push({
-      type: 'text',
-      text: `Texto del pedido a interpretar:\n${input.text.trim()}`
-    });
-  }
-
-  contentParts.push({ type: 'text', text: prompt });
-
-  const selectedModel = process.env.OPENAI_ROTULO_MODEL || 'gpt-6.1-sol';
-  const isUltrafast = (process.env.OPENAI_SERVICE_TIER === 'ultrafast' || selectedModel.includes('sol'));
-
-  if (isUltrafast) {
-    const ultrafastResult = await callOpenAiResponsesUltrafast({
-      model: selectedModel,
-      prompt,
-      text: input.text,
-      imageBase64: input.imageBase64
-    });
-    if (ultrafastResult) {
-      responseRaw = ultrafastResult;
-    }
-  }
-
-  if (!responseRaw) {
-    const isTextOnly = !input.imageBase64 && Boolean(input.text && input.text.trim());
-    const fallbackModel = isTextOnly ? FAST_TEXT_MODEL : DEFAULT_OPENAI_MODEL;
-    const maxTokens = isTextOnly ? 350 : 500;
-
-    const response = await client.chat.completions.create({
-      model: fallbackModel,
-      response_format: { type: 'json_schema', json_schema: ROTULO_JSON_SCHEMA },
-      ...getOpenAiModelOptions(maxTokens, fallbackModel),
-      messages: [
-        {
-          role: 'user',
-          content: contentParts
-        }
-      ]
-    });
-    responseRaw = response.choices[0]?.message?.content || '{}';
-  }
+  const ultrafastResult = await callOpenAiResponsesUltrafast({
+    prompt,
+    text: input.text,
+    imageBase64: input.imageBase64,
+    maxOutputTokens: maxTokens,
+    jsonSchema: ROTULO_JSON_SCHEMA
+  });
 
   try {
-    const parsed = parseAiJsonResponse(responseRaw);
+    const parsed = parseAiJsonResponse(ultrafastResult.text);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rawList: any[] = Array.isArray(parsed.pedidos)
       ? parsed.pedidos
@@ -627,7 +565,7 @@ Reglas estrictas:
       items: items.length > 0 ? items : [firstItem]
     };
   } catch (err) {
-    console.error('Error al parsear respuesta JSON de IA para rótulo:', responseRaw, err);
+    console.error('Error al parsear respuesta JSON de IA para rótulo:', ultrafastResult.text, err);
     throw new Error('No se pudo procesar la respuesta de la Inteligencia Artificial.');
   }
 }
@@ -667,13 +605,12 @@ export interface ShalomBoletaExtractedData {
 
 /**
  * Analiza un documento PDF o imagen de ticket / boleta de SHALOM
- * Utiliza AMEXito IA con GPT-6 Luna con Structured Outputs (JSON Schema estricto)
- * extrayendo ÚNICAMENTE la información operativa esencial a ultra alta velocidad.
+ * Utiliza exclusivamente AMEXito IA con GPT-6.1 Sol Ultrafast y Structured Outputs (JSON Schema estricto)
  */
 export async function analyzeShalomBoletaPdf(pdfBase64: string): Promise<ShalomBoletaExtractedData> {
   const { mimeType, base64 } = parseBase64Data(pdfBase64);
 
-  const prompt = `Eres AMEXito IA con GPT-6 Luna, el sistema de visión e inteligencia artificial de AMEX Courier SAC especializado en comprobantes de Shalom en Perú.
+  const prompt = `Eres AMEXito IA con GPT-6.1 Sol Ultrafast, el sistema de visión e inteligencia artificial de AMEX Courier SAC especializado en comprobantes de Shalom en Perú.
 Analiza con máxima precisión este TICKET O BOLETA DE SHALOM y extrae ÚNICAMENTE los datos operativos esenciales:
 
 CAMPOS A EXTRAER:
@@ -696,86 +633,19 @@ REGLAS ESTRICTAS:
 - Fechas siempre en formato ISO YYYY-MM-DD.
 - Omite texto legal de observaciones o datos repetitivos del remitente.`;
 
-  let responseRaw = '';
-  const client = getOpenAiClient();
   const isPdf = (mimeType || '').toLowerCase().includes('pdf');
-  const targetModel = SHALOM_AI_MODEL;
 
-  // Helper para ejecutar la llamada a OpenAI con soporte para GPT-6 Luna y fallback automático a DEFAULT_OPENAI_MODEL
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const executeChatWithModelFallback = async (messages: any[]): Promise<string> => {
-    try {
-      console.log(`[AMEXito IA Shalom] Procesando boleta optimizada con modelo: ${targetModel}`);
-      const response = await client.chat.completions.create({
-        model: targetModel,
-        response_format: { type: 'json_schema', json_schema: SHALOM_BOLETA_JSON_SCHEMA },
-        ...getOpenAiModelOptions(1200, targetModel),
-        messages
-      });
-      return response.choices[0]?.message?.content || '{}';
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      const isModelNotFound =
-        errMsg.includes('does not exist') ||
-        errMsg.includes('model_not_found') ||
-        errMsg.includes('not found') ||
-        errMsg.includes('unsupported model') ||
-        errMsg.includes('Invalid model');
-
-      if (isModelNotFound && targetModel !== DEFAULT_OPENAI_MODEL) {
-        console.warn(
-          `[AMEXito IA Shalom] Modelo '${targetModel}' no está activo en la cuenta. Aplicando fallback automático a '${DEFAULT_OPENAI_MODEL}'.`
-        );
-        const fallbackResponse = await client.chat.completions.create({
-          model: DEFAULT_OPENAI_MODEL,
-          response_format: { type: 'json_schema', json_schema: SHALOM_BOLETA_JSON_SCHEMA },
-          ...getOpenAiModelOptions(1200, DEFAULT_OPENAI_MODEL),
-          messages
-        });
-        return fallbackResponse.choices[0]?.message?.content || '{}';
-      }
-      throw err;
-    }
-  };
-
-  if (isPdf) {
-    const buffer = Buffer.from(base64, 'base64');
-    const file = await toFile(buffer, 'ticket.pdf', { type: 'application/pdf' });
-    const uploaded = await client.files.create({ file, purpose: 'user_data' });
-
-    try {
-      responseRaw = await executeChatWithModelFallback([
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: prompt },
-            { type: 'file', file: { file_id: uploaded.id } }
-          ]
-        }
-      ]);
-    } finally {
-      await client.files.delete(uploaded.id).catch(() => {});
-    }
-  } else {
-    responseRaw = await executeChatWithModelFallback([
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: prompt },
-          {
-            type: 'image_url',
-            image_url: {
-              url: `data:${mimeType || 'image/jpeg'};base64,${base64}`,
-              detail: 'high'
-            }
-          }
-        ]
-      }
-    ]);
-  }
+  const ultrafastResult = await callOpenAiResponsesUltrafast({
+    prompt,
+    ...(isPdf
+      ? { pdfBase64: base64, pdfFilename: 'ticket.pdf' }
+      : { imageBase64: base64, imageMimeType: mimeType || 'image/jpeg' }),
+    maxOutputTokens: 1200,
+    jsonSchema: SHALOM_BOLETA_JSON_SCHEMA
+  });
 
   try {
-    const parsed = parseAiJsonResponse(responseRaw);
+    const parsed = parseAiJsonResponse(ultrafastResult.text);
     const nroOrden = (parsed.nro_orden || parsed.numero_guia || '').trim().toUpperCase();
     const codigo = (parsed.codigo || parsed.codigo_seguimiento || '').trim().toUpperCase();
     const fechaEmision = (parsed.fecha_emision || new Date().toISOString().split('T')[0]).trim();
@@ -816,7 +686,7 @@ REGLAS ESTRICTAS:
       origen: 'LINCE - LIMA'
     };
   } catch (err) {
-    console.error('Error al parsear respuesta JSON de IA para ticket Shalom:', responseRaw, err);
+    console.error('Error al parsear respuesta JSON de IA para ticket Shalom:', ultrafastResult.text, err);
     throw new Error('No se pudo estructurar la información del comprobante de Shalom.');
   }
 }

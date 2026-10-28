@@ -101,4 +101,9 @@ describe('AI Cost Tracker', () => {
     const cost = estimateAiCost('gpt-4o', 10_000, 2_000);
     expect(cost).toBe(0.045);
   });
+
+  it('calculates accurate token costs for gpt-6.1-sol and gpt-6_1-sol', () => {
+    expect(estimateAiCost('gpt-6.1-sol', 10_000, 2_000)).toBe(0.045);
+    expect(estimateAiCost('gpt-6_1-sol', 10_000, 2_000)).toBe(0.045);
+  });
 });

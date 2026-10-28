@@ -106,7 +106,7 @@ export const ShalomUploadModal: React.FC<ShalomUploadModalProps> = ({
         monto_total: Number(extracted.monto_total) || prev.monto_total
       }));
 
-      setAiSuccessMsg('¡Datos extraídos con éxito por AMEXito IA (GPT-6 Luna)!');
+      setAiSuccessMsg('¡Datos extraídos con éxito por AMEXito IA (GPT-6.1 Sol Ultrafast)!');
       soundEffects.playSuccess();
       setTimeout(() => setAiSuccessMsg(null), 4000);
     } catch (err: unknown) {
@@ -159,7 +159,7 @@ export const ShalomUploadModal: React.FC<ShalomUploadModalProps> = ({
         <div className="shalom-modal-header">
           <h3>
             <UploadCloud size={20} className="text-sky-400" />
-            Cargar Boleta de Shalom (OCR AMEXito IA • GPT-6 Luna)
+            Cargar Boleta de Shalom (OCR AMEXito IA • GPT-6.1 Sol Ultrafast)
           </h3>
           <button
             type="button"
@@ -210,7 +210,7 @@ export const ShalomUploadModal: React.FC<ShalomUploadModalProps> = ({
                 Arrastra el archivo PDF o foto/imagen aquí o haz clic para buscar
               </h4>
               <p className="shalom-dropzone-subtitle">
-                Compatible con archivos PDF e imágenes (JPG, PNG, WEBP) desde escáner o celular. AMEXito IA (GPT-6 Luna) procesará y extraerá los datos automáticamente con alta resolución.
+                Compatible con archivos PDF e imágenes (JPG, PNG, WEBP) desde escáner o celular. AMEXito IA (GPT-6.1 Sol Ultrafast) procesará y extraerá los datos automáticamente con alta resolución.
               </p>
               <span className="shalom-dropzone-tag">PDF o Imágenes (JPG, PNG, WEBP)</span>
             </div>
@@ -223,7 +223,7 @@ export const ShalomUploadModal: React.FC<ShalomUploadModalProps> = ({
               <div className="flex flex-col gap-1 items-center">
                 <h4 className="shalom-ocr-scan-title flex items-center gap-2">
                   <Sparkles size={18} className="text-sky-400 animate-pulse" />
-                  AMEXito IA (GPT-6 Luna) está leyendo la boleta de Shalom...
+                  AMEXito IA (GPT-6.1 Sol Ultrafast) está leyendo la boleta de Shalom...
                 </h4>
                 <p className="shalom-ocr-scan-desc">
                   Extrayendo N° de orden, código de retiro, destinatario, DNI, ciudad destino, importes y modalidad de pago...
@@ -271,17 +271,17 @@ export const ShalomUploadModal: React.FC<ShalomUploadModalProps> = ({
                     {isExtractingAi ? (
                       <>
                         <RefreshCw size={15} className="animate-spin" />
-                        <span>AMEXito IA (GPT-6 Luna) analizando PDF...</span>
+                        <span>AMEXito IA (GPT-6.1 Sol Ultrafast) analizando PDF...</span>
                       </>
                     ) : (
                       <>
                         <Sparkles size={16} className="text-amber-300" />
-                        <span>🤖 Extraer datos con AMEXito IA (GPT-6 Luna)</span>
+                        <span>🤖 Extraer datos con AMEXito IA (GPT-6.1 Sol Ultrafast)</span>
                       </>
                     )}
                   </button>
                   <span className="shalom-ai-hint">
-                    AMEXito IA (GPT-6 Luna) optimizada para tickets térmicos y guías Shalom.
+                    AMEXito IA (GPT-6.1 Sol Ultrafast) optimizada para tickets térmicos y guías Shalom.
                   </span>
                 </div>
 

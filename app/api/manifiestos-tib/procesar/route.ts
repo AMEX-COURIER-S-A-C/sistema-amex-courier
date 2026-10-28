@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authorizeUser } from '@/lib/auth/guards';
-import OpenAI from 'openai';
+import { callOpenAiResponsesUltrafast } from '@/lib/openai/analyzer';
 import sharp from 'sharp';
 import { uploadFileToR2 } from '@/lib/r2/client';
 import { getDateSegments, sanitizeFileName } from '@/lib/r2/datePartitionedUpload';
@@ -220,9 +220,6 @@ export async function POST(req: NextRequest) {
         pageImages = [{ buffer: fileBuffer, mime }];
       }
 
-      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-      const model = process.env.OPENAI_MANIFEST_MODEL || 'gpt-6.1-sol';
-
       let encabezadoExtraid: any = {
         fecha_vuelo: '',
         cliente: 'AMEX',
@@ -334,34 +331,18 @@ INSTRUCCIONES CRÍTICAS DE FORMATO Y OCR:
               additionalProperties: false,
             };
 
-        const pageResponse = await openai.chat.completions.create({
-          model,
-          messages: [
-            {
-              role: 'user',
-              content: [
-                { type: 'text', text: pagePrompt },
-                {
-                  type: 'image_url',
-                  image_url: {
-                    url: `data:${pageItem.mime};base64,${pageBase64}`,
-                    detail: 'high',
-                  },
-                },
-              ],
-            },
-          ],
-          response_format: {
-            type: 'json_schema',
-            json_schema: {
-              name: `page_${pageNum}_extraction`,
-              strict: true,
-              schema: schema as any,
-            },
+        const pageResponse = await callOpenAiResponsesUltrafast({
+          prompt: pagePrompt,
+          imageBase64: pageBase64,
+          imageMimeType: pageItem.mime,
+          jsonSchema: {
+            name: `page_${pageNum}_extraction`,
+            strict: true,
+            schema: schema as any,
           },
         });
 
-        const parsedContent = JSON.parse(pageResponse.choices[0]?.message?.content || '{}');
+        const parsedContent = JSON.parse(pageResponse.text || '{}');
         if (isFirstPage && parsedContent.encabezado) {
           encabezadoExtraid = parsedContent.encabezado;
         }

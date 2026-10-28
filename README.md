@@ -5,7 +5,7 @@ Sistema ERP de gestión logística integral para **SISTEMA AMEX COURIER** (Sede 
 - **Framework Web:** **Next.js 16 / React 19 / TypeScript** con App Router y rutas API.
 - **Base de Datos:** **Supabase (PostgreSQL 17)** en la nube con esquemas 100% en español y políticas **Row Level Security (RLS)**.
 - **Almacenamiento de Archivos:** **Cloudflare R2 Storage** (compatibilidad S3 API sin costos de transferencia) bajo la carpeta raíz **`FOLDER AMEX`**.
-- **IA Integradora:** **OpenAI GPT-6 Luna** para lectura y autocompletado inteligente de facturas, DNI, rótulos y boletas Shalom.
+- **IA Integradora:** **OpenAI GPT-6.1 Sol Ultrafast** para lectura y autocompletado inteligente de facturas, DNI, rótulos y boletas Shalom.
 - **Escáner Móvil QR & Barras:** Lector con cámara nativa para celulares, sonido *beep* y respuesta háptica (vibración).
 - **Despliegue CI/CD:** **Vercel** (`https://www.sistemaamexcourier.online`).
 
@@ -25,7 +25,7 @@ PROYECTO-AMEXcourrier/
 ├── components/                 # Componentes React Modulares
 │   └── scanner/                # Componente de Escáner Móvil en Tiempo Real
 ├── lib/                        # Clientes de Servicios
-│   ├── openai/                 # Analizadores de IA con OpenAI GPT-6 Luna
+│   ├── openai/                 # Analizadores de IA con OpenAI GPT-6.1 Sol Ultrafast
 │   ├── r2/                     # Cliente S3 SDK para Cloudflare R2 Storage
 │   └── supabase/               # Cliente Supabase PostgreSQL
 ├── public/                     # Recursos estáticos y marcas
