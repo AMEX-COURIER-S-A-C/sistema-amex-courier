@@ -88,10 +88,10 @@ function saveCachedUser(user: DashboardUser | null) {
 }
 
 export function useDashboardSession() {
-  const [currentUser, setCurrentUser] = useState<DashboardUser | null>(() => readCachedUser());
-  const [isLoadingSession, setIsLoadingSession] = useState<boolean>(() => readCachedUser() === null);
+  const [currentUser, setCurrentUser] = useState<DashboardUser | null>(null);
+  const [isLoadingSession, setIsLoadingSession] = useState<boolean>(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const currentUserRef = useRef<DashboardUser | null>(currentUser);
+  const currentUserRef = useRef<DashboardUser | null>(null);
   const isLoggingOutRef = useRef(false);
   const isFetchingSessionRef = useRef(false);
   const lastCheckTimeRef = useRef(0);
@@ -277,6 +277,13 @@ export function useDashboardSession() {
   }, [applyUser, logout]);
 
   useEffect(() => {
+    // 1. Restaurar usuario persistido en sessionStorage de forma inmediata en el cliente (0ms)
+    // evitando discrepancias de hidratación SSR
+    const cached = readCachedUser();
+    if (cached) {
+      applyUser(cached);
+    }
+
     void fetchSession();
 
     const {
@@ -338,7 +345,7 @@ export function useDashboardSession() {
       document.removeEventListener('visibilitychange', handleFocus);
       subscription.unsubscribe();
     };
-  }, [fetchSession, logout]);
+  }, [applyUser, fetchSession, logout]);
 
   return { currentUser, isLoadingSession, isLoggingOut, logout, refreshSession: fetchSession };
 }

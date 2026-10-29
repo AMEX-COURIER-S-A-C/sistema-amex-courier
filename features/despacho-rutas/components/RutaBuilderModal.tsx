@@ -30,6 +30,7 @@ import {
 import { supabase } from '@/lib/supabase/client';
 import { confirmDialog } from '@/lib/dialog';
 import { despachoService } from '../services/despacho.service';
+import DistrictSearchSelect from './DistrictSearchSelect';
 
 interface UsuarioChofer {
   id: string;
@@ -1382,34 +1383,10 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
                           </td>
 
                           <td style={{ padding: '6px 8px' }}>
-                            <select
-                              value={normalizeDistrito(parada.distrito)}
-                              onChange={e => handleUpdateFila(idx, 'distrito', e.target.value)}
-                              style={{
-                                width: '100%',
-                                padding: '6px 8px',
-                                borderRadius: '4px',
-                                border: '1px solid #cbd5e1',
-                                background: '#ffffff',
-                                fontSize: '12px',
-                                fontWeight: 600,
-                                color: '#0f172a',
-                                cursor: 'pointer'
-                              }}
-                            >
-                              <option value="" disabled>
-                                Seleccionar Distrito...
-                              </option>
-                              {ZONAS_LIMA_DISTRITOS.map(zona => (
-                                <optgroup key={zona.zona} label={zona.zona} style={{ fontWeight: 800, color: '#1e293b' }}>
-                                  {zona.distritos.map(d => (
-                                    <option key={d.value} value={d.value} style={{ fontWeight: 500, color: '#334155' }}>
-                                      {d.label}
-                                    </option>
-                                  ))}
-                                </optgroup>
-                              ))}
-                            </select>
+                            <DistrictSearchSelect
+                              value={parada.distrito}
+                              onChange={val => handleUpdateFila(idx, 'distrito', val)}
+                            />
                           </td>
 
                           <td style={{ padding: '6px 8px' }}>
