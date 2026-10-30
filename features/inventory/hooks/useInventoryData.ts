@@ -478,7 +478,9 @@ export function useInventoryData({
             { id: '8', almacenId: 'LIN', codigoEstante: 'A2', nivelPiso: 'P4', codigoPosicion: 'A2-P4', zonaTipo: 'ALMACENAJE', capacidadMaxPaquetes: 40, pesoMaxKg: 80 },
             { id: '9', almacenId: 'LIN', codigoEstante: 'OFI', nivelPiso: 'N/A', codigoPosicion: 'OFI', zonaTipo: 'OFICINA', capacidadMaxPaquetes: 100, pesoMaxKg: 500, descripcion: 'Oficina (OFI)' },
             { id: '10', almacenId: 'LIN', codigoEstante: 'DSP-Z1', nivelPiso: 'N/A', codigoPosicion: 'DSP-Z1', zonaTipo: 'DESPACHO', capacidadMaxPaquetes: 100, pesoMaxKg: 500, descripcion: 'Despacho Zona 1' },
-            { id: '11', almacenId: 'LIN', codigoEstante: 'DSP-Z2', nivelPiso: 'N/A', codigoPosicion: 'DSP-Z2', zonaTipo: 'DESPACHO', capacidadMaxPaquetes: 100, pesoMaxKg: 500, descripcion: 'Despacho Zona 2' }
+            { id: '11', almacenId: 'LIN', codigoEstante: 'DSP-Z2', nivelPiso: 'N/A', codigoPosicion: 'DSP-Z2', zonaTipo: 'DESPACHO', capacidadMaxPaquetes: 100, pesoMaxKg: 500, descripcion: 'Despacho Zona 2' },
+            { id: '12', almacenId: 'LIN', codigoEstante: 'PAS-Z1', nivelPiso: 'N/A', codigoPosicion: 'PAS-Z1', zonaTipo: 'PASADIZO', capacidadMaxPaquetes: 100, pesoMaxKg: 500, descripcion: 'Pasadizo Zona 1' },
+            { id: '13', almacenId: 'LIN', codigoEstante: 'PAS-Z2', nivelPiso: 'N/A', codigoPosicion: 'PAS-Z2', zonaTipo: 'PASADIZO', capacidadMaxPaquetes: 100, pesoMaxKg: 500, descripcion: 'Pasadizo Zona 2' }
           ];
 
     effectivePosiciones.forEach(pos => {

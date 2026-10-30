@@ -46,6 +46,10 @@ const UBICACIONES_RAPIDAS = [
   { code: 'OFI-P1', label: 'Oficina P1', group: 'Especial' },
   { code: 'DSP-Z1', label: 'Despacho Z1', group: 'Despacho' },
   { code: 'DSP-Z2', label: 'Despacho Z2', group: 'Despacho' },
+  { code: 'PAS-Z1', label: 'Pasadizo Z1', group: 'Pasadizo' },
+  { code: 'PAS-Z2', label: 'Pasadizo Z2', group: 'Pasadizo' },
+  { code: 'PAS-Z1', label: 'Pasadizo Z1', group: 'Pasadizo' },
+  { code: 'PAS-Z2', label: 'Pasadizo Z2', group: 'Pasadizo' },
   { code: 'A1-P1', label: 'Anaquel 1 · Piso 1', group: 'A1' },
   { code: 'A1-P2', label: 'Anaquel 1 · Piso 2', group: 'A1' },
   { code: 'A1-P3', label: 'Anaquel 1 · Piso 3', group: 'A1' },
@@ -413,7 +417,7 @@ export default function NewPackageModal({
               type="text"
               value={form.posicionEstante || currentUbicacion}
               onChange={(e) => handleSelectUbicacion(e.target.value.toUpperCase())}
-              placeholder="Ej: OFI-P1, DSP-Z2, A1-P1..."
+              placeholder="Ej: OFI-P1, DSP-Z2, PAS-Z1, A1-P1..."
               style={{
                 width: '100%',
                 padding: '9px 12px',

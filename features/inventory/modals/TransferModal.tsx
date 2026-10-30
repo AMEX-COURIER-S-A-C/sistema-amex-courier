@@ -85,6 +85,10 @@ export default function TransferModal({
               set.add('OFI');
               set.add('DSP-Z1');
               set.add('DSP-Z2');
+              set.add('PAS-Z1');
+              set.add('PAS-Z2');
+              set.add('PAS-Z1');
+              set.add('PAS-Z2');
               return Array.from(set);
             })();
 

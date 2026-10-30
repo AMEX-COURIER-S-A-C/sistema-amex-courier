@@ -346,6 +346,16 @@ export function useDashboardMetrics({
     const dspZ2Cap = 100;
     const dspZ2Pct = Math.min(100, Math.round((dspZ2Count / dspZ2Cap) * 100));
 
+    // Pasadizo Zona 1 (PAS-Z1)
+    const pasZ1Count = paquetesLince.filter(p => (p.posicionEstante || '').startsWith('PAS-Z1')).length;
+    const pasZ1Cap = 100;
+    const pasZ1Pct = Math.min(100, Math.round((pasZ1Count / pasZ1Cap) * 100));
+
+    // Pasadizo Zona 2 (PAS-Z2)
+    const pasZ2Count = paquetesLince.filter(p => (p.posicionEstante || '').startsWith('PAS-Z2')).length;
+    const pasZ2Cap = 100;
+    const pasZ2Pct = Math.min(100, Math.round((pasZ2Count / pasZ2Cap) * 100));
+
     return [
       {
         code: 'A1',

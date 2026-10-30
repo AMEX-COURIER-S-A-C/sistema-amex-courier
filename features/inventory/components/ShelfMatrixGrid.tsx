@@ -149,6 +149,7 @@ export default function ShelfMatrixGrid({
             <option value="ALMACENAJE">📦 Almacenaje</option>
             <option value="RECEPCION">📥 Recepción (REC)</option>
             <option value="DESPACHO">🚚 Despacho (DSP)</option>
+            <option value="PASADIZO">🚪 Pasadizo (PAS)</option>
             <option value="DEVOLUCION">⚠️ Devoluciones</option>
           </select>
         </div>
@@ -228,7 +229,7 @@ export default function ShelfMatrixGrid({
                 (p.posicionEstante && p.posicionEstante.startsWith(shelfCode)))
             ).length;
 
-            const isSpecialZone = shelfCode === 'OFI' || shelfCode === 'REC' || shelfCode.startsWith('DSP');
+            const isSpecialZone = shelfCode === 'OFI' || shelfCode === 'REC' || shelfCode.startsWith('DSP') || shelfCode.startsWith('PAS');
             const borderColor =
               shelfCode === 'A1'
                 ? '#3b82f6'

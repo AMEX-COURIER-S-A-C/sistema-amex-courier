@@ -271,6 +271,12 @@ export default function InventoryFilterBar({
                   ? 'Despacho Zona 1 (DSP-Z1)'
                   : shelfKey === 'DSP-Z2'
                   ? 'Despacho Zona 2 (DSP-Z2)'
+                  : shelfKey === 'PAS-Z1'
+                  ? 'Pasadizo Zona 1 (PAS-Z1)'
+                  : shelfKey === 'PAS-Z2'
+                  ? 'Pasadizo Zona 2 (PAS-Z2)'
+                  : shelfKey.startsWith('PAS')
+                  ? `Pasadizo (${shelfKey})`
                   : shelfKey.startsWith('DSP')
                   ? `Despacho (${shelfKey})`
                   : shelfKey.startsWith('A') || shelfKey.startsWith('E')
