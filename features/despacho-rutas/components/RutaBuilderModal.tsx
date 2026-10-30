@@ -48,8 +48,7 @@ interface RutaBuilderModalProps {
 export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBuilderModalProps) {
   // Datos de cabecera de la ruta
   const [choferNombre, setChoferNombre] = useState('');
-  const [choferTelefono, setChoferTelefono] = useState('');
-  const [vehiculoPlaca, setVehiculoPlaca] = useState('CFM-085');
+  const [vehiculoPlaca] = useState('CFM-085');
   const [fechaDespacho, setFechaDespacho] = useState(new Date().toISOString().slice(0, 10));
   const [notas, setNotas] = useState('');
 
@@ -507,7 +506,6 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
         {
           nombreRuta: nombreRutaGenerado,
           choferNombre: choferNombre.trim(),
-          choferTelefono: choferTelefono.trim(),
           vehiculoPlaca: (vehiculoPlaca.trim() || 'CFM-085').toUpperCase(),
           fechaDespacho,
           notas: notas.trim()
@@ -715,7 +713,7 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
           border-radius: 12px;
           padding: 16px;
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+          grid-template-columns: 1fr minmax(180px, 220px);
           gap: 14px;
         }
         .ruta-builder-toolbar {
@@ -807,7 +805,7 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
           }
           .ruta-builder-meta-grid {
             padding: 12px 10px !important;
-            grid-template-columns: 1fr 1fr !important;
+            grid-template-columns: 1fr !important;
             gap: 10px !important;
           }
           .ruta-builder-toolbar {
@@ -927,7 +925,7 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
 
               {/* Formulario de Datos de la Ruta */}
               <div className="ruta-builder-meta-grid">
-                <div>
+                <div className="ruta-builder-chofer-field">
                   <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11.5px', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
                     <span>Chofer / Usuario Responsable *</span>
                     {isLoadingUsuarios && (
@@ -985,47 +983,6 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
                       </div>
                     </div>
                   )}
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
-                    Teléfono del Chofer
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ej: 997 123 456"
-                    value={choferTelefono}
-                    onChange={e => setChoferTelefono(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      border: '1px solid #cbd5e1',
-                      fontSize: '13px'
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 800, color: '#475569', marginBottom: '4px' }}>
-                    Placa
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="CFM-085"
-                    value={vehiculoPlaca}
-                    onChange={e => setVehiculoPlaca(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      border: '1px solid #cbd5e1',
-                      fontSize: '13px',
-                      fontFamily: 'monospace',
-                      fontWeight: 700,
-                      textTransform: 'uppercase'
-                    }}
-                  />
                 </div>
 
                 <div>
