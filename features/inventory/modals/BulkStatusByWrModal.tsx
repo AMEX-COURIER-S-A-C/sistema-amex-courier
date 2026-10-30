@@ -10,9 +10,14 @@ import {
   Search,
   ChevronDown,
   ChevronUp,
-  X
+  X,
+  Building2,
+  Package as PackageIcon,
+  Truck,
+  Bike,
+  AlertCircle
 } from 'lucide-react';
-import { Paquete, TipoEstadoAmex, TipoEstadoEntrega } from '@/types';
+import { Paquete, TipoEstadoAmex, TipoEstadoEntrega, TipoModalidadEntrega } from '@/types';
 import { alertDialog } from '@/lib/dialog';
 import { smartFormatWr } from '@/lib/validations/wr';
 
@@ -24,7 +29,9 @@ export interface BulkStatusByWrModalProps {
     matchedIds: string[],
     targetStatusAmex: TipoEstadoAmex,
     targetStatusTib?: TipoEstadoEntrega,
-    skipDelivered?: boolean
+    skipDelivered?: boolean,
+    tipoEntrega?: string,
+    detalleEntrega?: string
   ) => Promise<void> | void;
 }
 
@@ -36,6 +43,10 @@ export default function BulkStatusByWrModal({
 }: BulkStatusByWrModalProps) {
   const [rawText, setRawText] = useState('');
   const [targetStatusAmex, setTargetStatusAmex] = useState<TipoEstadoAmex>('entregado');
+  const [selectedModalidad, setSelectedModalidad] = useState<TipoModalidadEntrega>('Presencial');
+  const [agenciaSeleccionada, setAgenciaSeleccionada] = useState<string>('Shalom');
+  const [otraAgenciaTexto, setOtraAgenciaTexto] = useState<string>('');
+  const [motorizadoDetalle, setMotorizadoDetalle] = useState<string>('');
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'loading' | 'success'>('idle');
   const [isClosing, setIsClosing] = useState(false);
   const [skipDelivered, setSkipDelivered] = useState(true);
@@ -46,6 +57,11 @@ export default function BulkStatusByWrModal({
       setSubmitStatus('idle');
       setIsClosing(false);
       setSkipDelivered(true);
+      setTargetStatusAmex('entregado');
+      setSelectedModalidad('Presencial');
+      setAgenciaSeleccionada('Shalom');
+      setOtraAgenciaTexto('');
+      setMotorizadoDetalle('');
     }
   }, [isOpen]);
 
@@ -126,6 +142,26 @@ export default function BulkStatusByWrModal({
     ? Math.max(0, matchedPackages.length - deliveredCount)
     : matchedPackages.length;
 
+  const isFormValid = useMemo(() => {
+    if (matchedPackages.length === 0 || effectiveCount === 0) return false;
+    if (
+      targetStatusAmex === 'entregado' &&
+      selectedModalidad === 'Agencia' &&
+      agenciaSeleccionada === 'Otra Agencia' &&
+      !otraAgenciaTexto.trim()
+    ) {
+      return false;
+    }
+    return true;
+  }, [
+    matchedPackages.length,
+    effectiveCount,
+    targetStatusAmex,
+    selectedModalidad,
+    agenciaSeleccionada,
+    otraAgenciaTexto
+  ]);
+
   const handleClose = () => {
     if (submitStatus === 'loading') return;
     setIsClosing(true);
@@ -138,6 +174,7 @@ export default function BulkStatusByWrModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (matchedPackages.length === 0 || submitStatus !== 'idle') return;
+    if (!isFormValid) return;
 
     const idsToApply = hasDeliveredConflict && skipDelivered
       ? matchedPackages.filter(p => p.estadoAmex !== 'entregado').map(p => p.id)
@@ -152,9 +189,30 @@ export default function BulkStatusByWrModal({
       return;
     }
 
+    let tipoEntregaFinal: string | undefined = undefined;
+    let detalleFinal: string | undefined = undefined;
+
+    if (targetStatusAmex === 'entregado') {
+      tipoEntregaFinal = selectedModalidad;
+      if (selectedModalidad === 'Agencia') {
+        detalleFinal = agenciaSeleccionada === 'Otra Agencia'
+          ? (otraAgenciaTexto.trim() || 'Agencia Externa')
+          : agenciaSeleccionada;
+      } else if (selectedModalidad === 'Motorizado') {
+        detalleFinal = motorizadoDetalle.trim() || undefined;
+      }
+    }
+
     try {
       setSubmitStatus('loading');
-      await onApply(idsToApply, targetStatusAmex, undefined, skipDelivered);
+      await onApply(
+        idsToApply,
+        targetStatusAmex,
+        undefined,
+        skipDelivered,
+        tipoEntregaFinal,
+        detalleFinal
+      );
       setSubmitStatus('success');
       setTimeout(() => {
         setIsClosing(true);
@@ -182,9 +240,15 @@ export default function BulkStatusByWrModal({
     <div className={`modal-backdrop ${isClosing ? 'modal-backdrop-closing' : ''}`}>
       <div
         className={`modal-dialog ${isClosing ? 'modal-dialog-closing' : ''}`}
-        style={{ maxWidth: '640px', width: '95%' }}
+        style={{
+          maxWidth: '640px',
+          width: '95%',
+          maxHeight: '92vh',
+          display: 'flex',
+          flexDirection: 'column'
+        }}
       >
-        <div className="modal-header">
+        <div className="modal-header" style={{ flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div
               style={{
@@ -226,7 +290,17 @@ export default function BulkStatusByWrModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <form
+          onSubmit={handleSubmit}
+          className="modal-body"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '14px',
+            overflowY: 'auto',
+            maxHeight: 'calc(92vh - 70px)'
+          }}
+        >
           {/* Textarea de Entrada */}
           <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <label style={{ fontSize: '12px', fontWeight: 800, color: '#334155', display: 'flex', justifyContent: 'space-between' }}>
@@ -431,6 +505,250 @@ export default function BulkStatusByWrModal({
             </select>
           </div>
 
+          {/* Selector Obligatorio de Modalidades de Entrega (solo visible cuando se marca Entregado) */}
+          {targetStatusAmex === 'entregado' && (
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px',
+                background: '#f8fafc',
+                border: '1px solid #cbd5e1',
+                borderRadius: '10px',
+                padding: '12px 14px'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '12.5px',
+                    fontWeight: 800,
+                    color: '#1e293b',
+                    margin: 0
+                  }}
+                >
+                  🚚 Modalidad de Entrega <span style={{ color: '#ef4444' }}>*</span>
+                </label>
+                <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
+                  Selecciona cómo se entregó el lote
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+                {/* 1. Presencial */}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedModalidad('Presencial')}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setSelectedModalidad('Presencial'); }}
+                  style={{
+                    border: selectedModalidad === 'Presencial' ? '2px solid #2563eb' : '1px solid #cbd5e1',
+                    background: selectedModalidad === 'Presencial' ? '#eff6ff' : '#ffffff',
+                    borderRadius: '9px',
+                    padding: '10px 12px',
+                    cursor: submitStatus !== 'idle' ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.15s ease',
+                    userSelect: 'none'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
+                    <Building2 className={`w-4 h-4 ${selectedModalidad === 'Presencial' ? 'text-blue-600' : 'text-slate-500'}`} />
+                    <span style={{ fontWeight: 800, fontSize: '12.5px', color: selectedModalidad === 'Presencial' ? '#1d4ed8' : '#334155' }}>
+                      Presencial
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#64748b', lineHeight: 1.25 }}>
+                    Retiro en mostrador Lince
+                  </div>
+                </div>
+
+                {/* 2. Agencia */}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedModalidad('Agencia')}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setSelectedModalidad('Agencia'); }}
+                  style={{
+                    border: selectedModalidad === 'Agencia' ? '2px solid #d97706' : '1px solid #cbd5e1',
+                    background: selectedModalidad === 'Agencia' ? '#fffbeb' : '#ffffff',
+                    borderRadius: '9px',
+                    padding: '10px 12px',
+                    cursor: submitStatus !== 'idle' ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.15s ease',
+                    userSelect: 'none'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
+                    <PackageIcon className={`w-4 h-4 ${selectedModalidad === 'Agencia' ? 'text-amber-600' : 'text-slate-500'}`} />
+                    <span style={{ fontWeight: 800, fontSize: '12.5px', color: selectedModalidad === 'Agencia' ? '#b45309' : '#334155' }}>
+                      Agencia
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#64748b', lineHeight: 1.25 }}>
+                    Shalom / Olva / Provincias
+                  </div>
+                </div>
+
+                {/* 3. A Domicilio */}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedModalidad('Domicilio')}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setSelectedModalidad('Domicilio'); }}
+                  style={{
+                    border: selectedModalidad === 'Domicilio' ? '2px solid #16a34a' : '1px solid #cbd5e1',
+                    background: selectedModalidad === 'Domicilio' ? '#f0fdf4' : '#ffffff',
+                    borderRadius: '9px',
+                    padding: '10px 12px',
+                    cursor: submitStatus !== 'idle' ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.15s ease',
+                    userSelect: 'none'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
+                    <Truck className={`w-4 h-4 ${selectedModalidad === 'Domicilio' ? 'text-emerald-600' : 'text-slate-500'}`} />
+                    <span style={{ fontWeight: 800, fontSize: '12.5px', color: selectedModalidad === 'Domicilio' ? '#15803d' : '#334155' }}>
+                      A Domicilio
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#64748b', lineHeight: 1.25 }}>
+                    Móvil / Carro AMEX
+                  </div>
+                </div>
+
+                {/* 4. Motorizado */}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedModalidad('Motorizado')}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setSelectedModalidad('Motorizado'); }}
+                  style={{
+                    border: selectedModalidad === 'Motorizado' ? '2px solid #7e22ce' : '1px solid #cbd5e1',
+                    background: selectedModalidad === 'Motorizado' ? '#faf5ff' : '#ffffff',
+                    borderRadius: '9px',
+                    padding: '10px 12px',
+                    cursor: submitStatus !== 'idle' ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.15s ease',
+                    userSelect: 'none'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
+                    <Bike className={`w-4 h-4 ${selectedModalidad === 'Motorizado' ? 'text-purple-600' : 'text-slate-500'}`} />
+                    <span style={{ fontWeight: 800, fontSize: '12.5px', color: selectedModalidad === 'Motorizado' ? '#7e22ce' : '#334155' }}>
+                      Motorizado
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#64748b', lineHeight: 1.25 }}>
+                    Contratado por Cliente
+                  </div>
+                </div>
+              </div>
+
+              {/* Sub-formulario cuando es Agencia */}
+              {selectedModalidad === 'Agencia' && (
+                <div
+                  style={{
+                    background: '#fffbeb',
+                    border: '1px solid #fde68a',
+                    borderRadius: '9px',
+                    padding: '12px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px'
+                  }}
+                >
+                  <label style={{ fontSize: '12px', fontWeight: 800, color: '#92400e', margin: 0 }}>
+                    Agencia de Transporte:
+                  </label>
+                  <select
+                    value={agenciaSeleccionada}
+                    disabled={submitStatus !== 'idle'}
+                    onChange={e => setAgenciaSeleccionada(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '7px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid #f59e0b',
+                      fontSize: '12.5px',
+                      fontWeight: 700,
+                      background: '#ffffff',
+                      color: '#78350f'
+                    }}
+                  >
+                    <option value="Shalom">Shalom (Agencia Oficial)</option>
+                    <option value="Olva Courier">Olva Courier</option>
+                    <option value="Marvisur">Marvisur</option>
+                    <option value="Flores Hermanos">Flores Hermanos</option>
+                    <option value="Cavassa">Cavassa</option>
+                    <option value="Otra Agencia">Otra Agencia (Escribir nombre)</option>
+                  </select>
+
+                  {agenciaSeleccionada === 'Otra Agencia' && (
+                    <input
+                      type="text"
+                      placeholder="Escribe el nombre de la agencia (ej. Cruz del Sur, Móvil Bus...)"
+                      value={otraAgenciaTexto}
+                      disabled={submitStatus !== 'idle'}
+                      onChange={e => setOtraAgenciaTexto(e.target.value)}
+                      autoFocus
+                      required
+                      style={{
+                        width: '100%',
+                        padding: '7px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid #d97706',
+                        fontSize: '12px',
+                        background: '#ffffff'
+                      }}
+                    />
+                  )}
+                </div>
+              )}
+
+              {/* Sub-formulario cuando es Motorizado */}
+              {selectedModalidad === 'Motorizado' && (
+                <div
+                  style={{
+                    background: '#faf5ff',
+                    border: '1px solid #e9d5ff',
+                    borderRadius: '9px',
+                    padding: '12px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', color: '#6b21a8', fontWeight: 700 }}>
+                    <AlertCircle className="w-4 h-4 text-purple-600 flex-shrink-0" />
+                    <span>Servicio de motorizado contratado y pagado por el cliente (no por AMEX).</span>
+                  </div>
+
+                  <label style={{ fontSize: '12px', fontWeight: 800, color: '#581c87', marginTop: '2px', margin: 0 }}>
+                    Datos del Motorizado o App (Opcional):
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: Rappi - Carlos R. / PedidosYa / Particular Placa 4512-AB"
+                    value={motorizadoDetalle}
+                    disabled={submitStatus !== 'idle'}
+                    onChange={e => setMotorizadoDetalle(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '7px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid #a855f7',
+                      fontSize: '12px',
+                      background: '#ffffff'
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Banner de protección si hay paquetes ya entregados */}
           {hasDeliveredConflict && (
             <div
@@ -547,19 +865,19 @@ export default function BulkStatusByWrModal({
             {submitStatus === 'idle' && (
               <button
                 type="submit"
-                disabled={matchedPackages.length === 0 || effectiveCount === 0}
+                disabled={!isFormValid}
                 className="btn btn-primary"
                 style={{
                   fontWeight: 800,
-                  opacity: matchedPackages.length === 0 || effectiveCount === 0 ? 0.6 : 1,
-                  cursor: matchedPackages.length === 0 || effectiveCount === 0 ? 'not-allowed' : 'pointer',
+                  opacity: !isFormValid ? 0.6 : 1,
+                  cursor: !isFormValid ? 'not-allowed' : 'pointer',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '6px',
                   transition: 'all 0.15s ease'
                 }}
               >
-                ✓ Aplicar cambio a {effectiveCount} paquete(s) {hasDeliveredConflict && skipDelivered ? 'pendientes' : ''}
+                ✓ {targetStatusAmex === 'entregado' ? 'Marcar entrega de' : 'Aplicar cambio a'} {effectiveCount} paquete(s) {hasDeliveredConflict && skipDelivered ? 'pendientes' : ''}
               </button>
             )}
           </div>

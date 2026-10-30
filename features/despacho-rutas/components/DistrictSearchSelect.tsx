@@ -657,7 +657,7 @@ export default function DistrictSearchSelect({
           </span>
         </span>
 
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', shrink: 0 }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', flexShrink: 0 }}>
           {currentLabel && (
             <span
               role="button"

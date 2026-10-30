@@ -466,16 +466,16 @@ export const inventoryService = {
     }
 
     const nowIso = new Date().toISOString();
-    // Por requerimiento: el cambio masivo solo afecta a la columna estado_amex
+    // Por requerimiento: el cambio masivo actualiza estado_amex y datos de entrega si aplica
     const updatePayload: Record<string, any> = {
       estado_amex: targetStatusAmex,
       actualizado_en: nowIso
     };
     if (targetStatusAmex === 'entregado') {
       updatePayload.tipo_entrega = tipoEntrega || 'Presencial';
-      if (detalleEntrega) {
-        updatePayload.detalle_entrega = detalleEntrega;
-      }
+      updatePayload.detalle_entrega = detalleEntrega || null;
+      updatePayload.ubicacion_actual = 'Entregado';
+      updatePayload.estado_tib = 'Entregado';
     }
     if (targetStatusTib) {
       updatePayload.estado_tib = targetStatusTib;
@@ -493,19 +493,42 @@ export const inventoryService = {
           ...pkg,
           estadoAmex: targetStatusAmex,
           actualizadoEn: nowIso,
-          ...(targetStatusAmex === 'entregado' ? { tipoEntrega: (tipoEntrega || 'Presencial') as any, detalleEntrega } : {}),
+          ...(targetStatusAmex === 'entregado'
+            ? {
+                tipoEntrega: (tipoEntrega || 'Presencial') as any,
+                detalleEntrega: detalleEntrega || undefined,
+                ubicacionActual: 'Entregado',
+                estadoTib: 'Entregado',
+                estadoEntrega: 'Entregado'
+              }
+            : {}),
           ...(targetStatusTib ? { estadoTib: targetStatusTib, estadoEntrega: targetStatusTib } : {})
         };
         updatedList.push(updated);
+
+        let detalleKardex = tipoEntrega || 'Presencial';
+        if (tipoEntrega === 'Agencia') {
+          detalleKardex = `Agencia ${detalleEntrega || 'Shalom'}`;
+        } else if (tipoEntrega === 'Motorizado') {
+          detalleKardex = `Motorizado Cliente ${detalleEntrega ? `(${detalleEntrega})` : ''}`.trim();
+        } else if (tipoEntrega === 'Domicilio') {
+          detalleKardex = 'A Domicilio (Carro AMEX)';
+        } else if (tipoEntrega === 'Presencial') {
+          detalleKardex = 'Presencial (Mostrador Lince)';
+        }
 
         kardexInserts.push({
           paquete_id: pkg.id,
           codigo_paquete: pkg.numeroReciboBodega,
           consignatario: pkg.nombreConsignatario || 'Cliente AMEX',
           origen_descripcion: `AmexLince (${pkg.posicionEstante || 'REC'})`,
-          destino_descripcion: `Estado AMEX masivo: ${targetStatusAmex}`,
+          destino_descripcion: targetStatusAmex === 'entregado'
+            ? `Entregado al Cliente - Modalidad: ${detalleKardex}`
+            : `Estado AMEX masivo: ${targetStatusAmex}`,
           tipo_movimiento: targetStatusAmex === 'entregado' ? 'ENTREGA' : 'ESTADO_CAMBIO',
-          motivo: 'Cambio masivo de estado AMEX desde Almacén Lince',
+          motivo: targetStatusAmex === 'entregado'
+            ? `Entrega masiva [${detalleKardex}]`
+            : 'Cambio masivo de estado AMEX desde Almacén Lince',
           usuario_operador: 'Operador Logístico AMEX'
         });
       }

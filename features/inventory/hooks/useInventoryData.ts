@@ -778,7 +778,9 @@ export function useInventoryData({
     matchedIds: string[],
     targetStatusAmex: TipoEstadoAmex,
     targetStatusTib?: TipoEstadoEntrega,
-    skipDelivered: boolean = true
+    skipDelivered: boolean = true,
+    tipoEntrega?: string,
+    detalleEntrega?: string
   ) => {
     if (matchedIds.length === 0) return;
     try {
@@ -790,7 +792,9 @@ export function useInventoryData({
         paquetes,
         targetStatusAmex,
         targetStatusTib,
-        skipDelivered
+        skipDelivered,
+        tipoEntrega,
+        detalleEntrega
       );
       if (onUpdatePackage) {
         updatedList.forEach(p => onUpdatePackage(p));
@@ -813,6 +817,8 @@ export function useInventoryData({
           ? 'En Ruta'
           : targetStatusAmex;
 
+      const tipoLabel = tipoEntrega ? ` (${tipoEntrega}${detalleEntrega ? `: ${detalleEntrega}` : ''})` : '';
+
       if (skippedList.length > 0) {
         if (updatedList.length === 0) {
           toast.warning(
@@ -822,13 +828,13 @@ export function useInventoryData({
         } else {
           toast.success(
             'Actualización parcial',
-            `Se cambiaron a "${statusLabel}" ${updatedList.length} paquetes. Se protegieron ${skippedList.length} ya entregados.`
+            `Se cambiaron a "${statusLabel}" ${updatedList.length} paquetes${tipoLabel}. Se protegieron ${skippedList.length} ya entregados.`
           );
         }
       } else {
         toast.success(
           'Actualización masiva completada',
-          `Se cambiaron a "${statusLabel}" ${updatedList.length} paquetes con éxito.`
+          `Se cambiaron a "${statusLabel}" ${updatedList.length} paquetes con éxito${tipoLabel}.`
         );
       }
 
