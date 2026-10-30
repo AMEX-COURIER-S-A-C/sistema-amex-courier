@@ -47,7 +47,7 @@ export default function InventoryFilterBar({
   shelfGroups,
   floorFilter,
   setFloorFilter,
-  statusAmexFilter = 'ALL',
+  statusAmexFilter = 'en_almacen',
   setStatusAmexFilter,
   deliveryTypeFilter = 'ALL',
   setDeliveryTypeFilter,
@@ -118,7 +118,8 @@ export default function InventoryFilterBar({
   const hasAnyFilterActive =
     Boolean(searchTerm) ||
     shelfFilter !== 'ALL' ||
-    (statusAmexFilter && statusAmexFilter !== 'ALL') ||
+    (statusAmexFilter && statusAmexFilter !== 'en_almacen') ||
+    (deliveryTypeFilter && deliveryTypeFilter !== 'ALL') ||
     activeSecondaryCount > 0;
 
   const handleResetFilters = () => {
@@ -128,7 +129,8 @@ export default function InventoryFilterBar({
     setFloorFilter('ALL');
     setLocationFilter('ALL');
     setPackageTypeFilter('ALL');
-    if (setStatusAmexFilter) setStatusAmexFilter('ALL');
+    if (setStatusAmexFilter) setStatusAmexFilter('en_almacen');
+    if (setDeliveryTypeFilter) setDeliveryTypeFilter('ALL');
     if (setStatusFilter) setStatusFilter('ALL');
     if (resetDateFilter) resetDateFilter();
   };

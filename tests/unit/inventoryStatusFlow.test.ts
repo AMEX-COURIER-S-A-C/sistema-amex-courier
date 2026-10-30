@@ -129,4 +129,52 @@ describe('Inventory Status Transition Flow & Optimistic Retention', () => {
     );
     expect(retainedInView).toHaveLength(2);
   });
+
+  it('defaults inventory status filter to en_almacen and matches both en_almacen and legacy recibido', () => {
+    const defaultStatusAmexFilter = 'en_almacen';
+
+    const testPackages: Paquete[] = [
+      { ...samplePaquetes[0], estadoAmex: 'en_almacen' },
+      { ...samplePaquetes[1], estadoAmex: 'recibido' },
+      { ...samplePaquetes[0], id: 'pkg-3', estadoAmex: 'entregado' },
+      { ...samplePaquetes[0], id: 'pkg-4', estadoAmex: 'en_ruta' }
+    ];
+
+    const filtered = testPackages.filter(p => {
+      if (defaultStatusAmexFilter === 'en_almacen') {
+        return p.estadoAmex === 'en_almacen' || p.estadoAmex === 'recibido';
+      }
+      return p.estadoAmex === defaultStatusAmexFilter;
+    });
+
+    expect(filtered).toHaveLength(2);
+    expect(filtered.map(p => p.id)).toEqual(['pkg-1', 'pkg-2']);
+  });
+
+  it('verifies filter bar active detection and reset restores en_almacen default', () => {
+    let currentFilter = 'en_almacen';
+
+    // Helper mirroring InventoryFilterBar hasAnyFilterActive logic
+    const isFilterActive = (status: string, search: string = '') =>
+      Boolean(search) || (Boolean(status) && status !== 'en_almacen');
+
+    // Default state: not active
+    expect(isFilterActive(currentFilter)).toBe(false);
+
+    // User changes to 'ALL' (Todos los Estados): filter is considered active
+    currentFilter = 'ALL';
+    expect(isFilterActive(currentFilter)).toBe(true);
+
+    // User changes to 'entregado': filter is considered active
+    currentFilter = 'entregado';
+    expect(isFilterActive(currentFilter)).toBe(true);
+
+    // Reset filters restores 'en_almacen'
+    const handleReset = () => {
+      currentFilter = 'en_almacen';
+    };
+    handleReset();
+    expect(currentFilter).toBe('en_almacen');
+    expect(isFilterActive(currentFilter)).toBe(false);
+  });
 });

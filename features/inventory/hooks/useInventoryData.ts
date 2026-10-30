@@ -44,7 +44,7 @@ export function useInventoryData({
   const [floorFilter, setFloorFilter] = useState<string>('ALL');
   const [packageTypeFilter, setPackageTypeFilter] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
-  const [statusAmexFilter, setStatusAmexFilter] = useState<string>('ALL');
+  const [statusAmexFilter, setStatusAmexFilter] = useState<string>('en_almacen');
   const [deliveryTypeFilter, setDeliveryTypeFilter] = useState<string>('ALL');
   const [dateFilter, setDateFilter] = useState<DateFilterState>(initialDateFilter);
   const resetDateFilter = useCallback(() => setDateFilter(initialDateFilter), []);
