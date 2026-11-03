@@ -38,6 +38,12 @@ function buildFallbackUserFromAuth(authUser: {
     normRole === 'administrador' ||
     emailLower === 'sistemaamexcourier@gmail.com';
 
+  // Leer permisos desde app_metadata (sincronizado en BD) o user_metadata como fallback
+  const permisosFromMeta =
+    (appMetadata.permisos as Record<string, unknown>) ||
+    (metadata.permisos as Record<string, unknown>) ||
+    {};
+
   return {
     id: authUser.id,
     nombre:
@@ -47,7 +53,7 @@ function buildFallbackUserFromAuth(authUser: {
       'Administrador AMEX',
     email: authUser.email || '',
     rol,
-    permisos: {},
+    permisos: permisosFromMeta,
     isAdmin,
   };
 }

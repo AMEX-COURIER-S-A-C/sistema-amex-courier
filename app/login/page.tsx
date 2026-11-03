@@ -177,6 +177,11 @@ export default function LoginPage() {
             normRole === 'admin' ||
             normRole === 'administrador' ||
             emailLower === 'sistemaamexcourier@gmail.com';
+          // Leer permisos desde app_metadata (sincronizado) para que el cache de login sea correcto
+          const permisosFromMeta =
+            (appMetadata.permisos as Record<string, unknown>) ||
+            (metadata.permisos as Record<string, unknown>) ||
+            {};
 
           sessionStorage.setItem(
             'amex_cached_session_user',
@@ -189,7 +194,7 @@ export default function LoginPage() {
                 'Administrador AMEX',
               email: authUser.email || '',
               rol,
-              permisos: {},
+              permisos: permisosFromMeta,
               isAdmin,
             })
           );
