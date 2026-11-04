@@ -1,5 +1,5 @@
-# Worker Inventario AMEX — Dockerfile en la raíz del repo porque la API de
-# Render solo acepta ./Dockerfile con contexto raíz en el plan Free.
+# Worker Inventario AMEX — Dockerfile en la raíz para construir la imagen
+# desde GitHub Actions y desplegarla en el VPS Hostinger.
 # El contexto de build es el repo clonado (solo archivos de git).
 
 # ---- Etapa 1: compilar el procesador C# para linux-x64 ----

@@ -417,7 +417,7 @@ export const POST = withApi(
     // 1. PRIORIDAD: Delegar procesamiento al VPS de Hostinger (donde viven los TIBs en SSD local permanente)
     const vpsHost = process.env.VPS_HOST || '2.25.89.222';
     const workerPort = process.env.WORKER_PORT || '10000';
-    const workerUrl = process.env.WORKER_URL || process.env.INVENTORY_WORKER_URL || process.env.RENDER_WORKER_URL || `http://${vpsHost}:${workerPort}`;
+    const workerUrl = process.env.WORKER_URL || process.env.INVENTORY_WORKER_URL || `http://${vpsHost}:${workerPort}`;
 
     if (workerUrl && !body.forzar_local) {
       try {

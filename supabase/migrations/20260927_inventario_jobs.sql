@@ -1,4 +1,4 @@
--- Módulo "Completar Inventario" (worker Render): cola de trabajos.
+-- Módulo "Completar Inventario" (worker en VPS Hostinger): cola de trabajos.
 -- El worker toma filas en 'queued', las procesa y las marca 'done'/'error'.
 -- Aplicar en Supabase Dashboard → SQL Editor si la vía automática falla.
 

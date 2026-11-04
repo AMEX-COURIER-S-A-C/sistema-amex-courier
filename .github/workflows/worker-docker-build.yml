@@ -1,5 +1,4 @@
-# Compila el Dockerfile del worker y publica la imagen en GHCR.
-# Render despliega la imagen precompilada (sin compilar .NET en el Free).
+# Compila el Dockerfile del worker y publica la imagen en GHCR para desplegarla en el VPS Hostinger.
 name: worker-docker-build
 
 on:

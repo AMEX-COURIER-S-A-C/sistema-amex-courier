@@ -1,5 +1,5 @@
 # Prueba el procesador C# en Linux nativo (ubuntu) con archivos de prueba.
-# Aísla si un fallo es del binario o del entorno Render.
+# Aísla si un fallo es del binario o del entorno de ejecución del worker.
 name: worker-processor-test
 
 on:

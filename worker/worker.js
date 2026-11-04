@@ -1,7 +1,7 @@
 'use strict';
 
 /*
- * Worker del Automatizador de Inventario AMEX (Render Background Worker).
+ * Worker del Automatizador de Inventario AMEX, ejecutado en el VPS Hostinger.
  *
  * Loop: toma jobs con estado 'queued' de la tabla Supabase `inventario_jobs`,
  * descarga los .xlsx de entrada desde Cloudflare R2, ejecuta el procesador
@@ -16,7 +16,7 @@
  * Opcionales:
  *   PROCESSOR (ruta del binario C#), EMPTY_TEMPLATE (plantilla fuente vacía),
  *   WORK_DIR (default os.tmpdir()/amex-jobs), POLL_INTERVAL_MS (default 5000),
- *   HOST (default 0.0.0.0), PORT (default 10000, Render lo inyecta),
+ *   HOST (default 0.0.0.0), PORT (default 10000),
  *   PROCESS_TIMEOUT_MS (default 20 min)
  */
 

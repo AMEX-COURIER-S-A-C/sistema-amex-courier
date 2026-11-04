@@ -21,7 +21,7 @@ export async function GET() {
 
     const vpsHost = process.env.VPS_HOST || '2.25.89.222';
     const workerPort = process.env.WORKER_PORT || '10000';
-    const workerUrl = process.env.WORKER_URL || process.env.INVENTORY_WORKER_URL || process.env.RENDER_WORKER_URL || `http://${vpsHost}:${workerPort}`;
+    const workerUrl = process.env.WORKER_URL || process.env.INVENTORY_WORKER_URL || `http://${vpsHost}:${workerPort}`;
 
     let vpsOnline = false;
     let tibActivoNombre = 'ENVIADO TIB.xlsx';

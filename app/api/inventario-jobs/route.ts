@@ -9,7 +9,7 @@ import { validateBody } from '@/lib/api/validate';
 import { withErrorHandler } from '@/lib/api/handler';
 
 /**
- * POST /api/inventario-jobs — encola un trabajo para el worker Render.
+ * POST /api/inventario-jobs — encola un trabajo para el worker del VPS Hostinger.
  * Soporta dos modos:
  *   1. origen_inventario: 'db' (Predeterminado) -> Extrae paquetes de la BD y genera Inventario.xlsx automáticamente.
  *   2. origen_inventario: 'file' -> Requiere inventario_key pre-subido a R2.
@@ -196,7 +196,7 @@ async function handlePost(req: NextRequest) {
 
     const vpsHost = process.env.VPS_HOST || '2.25.89.222';
     const workerPort = process.env.WORKER_PORT || '10000';
-    const workerUrl = process.env.INVENTORY_WORKER_URL || process.env.WORKER_URL || process.env.RENDER_WORKER_URL || `http://${vpsHost}:${workerPort}`;
+    const workerUrl = process.env.INVENTORY_WORKER_URL || process.env.WORKER_URL || `http://${vpsHost}:${workerPort}`;
     if (workerUrl) {
       void fetch(`${workerUrl.replace(/\/+$/, '')}/trigger-job`, {
         method: 'POST',
