@@ -4,7 +4,7 @@ test('muestra el acceso seguro del sistema', async ({ page }) => {
   await page.goto('/login');
 
   await expect(
-    page.getByRole('heading', { name: 'SISTEMA AMEX COURIER' })
+    page.getByRole('heading', { name: 'Iniciar Sesión' })
   ).toBeVisible();
   await expect(page.getByPlaceholder('sistemaamexcourier@gmail.com')).toBeVisible();
   await expect(page.getByPlaceholder('••••••••')).toBeVisible();
