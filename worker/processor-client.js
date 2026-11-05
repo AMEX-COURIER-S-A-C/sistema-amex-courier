@@ -41,6 +41,37 @@ function createProcessorClient({ processor, port, timeoutMs, sourcePaths, log = 
     }
   }
 
+  function stopDaemon(timeoutMs = 5000) {
+    const child = daemonProcess;
+    if (!child || child.exitCode !== null || child.signalCode !== null) {
+      daemonProcess = null;
+      daemonReady = false;
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(forceKillTimer);
+        if (daemonProcess === child) daemonProcess = null;
+        daemonReady = false;
+        resolve();
+      };
+      const forceKillTimer = setTimeout(() => {
+        if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+      }, timeoutMs);
+      forceKillTimer.unref?.();
+      child.once('exit', finish);
+      if (child.exitCode !== null || child.signalCode !== null) {
+        finish();
+      } else if (!child.kill('SIGTERM')) {
+        finish();
+      }
+    });
+  }
+
   async function checkReady(retries = 2) {
     for (let attempt = 0; attempt < retries; attempt += 1) {
       try {
@@ -194,6 +225,7 @@ function createProcessorClient({ processor, port, timeoutMs, sourcePaths, log = 
 
   return {
     startDaemon,
+    stopDaemon,
     checkReady,
     warmup,
     run,

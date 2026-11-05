@@ -719,21 +719,33 @@ async function processJob(job) {
 }
 
 let wakeUpResolver = null;
+let shutdownRequested = false;
+let workerLoopPromise = Promise.resolve();
+let shutdownPromise = null;
 
 function triggerImmediatePoll() {
   if (wakeUpResolver) {
-    wakeUpResolver();
+    const wakeUp = wakeUpResolver;
     wakeUpResolver = null;
+    wakeUp();
   }
 }
 
 function waitForNextPoll(ms) {
   return new Promise((resolve) => {
-    wakeUpResolver = resolve;
-    setTimeout(() => {
-      wakeUpResolver = null;
+    if (shutdownRequested) {
       resolve();
-    }, ms);
+      return;
+    }
+
+    let timer;
+    const finish = () => {
+      if (wakeUpResolver === finish) wakeUpResolver = null;
+      clearTimeout(timer);
+      resolve();
+    };
+    wakeUpResolver = finish;
+    timer = setTimeout(finish, ms);
   });
 }
 
@@ -744,7 +756,7 @@ async function loop() {
   );
   let consecutiveEmptyPolls = 0;
   // eslint-disable-next-line no-constant-condition
-  while (true) {
+  while (!shutdownRequested) {
     try {
       const job = await takeNextJob();
       if (job) {
@@ -752,6 +764,7 @@ async function loop() {
         telemetry.jobsProcessed = (telemetry.jobsProcessed || 0) + 1;
         telemetry.lastJobTime = new Date().toISOString();
         await processJob(job);
+        if (shutdownRequested) break;
         // Continuar rápidamente con el siguiente trabajo si la cola tiene más ítems
         await waitForNextPoll(POLL_INTERVAL_BUSY_MS);
         continue;
@@ -767,6 +780,8 @@ async function loop() {
     // 2do sondeo vacío: 12s
     // 3ro en adelante (reposo): POLL_INTERVAL_IDLE_MS (25s)
     // Nota: Ante nuevos jobs, el backend notifica vía POST /trigger-job despertando el bucle al instante (<1ms).
+    if (shutdownRequested) break;
+
     let sleepMs;
     if (consecutiveEmptyPolls <= 1) {
       sleepMs = 5000;
@@ -778,6 +793,7 @@ async function loop() {
 
     await waitForNextPoll(sleepMs);
   }
+  workerLog('info', 'Bucle de procesamiento detenido limpiamente.');
 }
 
 // ---------------------------------------------------------------- health
@@ -1068,6 +1084,32 @@ const server = http.createServer(async (req, res) => {
   res.end(body);
 });
 
+function requestGracefulShutdown(signal) {
+  if (shutdownPromise) return shutdownPromise;
+
+  shutdownRequested = true;
+  workerLog('info', `Señal ${signal} recibida; esperando el trabajo actual y cerrando el daemon.`);
+  triggerImmediatePoll();
+  if (server.listening) {
+    server.close((error) => {
+      if (error) workerLog('warn', `Error al cerrar HTTP: ${error.message}`);
+    });
+  }
+
+  shutdownPromise = (async () => {
+    await workerLoopPromise;
+    await processorClient.stopDaemon();
+    workerLog('info', 'Apagado ordenado completado.');
+  })().catch((error) => {
+    workerLog('error', `Error durante el apagado ordenado: ${error.message}`);
+    process.exitCode = 1;
+  });
+  return shutdownPromise;
+}
+
+process.once('SIGTERM', () => { void requestGracefulShutdown('SIGTERM'); });
+process.once('SIGINT', () => { void requestGracefulShutdown('SIGINT'); });
+
 // ------------------------------------------------------------------ main
 
 assertConfig();
@@ -1081,7 +1123,7 @@ Promise.all([
       console.log(`[worker] Health en http://${HOST}:${PORT} | poll reposo ${POLL_INTERVAL_IDLE_MS}ms / activo ${POLL_INTERVAL_BUSY_MS}ms | workDir ${WORK_DIR} | cacheDir ${TIB_CACHE_DIR}`);
       void bootWarmUpTibIndices();
     });
-    void loop();
+    workerLoopPromise = loop();
   })
   .catch((err) => {
     console.error(`[worker] No se pudo iniciar: ${err.message}`);
