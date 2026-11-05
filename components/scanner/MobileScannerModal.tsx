@@ -331,7 +331,8 @@ export default function MobileScannerModal({
 
   // ✅ Acción: Usuario Confirma el Código Escaneado (Persistencia en Memoria y Supabase)
   const handleConfirmScan = async (confirmedData: PendingConfirmationData) => {
-    let { code, format, workflow, anaquel, piso, pkg, cli } = confirmedData;
+    const { code, format, workflow, piso, pkg, cli } = confirmedData;
+    let { anaquel } = confirmedData;
     const now = Date.now();
 
     // Normalización de seguridad: DSP se convierte estrictamente en DSP-Z1 y REC en OFI

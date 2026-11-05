@@ -50,7 +50,7 @@ export function getR2Client(): S3Client {
 }
 
 export const R2_BUCKET_NAME = getEnv('CLOUDFLARE_R2_BUCKET_NAME', 'amex-courier-cloud');
-export const R2_PUBLIC_DOMAIN = getEnv('CLOUDFLARE_R2_PUBLIC_DOMAIN', 'https://pub-dcb2789e802043768fa5c6c649f9c405.r2.dev').replace(/\/+$/, '');
+export const R2_PUBLIC_DOMAIN = getEnv('CLOUDFLARE_R2_PUBLIC_DOMAIN').replace(/\/+$/, '');
 export const R2_ROOT_FOLDER = getEnv('CLOUDFLARE_R2_ROOT_FOLDER', 'FOLDER AMEX');
 
 /**
@@ -121,7 +121,7 @@ export async function uploadFileToR2(
 
   // Codificar URI para enlace público directo si se habilita en Cloudflare Dashboard
   const encodedKey = key.split('/').map(segment => encodeURIComponent(segment)).join('/');
-  const publicUrl = `${R2_PUBLIC_DOMAIN}/${encodedKey}`;
+  const publicUrl = R2_PUBLIC_DOMAIN ? `${R2_PUBLIC_DOMAIN}/${encodedKey}` : url;
 
   return { url, publicUrl, key };
 }

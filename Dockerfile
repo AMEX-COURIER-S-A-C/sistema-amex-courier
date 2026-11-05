@@ -14,7 +14,7 @@ RUN dotnet publish ./processor/AmexInventoryProcessor/AmexInventoryProcessor.csp
     -o /out/processor
 
 # ---- Etapa 2: runtime Node + binario C# ----
-FROM node:20-bookworm-slim
+FROM node:24-bookworm-slim
 ENV NODE_ENV=production
 ENV NODE_OPTIONS=--max-old-space-size=256
 # ICU real: los encabezados AMEX llevan acentos ("Guía WR") y .NET los

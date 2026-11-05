@@ -340,7 +340,7 @@ export function parseWrCodes(raw: string | null | undefined, options?: ParseWrOp
   const shouldNormalize = options?.normalize !== false;
 
   for (const token of tokens) {
-    let clean = token
+    const clean = token
       .replace(new RegExp(placeholder, 'g'), '-')
       .replace(/["'()[\]{}]/g, '')
       .trim()
@@ -622,7 +622,7 @@ export function parseQuickPasteRows(clipboardText: string): CrearParadaInput[] {
     // Caso 3: 3+ Columnas (Formatos de 5 o 6 columnas desde Excel)
     let colDest = cols[0];
     let colWr = cols[1];
-    let colRestStart = 2;
+    const colRestStart = 2;
 
     // Detección si col0 es WR y col1 es Destinatario
     if (isWrOrWrList(cols[0]) && !isWrOrWrList(cols[1])) {
