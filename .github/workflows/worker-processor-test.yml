@@ -39,7 +39,7 @@ jobs:
           EOF
       - name: Publicar procesador linux-x64
         run: |
-            dotnet publish worker/processor/AmexInventoryProcessor/AmexInventoryProcessor.csproj \
+          dotnet publish worker/processor/AmexInventoryProcessor/AmexInventoryProcessor.csproj \
             -c Release -r linux-x64 --self-contained true \
             -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
             -o /tmp/proc
