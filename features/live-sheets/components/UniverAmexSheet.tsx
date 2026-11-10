@@ -35,7 +35,6 @@ export interface UniverAmexSheetProps {
     cleanCode: string;
     cleanDigits: string;
     isMatch: boolean;
-    isDuplicate: boolean;
     clientName: string;
     hasValidName: boolean;
     resolvedName: string;
@@ -43,8 +42,7 @@ export interface UniverAmexSheetProps {
   playScanFeedback: (
     isMatch: boolean,
     hasValidName: boolean,
-    clientName: string,
-    isDuplicate?: boolean
+    clientName: string
   ) => void;
   activeCell: ActiveCell;
   setActiveCell: React.Dispatch<React.SetStateAction<ActiveCell>>;
@@ -618,24 +616,10 @@ export default function UniverAmexSheet({
             clientName !== 'CLIENTE AMEX' &&
             clientName !== 'NO ASIGNADO';
 
-          // Detectar si está repetido en otra fila de la Columna D
-          const isDuplicate = gridRows.some((other, idx) => {
-            if (idx === rowIdx || !other.rawD) return false;
-            const otherClean = other.rawD.toUpperCase().replace(/\s+/g, '');
-            const otherDigits = otherClean.replace(/^[A-Za-z]+0*/, '');
-            return (
-              otherClean === cleanCode ||
-              `WR${otherClean}` === cleanCode ||
-              otherClean === `WR${cleanCode}` ||
-              (cleanDigits.length >= 5 && otherDigits === cleanDigits)
-            );
-          });
-
           return {
             cleanCode,
             cleanDigits,
             isMatch,
-            isDuplicate,
             clientName,
             hasValidName,
             resolvedName: hasValidName ? clientName : isMatch ? 'CLIENTE AMEX' : 'NO ASIGNADO'
@@ -701,8 +685,7 @@ export default function UniverAmexSheet({
               playScanFeedbackRef.current(
                 match.isMatch,
                 match.hasValidName,
-                match.clientName,
-                match.isDuplicate
+                match.clientName
               );
             }
           }

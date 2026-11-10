@@ -407,27 +407,12 @@ class SoundSynthesizer {
     }
   }
 
-  // Feedback integral de escaneo WR en Columna D: Bip instantáneo + Voz hablada
+  // Feedback integral de escaneo WR en Columna D: Bip instantáneo + Voz hablada (Nombre del cliente o 'No encontrado')
   public announceScanResult(params: {
-    status: 'FOUND' | 'DUPLICATE' | 'NOT_FOUND';
+    status: 'FOUND' | 'NOT_FOUND';
     clientName?: string;
   }) {
     if (this.isMuted) return;
-
-    if (params.status === 'DUPLICATE') {
-      this.playDuplicate();
-      if (this.voiceEnabled) {
-        const namePart =
-          params.clientName &&
-          params.clientName !== 'CLIENTE AMEX' &&
-          params.clientName !== 'NO ASIGNADO' &&
-          params.clientName !== '[NOMBRE]'
-            ? `. ${params.clientName}`
-            : '';
-        this.speak(`Código repetido${namePart}`);
-      }
-      return;
-    }
 
     if (params.status === 'FOUND') {
       this.playSuccess();

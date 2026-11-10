@@ -151,29 +151,6 @@ export function useLiveSheetsKeyboard({
     [visibleRows]
   );
 
-  // Detectar si un código escaneado ya existe en la Columna D de otra fila
-  const checkIsDuplicateScan = useCallback(
-    (scannedText: string, excludeItemIndex?: number): boolean => {
-      const cleanCode = scannedText.trim().toUpperCase().replace(/\s+/g, '');
-      if (!cleanCode) return false;
-      const cleanDigits = cleanCode.replace(/^[A-Za-z]+0*/, '');
-
-      return items.some((it, idx) => {
-        if (typeof excludeItemIndex === 'number' && idx === excludeItemIndex) return false;
-        const existingScan = (it.tracking || '').trim().toUpperCase().replace(/\s+/g, '');
-        if (!existingScan) return false;
-        const existingDigits = existingScan.replace(/^[A-Za-z]+0*/, '');
-        return (
-          existingScan === cleanCode ||
-          `WR${existingScan}` === cleanCode ||
-          existingScan === `WR${cleanCode}` ||
-          (cleanDigits.length >= 5 && existingDigits === cleanDigits)
-        );
-      });
-    },
-    [items]
-  );
-
   // Resolver coincidencia de código con columnas B, A (con herencia de grupo) y BD de paquetes
   const resolveScannedCodeMatch = useCallback(
     (scannedText: string, targetItemIndex?: number) => {
@@ -212,7 +189,6 @@ export function useLiveSheetsKeyboard({
       }
 
       const isMatch = !!(matchedManifest || dbPackage || rowItemMatch);
-      const isDuplicate = checkIsDuplicateScan(cleanCode, targetItemIndex);
 
       let clientName = '';
       if (
@@ -273,21 +249,20 @@ export function useLiveSheetsKeyboard({
         cleanCode,
         cleanDigits,
         isMatch,
-        isDuplicate,
         clientName,
         hasValidName,
         resolvedName: hasValidName ? clientName : isMatch ? 'CLIENTE AMEX' : 'NO ASIGNADO'
       };
     },
-    [checkCodeInManifest, checkIsDuplicateScan, items, paquetes]
+    [checkCodeInManifest, items, paquetes]
   );
 
-  // Reproducir sonido + voz para escaneo en Columna D (encontrado / repetido / no encontrado)
+  // Reproducir sonido + voz para escaneo en Columna D (encontrado / no encontrado)
   const playScanFeedback = useCallback(
-    (isMatch: boolean, hasValidName: boolean, clientName: string, isDuplicate: boolean = false) => {
+    (isMatch: boolean, hasValidName: boolean, clientName: string) => {
       if (isMuted) return;
       soundEffects.announceScanResult({
-        status: isDuplicate ? 'DUPLICATE' : isMatch ? 'FOUND' : 'NOT_FOUND',
+        status: isMatch ? 'FOUND' : 'NOT_FOUND',
         clientName: hasValidName ? clientName : ''
       });
     },
@@ -319,11 +294,11 @@ export function useLiveSheetsKeyboard({
       }
 
       const match = resolveScannedCodeMatch(scannedText, targetItemIndex !== -1 ? targetItemIndex : undefined);
-      const { cleanCode, cleanDigits, isMatch, isDuplicate, clientName, hasValidName, resolvedName } = match;
+      const { cleanCode, cleanDigits, isMatch, clientName, hasValidName, resolvedName } = match;
       const nowIso = new Date().toISOString();
 
       // Emitir sonido + voz inmediatamente
-      playScanFeedback(isMatch, hasValidName, clientName, isDuplicate);
+      playScanFeedback(isMatch, hasValidName, clientName);
 
       const newEstado: TipoEstadoItemCotejo = isMatch ? 'ESCANEADO' : 'NO_LISTADO';
       const finalNotes = isMatch ? resolvedName : 'NO ASIGNADO';
@@ -735,7 +710,6 @@ export function useLiveSheetsKeyboard({
     isVoiceEnabled,
     setIsVoiceEnabled,
     resolveScannedCodeMatch,
-    checkIsDuplicateScan,
     playScanFeedback,
     getCellValue,
     getItemIdForRow,
