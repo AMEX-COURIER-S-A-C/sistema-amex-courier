@@ -15,8 +15,7 @@ import {
   VolumeX,
   Mic,
   ArrowRight,
-  RotateCcw,
-  Radio
+  Undo2
 } from 'lucide-react';
 import { Collaborator, SheetStats } from '../types';
 import { soundEffects } from '@/lib/audio/soundEffects';
@@ -268,7 +267,7 @@ export function LiveSheetsHeader({
           title="Reiniciar todos los códigos escaneados en Columna D"
           style={{ height: '30px', padding: '0 8px', fontSize: '11.5px' }}
         >
-          <RotateCcw size={12} className="text-amber-600" />
+          <Undo2 size={12} className="text-amber-600" />
         </button>
       </div>
 
@@ -346,7 +345,7 @@ export function LiveSheetsHeader({
             cursor: 'pointer'
           }}
         >
-          <Radio size={12} />
+          <Volume2 size={12} />
           <span>Probar Voz</span>
         </button>
 
