@@ -249,7 +249,7 @@ export function useDashboardActions({
     setNewPkgForm({
       ...emptyPkgForm,
       numeroReciboBodega: '',
-      posicionEstante: 'OFI-P1'
+      posicionEstante: 'OFI'
     });
     setIsNewPkgModalOpen(true);
   }, [emptyPkgForm, setIsNewPkgModalOpen, setNewPkgForm]);

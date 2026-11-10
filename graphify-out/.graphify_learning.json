@@ -1,0 +1,256 @@
+{
+  "generated_at": "2026-11-05T18:46:50.170733+00:00",
+  "nodes": {
+    "lib_portal_syncpackagetoportal_syncpackagestoclientportal": {
+      "code_fingerprint": "8c141b791004fcd58e80d393d53ab0147ef25867df48bde8032e430836693e6e",
+      "label": "syncPackagesToClientPortal()",
+      "last": "2026-11-04T22:54:35.455883+00:00",
+      "provenance": [
+        {
+          "date": "2026-11-04T22:54:35.455883+00:00",
+          "outcome": "useful",
+          "q": "ANALIZA ESTOS 2 PROYECTOS QUE TENGO ACTUALMENTE EN GENERAL, HACIENDO UN ANALISIS PROFESIONAL A LA ESTRUCTURA EN GENERAL COMO FUNCIONA CUAL ES SU MODELO DE NEGOCIO QUE VENTAJAS TIENE ETC ANALIZANDO LOS GRAPHIFY ETC"
+        }
+      ],
+      "score": 0.981052148,
+      "source_file": "lib/portal/syncPackageToPortal.ts",
+      "status": "tentative",
+      "uses": 1
+    },
+    "lib_portal_synctibtoportal_synctibpackagestoportal": {
+      "code_fingerprint": "9f32b70630d2cef0a58b07f8dcdd9f7ff260b22caa3a1db7f48aa26b7fd87359",
+      "label": "syncTibPackagesToPortal()",
+      "last": "2026-11-04T22:54:35.455883+00:00",
+      "provenance": [
+        {
+          "date": "2026-11-04T22:54:35.455883+00:00",
+          "outcome": "useful",
+          "q": "ANALIZA ESTOS 2 PROYECTOS QUE TENGO ACTUALMENTE EN GENERAL, HACIENDO UN ANALISIS PROFESIONAL A LA ESTRUCTURA EN GENERAL COMO FUNCIONA CUAL ES SU MODELO DE NEGOCIO QUE VENTAJAS TIENE ETC ANALIZANDO LOS GRAPHIFY ETC"
+        }
+      ],
+      "score": 0.981052148,
+      "source_file": "lib/portal/syncTibToPortal.ts",
+      "status": "tentative",
+      "uses": 1
+    },
+    "lib_r2_client_r2_bucket_name": {
+      "code_fingerprint": "a591586ca5b7ecad0e618dd7d6d81a15fe9f3cd50693e4605343a706dcb77362",
+      "label": "R2_BUCKET_NAME",
+      "last": "2026-11-04T23:56:35.984320+00:00",
+      "provenance": [
+        {
+          "date": "2026-11-04T23:56:35.984320+00:00",
+          "outcome": "useful",
+          "q": "puedes ayudarme a hacer una migracion profesional de archivos y datos de R2 al nuevo Cloudflare de amexcourier sin perder nada; que necesitas para realizar todo el cambio?"
+        }
+      ],
+      "score": 0.982028718,
+      "source_file": "lib/r2/client.ts",
+      "status": "tentative",
+      "uses": 1
+    },
+    "lib_supabase_admin_getsupabaseadmin": {
+      "code_fingerprint": "580b4b28911a943d25ab0637403c49be706c5d33ab86b3d51d499ab59b94b3b7",
+      "label": "getSupabaseAdmin()",
+      "last": "2026-11-04T22:54:35.455883+00:00",
+      "provenance": [
+        {
+          "date": "2026-11-04T22:54:35.455883+00:00",
+          "outcome": "useful",
+          "q": "ANALIZA ESTOS 2 PROYECTOS QUE TENGO ACTUALMENTE EN GENERAL, HACIENDO UN ANALISIS PROFESIONAL A LA ESTRUCTURA EN GENERAL COMO FUNCIONA CUAL ES SU MODELO DE NEGOCIO QUE VENTAJAS TIENE ETC ANALIZANDO LOS GRAPHIFY ETC"
+        }
+      ],
+      "score": 0.981052148,
+      "source_file": "lib/supabase/admin.ts",
+      "status": "tentative",
+      "uses": 1
+    },
+    "manifest_engine_readme_despliegue_en_vps_hostinger_ubuntu": {
+      "code_fingerprint": "74de5f943bf71441c8c4d50ad6e2b81cf1be81d6bfe102849364a9f37856095c",
+      "label": "Despliegue en VPS (Hostinger / Ubuntu)",
+      "last": "2026-11-04T23:02:27.460214+00:00",
+      "provenance": [
+        {
+          "date": "2026-11-04T23:02:27.460214+00:00",
+          "outcome": "useful",
+          "q": "analiza todo y dime todos los servicios que se estan utilizando actualmetne por ejemplo vercel supabase sentry hostinger etc, listame todos"
+        }
+      ],
+      "score": 0.981175987,
+      "source_file": "manifest-engine/README.md",
+      "status": "tentative",
+      "uses": 1
+    },
+    "openai": {
+      "code_fingerprint": "e8899030c1d96beaff8fca6529f2bfa1c5ceb457eed1a4c23e110696e57da550",
+      "label": "openai",
+      "last": "2026-11-04T23:02:27.460214+00:00",
+      "provenance": [
+        {
+          "date": "2026-11-04T23:02:27.460214+00:00",
+          "outcome": "useful",
+          "q": "analiza todo y dime todos los servicios que se estan utilizando actualmetne por ejemplo vercel supabase sentry hostinger etc, listame todos"
+        }
+      ],
+      "score": 0.981175987,
+      "source_file": "package.json",
+      "status": "tentative",
+      "uses": 1
+    },
+    "resend": {
+      "code_fingerprint": "e8899030c1d96beaff8fca6529f2bfa1c5ceb457eed1a4c23e110696e57da550",
+      "label": "resend",
+      "last": "2026-11-04T23:02:27.460214+00:00",
+      "provenance": [
+        {
+          "date": "2026-11-04T23:02:27.460214+00:00",
+          "outcome": "useful",
+          "q": "analiza todo y dime todos los servicios que se estan utilizando actualmetne por ejemplo vercel supabase sentry hostinger etc, listame todos"
+        }
+      ],
+      "score": 0.981175987,
+      "source_file": "package.json",
+      "status": "tentative",
+      "uses": 1
+    },
+    "scripts_test_credentials_testcloudflare": {
+      "code_fingerprint": "f23e7726b970d10fe286a17abe008946e5e170290a8099a74454578a215930f4",
+      "label": "testCloudflare()",
+      "last": "2026-11-04T23:56:35.984320+00:00",
+      "provenance": [
+        {
+          "date": "2026-11-04T23:56:35.984320+00:00",
+          "outcome": "useful",
+          "q": "puedes ayudarme a hacer una migracion profesional de archivos y datos de R2 al nuevo Cloudflare de amexcourier sin perder nada; que necesitas para realizar todo el cambio?"
+        },
+        {
+          "date": "2026-11-04T23:02:27.460214+00:00",
+          "outcome": "useful",
+          "q": "analiza todo y dime todos los servicios que se estan utilizando actualmetne por ejemplo vercel supabase sentry hostinger etc, listame todos"
+        }
+      ],
+      "score": 1.963204704,
+      "source_file": "scripts/test-credentials.js",
+      "status": "preferred",
+      "uses": 2
+    },
+    "scripts_test_credentials_testgithub": {
+      "code_fingerprint": "f23e7726b970d10fe286a17abe008946e5e170290a8099a74454578a215930f4",
+      "label": "testGitHub()",
+      "last": "2026-11-04T23:02:27.460214+00:00",
+      "provenance": [
+        {
+          "date": "2026-11-04T23:02:27.460214+00:00",
+          "outcome": "useful",
+          "q": "analiza todo y dime todos los servicios que se estan utilizando actualmetne por ejemplo vercel supabase sentry hostinger etc, listame todos"
+        }
+      ],
+      "score": 0.981175987,
+      "source_file": "scripts/test-credentials.js",
+      "status": "tentative",
+      "uses": 1
+    },
+    "sentry_server_config": {
+      "code_fingerprint": "9c975295b3dc13c04aad239b0ea54d50b8e47899159270c766df0976cb387ffc",
+      "label": "sentry.server.config.ts",
+      "last": "2026-11-04T23:02:27.460214+00:00",
+      "provenance": [
+        {
+          "date": "2026-11-04T23:02:27.460214+00:00",
+          "outcome": "useful",
+          "q": "analiza todo y dime todos los servicios que se estan utilizando actualmetne por ejemplo vercel supabase sentry hostinger etc, listame todos"
+        }
+      ],
+      "score": 0.981175987,
+      "source_file": "sentry.server.config.ts",
+      "status": "tentative",
+      "uses": 1
+    },
+    "supabase": {
+      "code_fingerprint": "e8899030c1d96beaff8fca6529f2bfa1c5ceb457eed1a4c23e110696e57da550",
+      "label": "supabase",
+      "last": "2026-11-04T23:02:27.460214+00:00",
+      "provenance": [
+        {
+          "date": "2026-11-04T23:02:27.460214+00:00",
+          "outcome": "useful",
+          "q": "analiza todo y dime todos los servicios que se estan utilizando actualmetne por ejemplo vercel supabase sentry hostinger etc, listame todos"
+        }
+      ],
+      "score": 0.981175987,
+      "source_file": "package.json",
+      "status": "tentative",
+      "uses": 1
+    },
+    "types_index_paquete": {
+      "code_fingerprint": "0416a10508c4a1364af0a11c93406e94b4980879fa476a1546bcfb23f05fab92",
+      "label": "Paquete",
+      "last": "2026-11-04T22:54:35.455883+00:00",
+      "provenance": [
+        {
+          "date": "2026-11-04T22:54:35.455883+00:00",
+          "outcome": "useful",
+          "q": "ANALIZA ESTOS 2 PROYECTOS QUE TENGO ACTUALMENTE EN GENERAL, HACIENDO UN ANALISIS PROFESIONAL A LA ESTRUCTURA EN GENERAL COMO FUNCIONA CUAL ES SU MODELO DE NEGOCIO QUE VENTAJAS TIENE ETC ANALIZANDO LOS GRAPHIFY ETC"
+        }
+      ],
+      "score": 0.981052148,
+      "source_file": "types/index.ts",
+      "status": "tentative",
+      "uses": 1
+    },
+    "vercel": {
+      "code_fingerprint": "b6d19f017f5368318ebc4c374c881881f90db19d6f9da9112eefb61150b1949f",
+      "label": "vercel.json",
+      "last": "2026-11-04T23:02:27.460214+00:00",
+      "provenance": [
+        {
+          "date": "2026-11-04T23:02:27.460214+00:00",
+          "outcome": "useful",
+          "q": "analiza todo y dime todos los servicios que se estan utilizando actualmetne por ejemplo vercel supabase sentry hostinger etc, listame todos"
+        }
+      ],
+      "score": 0.981175987,
+      "source_file": "vercel.json",
+      "status": "tentative",
+      "uses": 1
+    },
+    "worker_tib_mirror_daemon": {
+      "code_fingerprint": "90adbe9d3c6ed1492094867538125266c89a727c5cac7269a3f71f745ddda9da",
+      "label": "tib-mirror-daemon.mjs",
+      "last": "2026-11-04T23:02:27.460214+00:00",
+      "provenance": [
+        {
+          "date": "2026-11-04T23:02:27.460214+00:00",
+          "outcome": "useful",
+          "q": "analiza todo y dime todos los servicios que se estan utilizando actualmetne por ejemplo vercel supabase sentry hostinger etc, listame todos"
+        },
+        {
+          "date": "2026-11-04T22:54:35.455883+00:00",
+          "outcome": "useful",
+          "q": "ANALIZA ESTOS 2 PROYECTOS QUE TENGO ACTUALMENTE EN GENERAL, HACIENDO UN ANALISIS PROFESIONAL A LA ESTRUCTURA EN GENERAL COMO FUNCIONA CUAL ES SU MODELO DE NEGOCIO QUE VENTAJAS TIENE ETC ANALIZANDO LOS GRAPHIFY ETC"
+        }
+      ],
+      "score": 1.962228135,
+      "source_file": "worker/tib-mirror-daemon.mjs",
+      "status": "preferred",
+      "uses": 2
+    },
+    "worker_worker": {
+      "code_fingerprint": "6cb550cc6b45fd2a3c40feaf1ca85fed9ceedf8ef3f410efe821ab866def4cd2",
+      "label": "worker.js",
+      "last": "2026-11-04T23:56:35.984320+00:00",
+      "provenance": [
+        {
+          "date": "2026-11-04T23:56:35.984320+00:00",
+          "outcome": "useful",
+          "q": "puedes ayudarme a hacer una migracion profesional de archivos y datos de R2 al nuevo Cloudflare de amexcourier sin perder nada; que necesitas para realizar todo el cambio?"
+        }
+      ],
+      "score": 0.982028718,
+      "source_file": "worker/worker.js",
+      "status": "tentative",
+      "uses": 1
+    }
+  },
+  "version": 1
+}

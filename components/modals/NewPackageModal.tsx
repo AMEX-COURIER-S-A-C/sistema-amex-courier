@@ -43,7 +43,7 @@ interface NewPackageModalProps {
 
 // Ubicaciones más frecuentes en Almacén Lince para selección en 1 clic
 const UBICACIONES_RAPIDAS = [
-  { code: 'OFI-P1', label: 'Oficina P1', group: 'Especial' },
+  { code: 'OFI', label: 'Oficina (OFI)', group: 'Especial' },
   { code: 'DSP-Z1', label: 'Despacho Z1', group: 'Despacho' },
   { code: 'DSP-Z2', label: 'Despacho Z2', group: 'Despacho' },
   { code: 'PAS-Z1', label: 'Pasadizo Z1', group: 'Pasadizo' },
@@ -72,7 +72,12 @@ export default function NewPackageModal({
   const wrLength = currentWrClean.length;
 
   // Ubicación actual seleccionada
-  const currentUbicacion = form.posicionEstante || (form.anaquel && form.piso ? `${form.anaquel}-${form.piso}` : 'OFI-P1');
+  const currentUbicacion =
+    form.posicionEstante !== undefined
+      ? form.posicionEstante
+      : form.anaquel && form.piso
+      ? `${form.anaquel}-${form.piso}`
+      : 'OFI';
 
   // Autofoco inmediato en el campo WR al abrir
   useEffect(() => {
@@ -406,16 +411,16 @@ export default function NewPackageModal({
                   borderRadius: '6px'
                 }}
               >
-                {currentUbicacion || 'OFI-P1'}
+                {currentUbicacion || 'OFI'}
               </span>
             </div>
 
             {/* Input para escribir cualquier ubicación libre */}
             <input
               type="text"
-              value={form.posicionEstante || currentUbicacion}
-              onChange={(e) => handleSelectUbicacion(e.target.value.toUpperCase())}
-              placeholder="Ej: OFI-P1, DSP-Z2, PAS-Z1, A1-P1..."
+              value={form.posicionEstante ?? currentUbicacion}
+              onChange={(e) => setField('posicionEstante', e.target.value.toUpperCase())}
+              placeholder="Ej: OFI, DSP-Z2, PAS-Z1, A1-P1..."
               style={{
                 width: '100%',
                 padding: '9px 12px',
@@ -437,6 +442,11 @@ export default function NewPackageModal({
               onBlur={(e) => {
                 e.currentTarget.style.borderColor = '#cbd5e1';
                 e.currentTarget.style.background = '#f8fafc';
+                if (e.target.value.trim()) {
+                  handleSelectUbicacion(e.target.value.trim().toUpperCase());
+                } else {
+                  handleSelectUbicacion('OFI');
+                }
               }}
             />
 

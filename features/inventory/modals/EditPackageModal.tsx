@@ -58,8 +58,8 @@ export default function EditPackageModal({
                 type="text"
                 value={editFormData.nombreConsignatario || ''}
                 onChange={e => setEditFormData({ ...editFormData, nombreConsignatario: e.target.value })}
+                placeholder="Ej: JUAN PEREZ"
                 className="form-control"
-                required
               />
             </div>
           </div>
@@ -70,8 +70,8 @@ export default function EditPackageModal({
               type="text"
               value={editFormData.descripcion || ''}
               onChange={e => setEditFormData({ ...editFormData, descripcion: e.target.value })}
+              placeholder="Ej: MERCANCÍA GENERAL"
               className="form-control"
-              required
             />
           </div>
 
@@ -81,10 +81,10 @@ export default function EditPackageModal({
               <input
                 type="number"
                 step="0.01"
-                value={editFormData.pesoKg || 0}
+                min="0"
+                value={editFormData.pesoKg ?? 0}
                 onChange={e => setEditFormData({ ...editFormData, pesoKg: Number(e.target.value) })}
                 className="form-control"
-                required
               />
             </div>
 
@@ -122,9 +122,9 @@ export default function EditPackageModal({
               <label style={{ fontSize: '12px', fontWeight: 800, color: '#334155' }}>Posición Estante WMS</label>
               <input
                 type="text"
-                value={editFormData.posicionEstante || 'A1-P1'}
+                value={editFormData.posicionEstante ?? ''}
                 onChange={e => setEditFormData({ ...editFormData, posicionEstante: e.target.value })}
-                placeholder="Ej: A1-P1, A1-P4, A2-P4, REC"
+                placeholder="Ej: A1-P1, PAS-Z1, DSP-Z1, OFI"
                 className="form-control"
               />
             </div>

@@ -251,17 +251,19 @@ export function useInventoryData({
 
       // 7. Filtro Anaquel
       if (hasShelf) {
-        const pShelf = p.anaquel || (p.posicionEstante ? p.posicionEstante.split('-')[0] : '');
-        if (pShelf !== shelfFilter) return false;
+        const parsedLoc = parseWarehouseLocation(
+          p.posicionEstante || (p.anaquel && p.piso ? `${p.anaquel}-${p.piso}` : p.anaquel || '')
+        );
+        const pShelf = p.anaquel || parsedLoc.anaquel;
+        if (pShelf !== shelfFilter && p.posicionEstante !== shelfFilter) return false;
       }
 
       // 8. Filtro Piso
       if (hasFloor) {
-        const pFloor =
-          p.piso ||
-          (p.posicionEstante && p.posicionEstante.includes('-')
-            ? p.posicionEstante.split('-')[1]
-            : '');
+        const parsedLoc = parseWarehouseLocation(
+          p.posicionEstante || (p.anaquel && p.piso ? `${p.anaquel}-${p.piso}` : p.anaquel || '')
+        );
+        const pFloor = p.piso || parsedLoc.piso;
         if (pFloor !== floorFilter) return false;
       }
 
@@ -420,7 +422,9 @@ export function useInventoryData({
     let en_ruta = 0;
     let entregado = 0;
 
-    paquetes.forEach(p => {
+    const nonDeleted = paquetes.filter(p => !p.eliminadoEn);
+
+    nonDeleted.forEach(p => {
       const st = p.estadoAmex;
       if (st === 'en_almacen' || st === 'recibido') en_almacen++;
       else if (st === 'listo_recojo') listo_recojo++;
@@ -430,10 +434,10 @@ export function useInventoryData({
 
     const activas = serverExistenciasActivas > 0
       ? serverExistenciasActivas
-      : paquetes.filter(p => p.estadoAmex !== 'entregado' && p.ubicacionActual !== 'Entregado').length;
+      : nonDeleted.filter(p => p.estadoAmex !== 'entregado' && p.ubicacionActual !== 'Entregado').length;
 
     return {
-      total: paquetes.length > 0 ? paquetes.length : serverTotal,
+      total: nonDeleted.length > 0 ? nonDeleted.length : serverTotal,
       activas,
       recibido: 0,
       en_almacen,
@@ -511,17 +515,21 @@ export function useInventoryData({
     if (singlePkg) {
       setSelectedPackageForAction(singlePkg);
       setSelectedIds([singlePkg.id]);
-      const initialAnaquel = singlePkg.anaquel || 'A1';
+      const parsedLoc = parseWarehouseLocation(
+        singlePkg.posicionEstante || (singlePkg.anaquel && singlePkg.piso ? `${singlePkg.anaquel}-${singlePkg.piso}` : singlePkg.anaquel || 'A1-P1')
+      );
+      const initialAnaquel = singlePkg.anaquel || parsedLoc.anaquel || 'A1';
       const isLevelLessInit =
         initialAnaquel === 'OFI' ||
         initialAnaquel === 'REC' ||
-        initialAnaquel.startsWith('DSP');
+        initialAnaquel.startsWith('DSP') ||
+        initialAnaquel.startsWith('PAS');
 
       setTransferData(prev => ({
         ...prev,
         targetUbicacion: singlePkg.ubicacionActual,
         targetAnaquel: initialAnaquel,
-        targetPiso: isLevelLessInit ? '' : (singlePkg.piso || 'P1')
+        targetPiso: isLevelLessInit ? '' : (singlePkg.piso || parsedLoc.piso || 'P1')
       }));
     } else {
       setSelectedPackageForAction(null);
@@ -550,8 +558,15 @@ export function useInventoryData({
           return found || p;
         })
       );
+      const targetPos = updatedPackages[0]?.posicionEstante || transferData.targetAnaquel;
+      soundEffects.playSuccess();
+      toast.success(
+        'Reubicación completada',
+        `Se trasladó ${idsToMove.length} bulto(s) a la ubicación ${targetPos}`
+      );
     } catch (err) {
       console.warn('Error executing transfer:', err);
+      toast.error('Error al trasladar', 'No se pudo completar la reubicación en base de datos.');
     }
 
     setIsTransferModalOpen(false);
@@ -763,7 +778,7 @@ export function useInventoryData({
       await inventoryService.updateDeliveryMethod(pkgId, tipoEntrega, detalleEntrega);
       setServerPaquetes(prev => prev.map(p => p.id === pkgId ? { ...p, tipoEntrega: tipoEntrega as any, detalleEntrega } : p));
       if (onUpdatePackage) {
-        const found = serverPaquetes.find(p => p.id === pkgId);
+        const found = paquetes.find(p => p.id === pkgId) || serverPaquetes.find(p => p.id === pkgId);
         if (found) {
           onUpdatePackage({ ...found, tipoEntrega: tipoEntrega as any, detalleEntrega });
         }
