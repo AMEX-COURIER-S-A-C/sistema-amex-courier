@@ -2,10 +2,18 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { HojaCotejo, ItemCotejo, Paquete, TipoProcesoCotejo } from '@/types';
 import { soundEffects } from '@/lib/audio/soundEffects';
 import writeXlsxFile from 'write-excel-file/browser';
-import { sheetsService } from '../services/sheets.service';
+import { sheetsService, resolveSheetTemplateMode } from '../services/sheets.service';
 import { confirmDialog, alertDialog } from '@/lib/dialog';
-import { SheetRow, SheetStats } from '../types';
+import { SheetRow, SheetStats, SheetTemplateMode, SPREADSHEET_COLUMNS } from '../types';
 import { extractLast6Digits, getSheetLongCode } from '../utils/codeFormatters';
+
+export function formatEstadoAmexLabel(estadoAmex?: string, ubicacionActual?: string): string {
+  if (estadoAmex === 'entregado' || ubicacionActual === 'Entregado') return 'ENTREGADO';
+  if (estadoAmex === 'en_ruta') return 'EN RUTA';
+  if (estadoAmex === 'listo_recojo') return 'LISTO RECOJO';
+  if (estadoAmex === 'en_almacen' || estadoAmex === 'recibido') return 'EN ALMACÉN';
+  return 'EN ALMACÉN';
+}
 
 interface UseLiveSheetsDataProps {
   paquetes: Paquete[];
@@ -40,6 +48,20 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
       .filter(h => h.id === activeLibroId || h.libroId === activeLibroId)
       .sort((a, b) => new Date(a.creadoEn).getTime() - new Date(b.creadoEn).getTime());
   }, [hojas, activeLibroId]);
+
+  // Modo de plantilla activa ('BLANK' | 'COTEJO' | 'WR_LOOKUP')
+  const activeTemplateMode = useMemo<SheetTemplateMode>(() => {
+    const currentHoja = hojas.find(h => h.id === activeHojaId) as
+      | (HojaCotejo & { templateMode?: SheetTemplateMode })
+      | undefined;
+    if (currentHoja) {
+      return resolveSheetTemplateMode(currentHoja.tipoProceso, currentHoja.templateMode);
+    }
+    const rootBook = hojas.find(h => h.id === activeLibroId) as
+      | (HojaCotejo & { templateMode?: SheetTemplateMode })
+      | undefined;
+    return resolveSheetTemplateMode(rootBook?.tipoProceso, rootBook?.templateMode);
+  }, [hojas, activeHojaId, activeLibroId]);
 
   // 1. Fetch Hojas
   const fetchHojas = useCallback(async () => {
@@ -225,10 +247,105 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
     [items, inheritedConsignees]
   );
 
-  // Transformar ítems en filas 1:1 exactas (sin insertar filas separadoras fantasma)
+  // Transformar ítems en filas 1:1 exactas según la plantilla activa
   const sheetRows = useMemo(() => {
+    if (activeTemplateMode === 'BLANK') {
+      return [];
+    }
+
     const rows: SheetRow[] = [];
     const seenRowIds = new Set<string>();
+
+    if (activeTemplateMode === 'WR_LOOKUP') {
+      items.forEach((it, idx) => {
+        const rawWr = (it.codigoWr || '').trim();
+        const cleanWr = rawWr.toUpperCase().replace(/\s+/g, '');
+        const cleanDigits = cleanWr.replace(/^[A-Za-z]+0*/, '');
+
+        const dbPkg = cleanWr
+          ? paquetes.find(p => {
+              if (!p.numeroReciboBodega) return false;
+              const pWr = p.numeroReciboBodega.toUpperCase().replace(/\s+/g, '');
+              const pDigits = pWr.replace(/^[A-Za-z]+0*/, '');
+              return (
+                pWr === cleanWr ||
+                `WR${pWr}` === cleanWr ||
+                (cleanDigits && pDigits === cleanDigits)
+              );
+            })
+          : undefined;
+
+        const baseId = it.id || `item-${idx}`;
+        const uniqueRowId = seenRowIds.has(baseId) ? `${baseId}-${idx}` : baseId;
+        seenRowIds.add(uniqueRowId);
+
+        if (dbPkg) {
+          const loc =
+            dbPkg.posicionEstante ||
+            (dbPkg.anaquel && dbPkg.piso ? `${dbPkg.anaquel}-${dbPkg.piso}` : dbPkg.anaquel) ||
+            it.posicionEstante ||
+            '—';
+          const statusLabel = formatEstadoAmexLabel(dbPkg.estadoAmex, dbPkg.ubicacionActual);
+          rows.push({
+            id: uniqueRowId,
+            codigoWarehouse: dbPkg.numeroReciboBodega.toUpperCase(),
+            nombre: (dbPkg.nombreConsignatario || it.consignatario || 'CLIENTE AMEX').trim(),
+            codigoTib: (dbPkg.tracking || it.tracking || '—').trim(),
+            pesoKg:
+              dbPkg.pesoKg !== undefined && dbPkg.pesoKg !== null
+                ? String(dbPkg.pesoKg)
+                : it.pesoKg
+                ? String(it.pesoKg)
+                : '0',
+            ubicacion: loc,
+            estadoAmexLabel: statusLabel,
+            codigoEscaneado: (dbPkg.tracking || it.tracking || '').trim(),
+            estado: 'ENCONTRADO',
+            nombreEscaneado: statusLabel,
+            isManifestFound: true,
+            itemRef: it,
+            rawIndex: idx
+          });
+        } else if (cleanWr) {
+          rows.push({
+            id: uniqueRowId,
+            codigoWarehouse: cleanWr,
+            nombre:
+              it.consignatario && it.consignatario !== '[NOMBRE]'
+                ? it.consignatario
+                : 'NO ENCONTRADO EN BD',
+            codigoTib: it.tracking || '—',
+            pesoKg: it.pesoKg ? String(it.pesoKg) : '—',
+            ubicacion: it.posicionEstante && it.posicionEstante !== 'REC' ? it.posicionEstante : '—',
+            estadoAmexLabel: it.notas || 'NO REGISTRADO',
+            codigoEscaneado: '',
+            estado: 'NO ENCONTRADO',
+            nombreEscaneado: it.notas || 'NO REGISTRADO',
+            isManifestFound: false,
+            itemRef: it,
+            rawIndex: idx
+          });
+        } else {
+          rows.push({
+            id: uniqueRowId,
+            codigoWarehouse: '',
+            nombre: '',
+            codigoTib: '',
+            pesoKg: '',
+            ubicacion: '',
+            estadoAmexLabel: '',
+            codigoEscaneado: '',
+            estado: '',
+            nombreEscaneado: '',
+            isManifestFound: false,
+            itemRef: it,
+            rawIndex: idx
+          });
+        }
+      });
+
+      return rows;
+    }
 
     items.forEach((it, idx) => {
       const consignee = (it.consignatario || '').trim();
@@ -297,7 +414,7 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
     });
 
     return rows;
-  }, [allScannedCodes, checkCodeInManifest, inheritedConsignees, items, paquetes]);
+  }, [activeTemplateMode, allScannedCodes, checkCodeInManifest, inheritedConsignees, items, paquetes]);
 
   // Filtrado de filas
   const visibleRows = useMemo(() => {
@@ -316,6 +433,19 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
 
   // Estadísticas
   const stats: SheetStats = useMemo(() => {
+    if (activeTemplateMode === 'BLANK') {
+      return { total: 0, encontrados: 0, noEncontrados: 0, pendientes: 0, progreso: 0 };
+    }
+
+    if (activeTemplateMode === 'WR_LOOKUP') {
+      const filled = sheetRows.filter(r => !!r.codigoWarehouse);
+      const total = filled.length;
+      const encontrados = filled.filter(r => r.estado === 'ENCONTRADO').length;
+      const noEncontrados = filled.filter(r => r.estado === 'NO ENCONTRADO').length;
+      const progreso = total > 0 ? Math.round((encontrados / total) * 100) : 0;
+      return { total, encontrados, noEncontrados, pendientes: 0, progreso };
+    }
+
     const total = items.filter(i => !!i.codigoWr).length;
     const manifestEncontrados = items.filter(i => {
       if (!i.codigoWr) return false;
@@ -334,7 +464,7 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
     const pendientes = Math.max(0, total - manifestEncontrados);
     const progreso = total > 0 ? Math.round((manifestEncontrados / total) * 100) : 0;
     return { total, encontrados: manifestEncontrados, noEncontrados, pendientes, progreso };
-  }, [allScannedCodes, items]);
+  }, [activeTemplateMode, allScannedCodes, items, sheetRows]);
 
   // Operaciones de negocio
   const handleLoadFromDatabase = async () => {
@@ -377,9 +507,70 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
   };
 
   const handleExportExcel = () => {
+    const fileName = `${docTitle.replace(/[^a-zA-Z0-9_-]/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+    if (activeTemplateMode === 'BLANK') {
+      const currentHoja = hojas.find(h => h.id === activeHojaId) as
+        | (HojaCotejo & { extraCells?: Record<string, string> })
+        | undefined;
+      const cells = currentHoja?.extraCells || {};
+      const entries = Object.entries(cells).filter(([, v]) => v && String(v).trim() !== '');
+      if (entries.length === 0) return;
+
+      let maxRow = 1;
+      let maxCol = 0;
+      for (const [k] of entries) {
+        const [colLetter, rowStr] = k.split('-');
+        const cIdx = SPREADSHEET_COLUMNS.indexOf(colLetter as any);
+        const rNum = Number(rowStr);
+        if (cIdx > maxCol) maxCol = cIdx;
+        if (rNum > maxRow) maxRow = rNum;
+      }
+
+      const colKeys = SPREADSHEET_COLUMNS.slice(0, maxCol + 1);
+      const exportData: Array<Record<string, string>> = [];
+      for (let r = 1; r <= maxRow; r++) {
+        const rowObj: Record<string, string> = {};
+        for (const col of colKeys) {
+          rowObj[col] = cells[`${col}-${r}`] || '';
+        }
+        exportData.push(rowObj);
+      }
+
+      const columns = colKeys.map(key => ({
+        header: { value: key, fontWeight: 'bold' as const },
+        cell: (row: Record<string, string>) => ({ value: row[key] ?? '' }),
+        width: 16
+      }));
+      void writeXlsxFile(exportData, { sheet: docTitle || 'Hoja 1', columns }).toFile(fileName);
+      return;
+    }
+
     if (sheetRows.length === 0) return;
 
-    const fileName = `${docTitle.replace(/[^a-zA-Z0-9_-]/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    if (activeTemplateMode === 'WR_LOOKUP') {
+      const exportData = sheetRows
+        .filter(r => !!r.codigoWarehouse)
+        .map((r, idx) => ({
+          '#': idx + 1,
+          'CODIGO WR': r.codigoWarehouse,
+          'NOMBRE CLIENTE': r.nombre,
+          'TRACKING': r.codigoTib,
+          'PESO (KG)': r.pesoKg || '',
+          'UBICACIÓN': r.ubicacion || '',
+          'ESTADO AMEX': r.estadoAmexLabel || ''
+        }));
+
+      if (exportData.length === 0) return;
+
+      const columns = Object.keys(exportData[0]).map(key => ({
+        header: { value: key, fontWeight: 'bold' as const },
+        cell: (row: Record<string, string | number>) => ({ value: row[key] ?? '' }),
+        width: Math.min(Math.max(key.length + 4, 14), 32)
+      }));
+      void writeXlsxFile(exportData, { sheet: docTitle || 'Escáner WR', columns }).toFile(fileName);
+      return;
+    }
 
     const exportData = sheetRows
       .filter(r => !r.isSeparator)
@@ -405,6 +596,26 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
 
   const handleResetScans = async () => {
     if (!activeHojaId) return;
+
+    if (activeTemplateMode === 'WR_LOOKUP') {
+      const confirmed = await confirmDialog({
+        title: 'Limpiar escaneos WR',
+        message: '¿Seguro que deseas limpiar todos los códigos WR consultados en esta hoja?',
+        confirmText: 'Sí, limpiar hoja',
+        variant: 'warning'
+      });
+      if (!confirmed) return;
+
+      setItems([]);
+      try {
+        const { supabase } = await import('@/lib/supabase/client');
+        await supabase.from('hojas_cotejo_items').delete().eq('hoja_id', activeHojaId);
+      } catch (err) {
+        console.error('Error clearing WR lookup items:', err);
+      }
+      return;
+    }
+
     const confirmed = await confirmDialog({
       title: 'Reiniciar cotejo',
       message: '¿Seguro que deseas reiniciar el cotejo? Los códigos escaneados en la Columna D se borrarán y volverán a PENDIENTE.',
@@ -534,7 +745,9 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
   // Gestión de pestañas (hojas) dentro del libro activo
   const handleAddSubSheet = useCallback(async (customName?: string) => {
     if (!activeLibroId) return;
-    const activeLibro = hojas.find(h => h.id === activeLibroId);
+    const activeLibro = hojas.find(h => h.id === activeLibroId) as
+      | (HojaCotejo & { templateMode?: SheetTemplateMode })
+      | undefined;
     const currentCount = activeBookSheets.length;
     const tabName = customName?.trim() || `Hoja ${currentCount + 1}`;
 
@@ -543,7 +756,8 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
         activeLibroId,
         tabName,
         operatorName,
-        activeLibro?.tipoProceso || 'RECEPCION_LINCE'
+        activeLibro?.tipoProceso || 'RECEPCION_LINCE',
+        activeTemplateMode
       );
       if (newSubSheet) {
         setHojas(prev => [...prev, newSubSheet]);
@@ -553,7 +767,7 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
     } catch (err) {
       console.error('Error creating sub-sheet:', err);
     }
-  }, [activeLibroId, activeBookSheets.length, hojas, operatorName]);
+  }, [activeLibroId, activeBookSheets.length, activeTemplateMode, hojas, operatorName]);
 
   const handleRenameTab = useCallback(async (sheetId: string, newTabName: string) => {
     if (!newTabName.trim()) return;
@@ -621,9 +835,28 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
   }, [hojas, operatorName]);
 
   // Hub callbacks (para libros completos)
-  const handleCreateSheetFromHub = async (title: string, tipoProceso?: TipoProcesoCotejo) => {
+  const handleCreateSheetFromHub = async (
+    title: string,
+    tipoProceso?: TipoProcesoCotejo,
+    templateMode?: SheetTemplateMode
+  ) => {
     try {
-      const newBook = await sheetsService.createSheet(title, undefined, tipoProceso, operatorName);
+      const resolvedMode = resolveSheetTemplateMode(tipoProceso, templateMode);
+      const desc =
+        resolvedMode === 'BLANK'
+          ? 'Hoja de cálculo libre en blanco'
+          : resolvedMode === 'WR_LOOKUP'
+          ? 'Escáner de códigos WR con autocompletado desde Base de Datos'
+          : 'Cotejo y pistoleo en tiempo real de bultos recibidos';
+      const newBook = await sheetsService.createSheet(
+        title,
+        desc,
+        tipoProceso,
+        operatorName,
+        null,
+        'Hoja 1',
+        resolvedMode
+      );
       if (newBook) {
         setHojas(prev => [newBook, ...prev]);
         setActiveLibroId(newBook.id);
@@ -684,6 +917,7 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
     setActiveLibroId,
     activeHojaId,
     setActiveHojaId,
+    activeTemplateMode,
     openWorkbook,
     closeWorkbook,
     handleAddSubSheet,

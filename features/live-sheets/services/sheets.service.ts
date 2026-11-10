@@ -5,22 +5,44 @@ import {
   TipoProcesoCotejo,
   TipoEstadoItemCotejo
 } from '@/types';
-import type { NewSheetItemRow } from '../types';
+import type { NewSheetItemRow, SheetTemplateMode } from '../types';
 
 export interface SheetExtendedMeta {
   __amexMetaV1: true;
   desc?: string;
+  templateMode?: SheetTemplateMode;
   extraCells?: Record<string, string>;
   colWidths?: Record<string, number>;
 }
 
-export function parseSheetMeta(rawDescripcion: string | null | undefined): {
+export function resolveSheetTemplateMode(
+  tipoProceso?: TipoProcesoCotejo | string | null,
+  metaMode?: SheetTemplateMode | null
+): SheetTemplateMode {
+  if (metaMode === 'BLANK' || metaMode === 'COTEJO' || metaMode === 'WR_LOOKUP') {
+    return metaMode;
+  }
+  if (tipoProceso === 'OTRO') return 'BLANK';
+  if (tipoProceso === 'AUDITORIA' || tipoProceso === 'INVENTARIO_ANAQUEL') return 'WR_LOOKUP';
+  return 'COTEJO';
+}
+
+export function parseSheetMeta(
+  rawDescripcion: string | null | undefined,
+  tipoProceso?: TipoProcesoCotejo | string | null
+): {
   description: string;
+  templateMode: SheetTemplateMode;
   extraCells: Record<string, string>;
   colWidths: Record<string, number>;
 } {
   if (!rawDescripcion) {
-    return { description: '', extraCells: {}, colWidths: {} };
+    return {
+      description: '',
+      templateMode: resolveSheetTemplateMode(tipoProceso),
+      extraCells: {},
+      colWidths: {}
+    };
   }
   const trimmed = rawDescripcion.trim();
   if (trimmed.startsWith('{') && trimmed.includes('"__amexMetaV1"')) {
@@ -28,6 +50,7 @@ export function parseSheetMeta(rawDescripcion: string | null | undefined): {
       const parsed = JSON.parse(trimmed) as SheetExtendedMeta;
       return {
         description: parsed.desc || 'Cotejo y pistoleo en tiempo real de bultos recibidos',
+        templateMode: resolveSheetTemplateMode(tipoProceso, parsed.templateMode),
         extraCells: parsed.extraCells || {},
         colWidths: parsed.colWidths || {}
       };
@@ -35,13 +58,19 @@ export function parseSheetMeta(rawDescripcion: string | null | undefined): {
       // Fallback a texto plano
     }
   }
-  return { description: rawDescripcion, extraCells: {}, colWidths: {} };
+  return {
+    description: rawDescripcion,
+    templateMode: resolveSheetTemplateMode(tipoProceso),
+    extraCells: {},
+    colWidths: {}
+  };
 }
 
 export function serializeSheetMeta(
   description: string,
   extraCells: Record<string, string>,
-  colWidths?: Record<string, number>
+  colWidths?: Record<string, number>,
+  templateMode?: SheetTemplateMode
 ): string {
   const cleanExtra: Record<string, string> = {};
   Object.entries(extraCells || {}).forEach(([k, v]) => {
@@ -53,13 +82,14 @@ export function serializeSheetMeta(
   const hasExtra = Object.keys(cleanExtra).length > 0;
   const hasWidths = colWidths && Object.keys(colWidths).length > 0;
 
-  if (!hasExtra && !hasWidths) {
+  if (!hasExtra && !hasWidths && !templateMode) {
     return description || 'Cotejo y pistoleo en tiempo real de bultos recibidos';
   }
 
   const payload: SheetExtendedMeta = {
     __amexMetaV1: true,
     desc: description || 'Cotejo y pistoleo en tiempo real de bultos recibidos',
+    ...(templateMode ? { templateMode } : {}),
     extraCells: cleanExtra,
     ...(hasWidths ? { colWidths } : {})
   };
@@ -81,7 +111,7 @@ export const sheetsService = {
     if (!data) return [];
 
     return data.map(h => {
-      const parsedMeta = parseSheetMeta(h.descripcion);
+      const parsedMeta = parseSheetMeta(h.descripcion, h.tipo_proceso);
       return {
         id: h.id,
         libroId: h.libro_id || null,
@@ -89,6 +119,7 @@ export const sheetsService = {
         titulo: h.titulo,
         descripcion: parsedMeta.description,
         rawDescripcion: h.descripcion || '',
+        templateMode: parsedMeta.templateMode,
         extraCells: parsedMeta.extraCells,
         colWidths: parsedMeta.colWidths,
         tipoProceso: (h.tipo_proceso as TipoProcesoCotejo) || 'RECEPCION_LINCE',
@@ -99,6 +130,7 @@ export const sheetsService = {
         actualizadoEn: h.actualizado_en
       } as HojaCotejo & {
         rawDescripcion?: string;
+        templateMode?: SheetTemplateMode;
         extraCells?: Record<string, string>;
         colWidths?: Record<string, number>;
       };
@@ -109,10 +141,11 @@ export const sheetsService = {
     hojaId: string,
     description: string,
     extraCells: Record<string, string>,
-    colWidths?: Record<string, number>
+    colWidths?: Record<string, number>,
+    templateMode?: SheetTemplateMode
   ): Promise<void> {
     if (!hojaId) return;
-    const serialized = serializeSheetMeta(description, extraCells, colWidths);
+    const serialized = serializeSheetMeta(description, extraCells, colWidths, templateMode);
     const { error } = await supabase
       .from('hojas_cotejo')
       .update({
@@ -189,15 +222,19 @@ export const sheetsService = {
     tipoProceso: TipoProcesoCotejo = 'RECEPCION_LINCE',
     creadoPor: string = 'AMEX',
     libroId?: string | null,
-    nombreHoja?: string | null
-  ): Promise<HojaCotejo | null> {
+    nombreHoja?: string | null,
+    templateMode?: SheetTemplateMode
+  ): Promise<(HojaCotejo & { templateMode?: SheetTemplateMode; extraCells?: Record<string, string> }) | null> {
     const defaultTabName = nombreHoja || (libroId ? titulo : 'Hoja 1');
+    const resolvedMode = resolveSheetTemplateMode(tipoProceso, templateMode);
+    const serializedDesc = serializeSheetMeta(descripcion, {}, undefined, resolvedMode);
+
     const { data, error } = await supabase
       .from('hojas_cotejo')
       .insert({
         titulo: titulo || 'AMEX WR',
         nombre_hoja: defaultTabName,
-        descripcion,
+        descripcion: serializedDesc,
         tipo_proceso: tipoProceso,
         creado_por: creadoPor,
         libro_id: libroId || null
@@ -212,12 +249,16 @@ export const sheetsService = {
 
     if (!data) return null;
 
+    const parsedMeta = parseSheetMeta(data.descripcion, data.tipo_proceso);
+
     return {
       id: data.id,
       libroId: data.libro_id || null,
       nombreHoja: data.nombre_hoja || defaultTabName,
       titulo: data.titulo,
-      descripcion: data.descripcion || '',
+      descripcion: parsedMeta.description,
+      templateMode: parsedMeta.templateMode,
+      extraCells: parsedMeta.extraCells,
       tipoProceso: (data.tipo_proceso as TipoProcesoCotejo) || 'RECEPCION_LINCE',
       estado: data.estado || 'ACTIVA',
       sedeId: data.sede_id,
@@ -231,15 +272,17 @@ export const sheetsService = {
     libroId: string,
     nombreHoja: string,
     operatorName: string = 'AMEX',
-    tipoProceso: TipoProcesoCotejo = 'RECEPCION_LINCE'
+    tipoProceso: TipoProcesoCotejo = 'RECEPCION_LINCE',
+    templateMode?: SheetTemplateMode
   ): Promise<HojaCotejo | null> {
     return this.createSheet(
       nombreHoja,
-      'Pestaña de hoja de cotejo',
+      'Pestaña de hoja de cálculo',
       tipoProceso,
       operatorName,
       libroId,
-      nombreHoja
+      nombreHoja,
+      templateMode
     );
   },
 
@@ -258,16 +301,35 @@ export const sheetsService = {
       ? `${originalSheet.nombreHoja || originalSheet.titulo} (Copia)`
       : 'Hoja 1';
 
+    const originalMeta = originalSheet as HojaCotejo & {
+      rawDescripcion?: string;
+      templateMode?: SheetTemplateMode;
+      extraCells?: Record<string, string>;
+    };
+    const resolvedMode = resolveSheetTemplateMode(originalSheet.tipoProceso, originalMeta.templateMode);
+
     const newSheet = await this.createSheet(
       title,
       originalSheet.descripcion,
       originalSheet.tipoProceso,
       operatorName,
       originalSheet.libroId || null,
-      tabName
+      tabName,
+      resolvedMode
     );
 
     if (!newSheet) return null;
+
+    if (originalMeta.extraCells && Object.keys(originalMeta.extraCells).length > 0) {
+      await this.saveSheetExtraMeta(
+        newSheet.id,
+        originalSheet.descripcion || '',
+        originalMeta.extraCells,
+        undefined,
+        resolvedMode
+      );
+      newSheet.extraCells = { ...originalMeta.extraCells };
+    }
 
     const { data: originalItems } = await supabase
       .from('hojas_cotejo_items')

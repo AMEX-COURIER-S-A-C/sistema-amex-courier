@@ -8,16 +8,20 @@ import {
   SheetRow,
   CellSelectionRange,
   SelectionStats,
+  SheetTemplateMode,
   SPREADSHEET_COLUMNS,
   MAX_SPREADSHEET_ROWS
 } from '../types';
 import { parseClipboardSpreadsheet } from '../utils/clipboardParser';
 import { extractLast6Digits } from '../utils/codeFormatters';
 import { sheetsService } from '../services/sheets.service';
+import { formatEstadoAmexLabel } from './useLiveSheetsData';
 
 interface UseLiveSheetsKeyboardProps {
   activeHojaId: string | null;
+  templateMode?: SheetTemplateMode;
   hojas?: HojaCotejo[];
+  setHojas?: React.Dispatch<React.SetStateAction<HojaCotejo[]>>;
   items: ItemCotejo[];
   setItems: React.Dispatch<React.SetStateAction<ItemCotejo[]>>;
   visibleRows: SheetRow[];
@@ -31,7 +35,9 @@ interface UseLiveSheetsKeyboardProps {
 
 export function useLiveSheetsKeyboard({
   activeHojaId,
+  templateMode = 'COTEJO',
   hojas = [],
+  setHojas,
   items,
   setItems,
   visibleRows,
@@ -106,38 +112,61 @@ export function useLiveSheetsKeyboard({
     }
   }, [activeHojaId, hojas]);
 
-  // Persistir cambios en extraCells (columnas G..Z) en Supabase
+  // Persistir cambios en extraCells (columnas G..Z o toda la hoja en modo BLANK) en Supabase
   const persistExtraCells = useCallback(
     async (nextExtra: Record<string, string>) => {
       if (!activeHojaId) return;
       const currentHoja = hojas.find(h => h.id === activeHojaId);
+      if (setHojas) {
+        setHojas(prev =>
+          prev.map(h =>
+            h.id === activeHojaId
+              ? ({ ...h, extraCells: nextExtra } as HojaCotejo)
+              : h
+          )
+        );
+      }
       await sheetsService.saveSheetExtraMeta(
         activeHojaId,
         currentHoja?.descripcion || 'Cotejo y pistoleo en tiempo real de bultos recibidos',
-        nextExtra
+        nextExtra,
+        undefined,
+        templateMode
       );
     },
-    [activeHojaId, hojas]
+    [activeHojaId, hojas, setHojas, templateMode]
   );
 
   // Obtener valor de celda por col y row (1-based)
   const getCellValue = useCallback(
     (col: string, rowNum: number): string => {
+      if (templateMode === 'BLANK') {
+        return extraCells[`${col}-${rowNum}`] || '';
+      }
       const itemIndex = rowNum - 2;
       if (itemIndex >= 0 && itemIndex < visibleRows.length) {
         const r = visibleRows[itemIndex];
         if (r) {
-          if (col === 'A') return r.nombre || '';
-          if (col === 'B') return r.codigoWarehouse || '';
-          if (col === 'C') return r.codigoTib || '';
-          if (col === 'D') return r.codigoEscaneado || '';
-          if (col === 'E') return r.estado || '';
-          if (col === 'F') return r.nombreEscaneado || '';
+          if (templateMode === 'WR_LOOKUP') {
+            if (col === 'A') return r.codigoWarehouse || '';
+            if (col === 'B') return r.nombre || '';
+            if (col === 'C') return r.codigoTib || '';
+            if (col === 'D') return r.pesoKg || '';
+            if (col === 'E') return r.ubicacion || '';
+            if (col === 'F') return r.estadoAmexLabel || '';
+          } else {
+            if (col === 'A') return r.nombre || '';
+            if (col === 'B') return r.codigoWarehouse || '';
+            if (col === 'C') return r.codigoTib || '';
+            if (col === 'D') return r.codigoEscaneado || '';
+            if (col === 'E') return r.estado || '';
+            if (col === 'F') return r.nombreEscaneado || '';
+          }
         }
       }
       return extraCells[`${col}-${rowNum}`] || '';
     },
-    [visibleRows, extraCells]
+    [visibleRows, extraCells, templateMode]
   );
 
   const getItemIdForRow = useCallback(
@@ -221,12 +250,176 @@ export function useLiveSheetsKeyboard({
     [isMuted]
   );
 
-  // Procesar escaneo por pistola láser o cámara hacia la Columna D
+  // Procesar escaneo por pistola láser o cámara hacia la Columna D (en COTEJO) o Columna A (en WR_LOOKUP)
   const processBarcodeScan = useCallback(
     async (scannedText: string, specificItemIndex?: number) => {
-      if (!activeHojaId || !scannedText.trim()) return;
+      if (!activeHojaId || !scannedText.trim() || templateMode === 'BLANK') return;
       setBarcodeInput('');
 
+      const cleanRaw = scannedText.trim().toUpperCase().replace(/\s+/g, '');
+      const cleanDigits = cleanRaw.replace(/^[A-Za-z]+0*/, '');
+      const nowIso = new Date().toISOString();
+
+      // MODO 3: ESCÁNER WR CONSULTA BD (escribe en Columna A y rellena B..F con datos de paquetes)
+      if (templateMode === 'WR_LOOKUP') {
+        const dbPkg = paquetes.find(p => {
+          if (!p.numeroReciboBodega) return false;
+          const pWr = p.numeroReciboBodega.toUpperCase().replace(/\s+/g, '');
+          const pDigits = pWr.replace(/^[A-Za-z]+0*/, '');
+          return (
+            pWr === cleanRaw ||
+            `WR${pWr}` === cleanRaw ||
+            (cleanDigits && pDigits === cleanDigits)
+          );
+        });
+
+        const isFound = !!dbPkg;
+        const resolvedWr = dbPkg?.numeroReciboBodega?.toUpperCase() || cleanRaw;
+        const resolvedClient = (dbPkg?.nombreConsignatario || '').trim();
+        const hasValidClient =
+          !!resolvedClient &&
+          resolvedClient !== '[NOMBRE]' &&
+          resolvedClient !== 'CLIENTE AMEX' &&
+          resolvedClient !== 'NO ASIGNADO';
+
+        playScanFeedback(isFound, hasValidClient, resolvedClient);
+
+        const displayClient = isFound ? (resolvedClient || 'CLIENTE AMEX') : 'NO ENCONTRADO EN BD';
+        const displayTracking = isFound ? (dbPkg?.tracking || '—') : '—';
+        const displayPeso = isFound ? Number(dbPkg?.pesoKg || 0) : 0;
+        const displayUbicacion = isFound
+          ? dbPkg?.posicionEstante ||
+            (dbPkg?.anaquel && dbPkg?.piso ? `${dbPkg.anaquel}-${dbPkg.piso}` : dbPkg?.anaquel) ||
+            'OFI'
+          : 'REC';
+        const displayEstadoAmex = isFound
+          ? formatEstadoAmexLabel(dbPkg?.estadoAmex, dbPkg?.ubicacionActual)
+          : 'NO REGISTRADO';
+        const rowEstado: TipoEstadoItemCotejo = isFound ? 'ESCANEADO' : 'NO_LISTADO';
+
+        let targetIdx = -1;
+        if (typeof specificItemIndex === 'number' && specificItemIndex >= 0 && specificItemIndex < items.length) {
+          targetIdx = specificItemIndex;
+        } else if (activeCell.row >= 2) {
+          const candidateIdx = activeCell.row - 2;
+          if (candidateIdx >= 0 && candidateIdx < items.length) {
+            if (!items[candidateIdx].codigoWr || !items[candidateIdx].codigoWr?.trim()) {
+              targetIdx = candidateIdx;
+            } else {
+              const firstEmpty = items.findIndex(it => !it.codigoWr || !it.codigoWr.trim());
+              targetIdx = firstEmpty !== -1 ? firstEmpty : -1;
+            }
+          }
+        } else {
+          targetIdx = items.findIndex(it => !it.codigoWr || !it.codigoWr.trim());
+        }
+
+        if (targetIdx !== -1 && items[targetIdx]) {
+          const targetItem = items[targetIdx];
+          const nextRowNum = targetIdx + 3;
+
+          setItems(prev =>
+            prev.map((it, idx) =>
+              idx === targetIdx
+                ? {
+                    ...it,
+                    codigoWr: resolvedWr,
+                    consignatario: displayClient,
+                    tracking: displayTracking,
+                    pesoKg: displayPeso,
+                    posicionEstante: displayUbicacion,
+                    notas: displayEstadoAmex,
+                    estado: rowEstado,
+                    escaneadoEn: nowIso,
+                    escaneadoPor: operatorName,
+                    vecesEscaneado: (it.vecesEscaneado || 0) + 1
+                  }
+                : it
+            )
+          );
+
+          setActiveCell({
+            col: 'A',
+            row: nextRowNum,
+            val: '',
+            itemId: getItemIdForRow(nextRowNum)
+          });
+
+          await supabase
+            .from('hojas_cotejo_items')
+            .update({
+              codigo_wr: resolvedWr,
+              consignatario: displayClient,
+              tracking: displayTracking,
+              peso_kg: displayPeso,
+              posicion_estante: displayUbicacion,
+              notas: displayEstadoAmex,
+              estado: rowEstado,
+              escaneado_en: nowIso,
+              escaneado_por: operatorName,
+              veces_escaneado: (targetItem.vecesEscaneado || 0) + 1,
+              actualizado_en: nowIso
+            })
+            .eq('id', targetItem.id);
+        } else {
+          const { data: newRow } = await supabase
+            .from('hojas_cotejo_items')
+            .insert({
+              hoja_id: activeHojaId,
+              codigo_wr: resolvedWr,
+              casillero: cleanDigits,
+              consignatario: displayClient,
+              tracking: displayTracking,
+              peso_kg: displayPeso,
+              posicion_estante: displayUbicacion,
+              notas: displayEstadoAmex,
+              estado: rowEstado,
+              escaneado_en: nowIso,
+              escaneado_por: operatorName,
+              veces_escaneado: 1,
+              orden: items.length + 1
+            })
+            .select()
+            .single();
+
+          if (newRow) {
+            setItems(prev => {
+              if (prev.some(it => it.id === newRow.id)) return prev;
+              return [
+                ...prev,
+                {
+                  id: newRow.id,
+                  hojaId: newRow.hoja_id,
+                  codigoWr: resolvedWr,
+                  casillero: cleanDigits,
+                  consignatario: displayClient,
+                  tracking: displayTracking,
+                  pesoKg: displayPeso,
+                  posicionEstante: displayUbicacion,
+                  notas: displayEstadoAmex,
+                  estado: rowEstado,
+                  escaneadoEn: nowIso,
+                  escaneadoPor: operatorName,
+                  vecesEscaneado: 1,
+                  orden: newRow.orden || items.length + 1,
+                  creadoEn: newRow.creado_en,
+                  actualizadoEn: newRow.actualizado_en
+                }
+              ];
+            });
+
+            setActiveCell({
+              col: 'A',
+              row: items.length + 3,
+              val: '',
+              itemId: newRow.id
+            });
+          }
+        }
+        return;
+      }
+
+      // MODO 2: HOJA DE COTEJO (escribe en Columna D y compara contra Columnas B/C de la hoja)
       let targetItemIndex = -1;
       if (typeof specificItemIndex === 'number' && specificItemIndex >= 0 && specificItemIndex < items.length) {
         targetItemIndex = specificItemIndex;
@@ -246,8 +439,7 @@ export function useLiveSheetsKeyboard({
       }
 
       const match = resolveScannedCodeMatch(scannedText, targetItemIndex !== -1 ? targetItemIndex : undefined);
-      const { cleanCode, cleanDigits, isMatch, clientName, hasValidName, resolvedName } = match;
-      const nowIso = new Date().toISOString();
+      const { cleanCode, isMatch, clientName, hasValidName, resolvedName } = match;
 
       // Emitir sonido + voz inmediatamente
       playScanFeedback(isMatch, hasValidName, clientName);
@@ -353,9 +545,11 @@ export function useLiveSheetsKeyboard({
       getItemIdForRow,
       items,
       operatorName,
+      paquetes,
       playScanFeedback,
       resolveScannedCodeMatch,
-      setItems
+      setItems,
+      templateMode
     ]
   );
 

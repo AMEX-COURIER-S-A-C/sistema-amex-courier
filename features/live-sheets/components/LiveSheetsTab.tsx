@@ -69,7 +69,9 @@ export default function LiveSheetsTab({
   // 3. Hook para lógica de escaneo por pistola láser, voz TTS y sincronización de celdas
   const keyboard = useLiveSheetsKeyboard({
     activeHojaId: data.activeHojaId,
+    templateMode: data.activeTemplateMode,
     hojas: data.hojas,
+    setHojas: data.setHojas,
     items: data.items,
     setItems: data.setItems,
     visibleRows: data.visibleRows,
@@ -104,6 +106,7 @@ export default function LiveSheetsTab({
       {/* Barra superior minimalista de control AMEX WR */}
       <LiveSheetsHeader
         activeHojaId={data.activeLibroId || data.activeHojaId || ''}
+        templateMode={data.activeTemplateMode}
         docTitle={data.docTitle}
         setDocTitle={data.setDocTitle}
         onTitleBlur={data.handleTitleBlur}
@@ -133,6 +136,7 @@ export default function LiveSheetsTab({
       {/* Motor de hoja de cálculo Univer (Canvas de alto rendimiento, barra de herramientas y fx nativos) */}
       <UniverAmexSheet
         activeHojaId={data.activeHojaId || ''}
+        templateMode={data.activeTemplateMode}
         docTitle={data.docTitle}
         isLoadingItems={data.isLoadingItems}
         items={data.items}

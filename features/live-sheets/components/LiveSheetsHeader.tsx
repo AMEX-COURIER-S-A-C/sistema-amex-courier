@@ -17,11 +17,12 @@ import {
   ArrowRight,
   Undo2
 } from 'lucide-react';
-import { Collaborator, SheetStats } from '../types';
+import { Collaborator, SheetStats, SheetTemplateMode } from '../types';
 import { soundEffects } from '@/lib/audio/soundEffects';
 
 interface LiveSheetsHeaderProps {
   activeHojaId: string;
+  templateMode?: SheetTemplateMode;
   docTitle: string;
   setDocTitle: (val: string) => void;
   onTitleBlur: () => void;
@@ -49,6 +50,7 @@ interface LiveSheetsHeaderProps {
 }
 
 export function LiveSheetsHeader({
+  templateMode = 'COTEJO',
   docTitle,
   setDocTitle,
   onTitleBlur,
@@ -60,7 +62,6 @@ export function LiveSheetsHeader({
   onBackToHub,
   onExportExcel,
   onOpenPasteModal,
-  onLoadFromDatabase,
   onResetScans,
   barcodeInput = '',
   setBarcodeInput,
@@ -73,6 +74,8 @@ export function LiveSheetsHeader({
   setIsVoiceEnabled,
   onSyncToMainPackages
 }: LiveSheetsHeaderProps) {
+  const isBlankMode = templateMode === 'BLANK';
+  const isWrLookupMode = templateMode === 'WR_LOOKUP';
   return (
     <header
       className="gsheet-header-top"
@@ -190,14 +193,14 @@ export function LiveSheetsHeader({
         </div>
       </div>
 
-      {/* Centro: Pistola de código de barras + Acciones rápidas */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, justifyContent: 'center', minWidth: '280px' }}>
-        {onManualScanSubmit && setBarcodeInput && (
+      {/* Centro: Pistola de código de barras + Acciones rápidas (adaptado a la plantilla) */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, justifyContent: isBlankMode ? 'flex-end' : 'center', minWidth: '220px' }}>
+        {!isBlankMode && onManualScanSubmit && setBarcodeInput && (
           <form
             onSubmit={onManualScanSubmit}
             className="gsheet-gun-input-wrap"
             style={{
-              maxWidth: '310px',
+              maxWidth: '320px',
               width: '100%',
               height: '32px',
               padding: '0 8px'
@@ -210,7 +213,11 @@ export function LiveSheetsHeader({
               className="gsheet-gun-input"
               value={barcodeInput}
               onChange={e => setBarcodeInput(e.target.value)}
-              placeholder="Dispara la pistola WR aquí o en Col D..."
+              placeholder={
+                isWrLookupMode
+                  ? 'Dispara la pistola WR aquí o en Col A...'
+                  : 'Dispara la pistola WR aquí o en Col D...'
+              }
               style={{ fontSize: '12px' }}
             />
             {onOpenCameraScanner && (
@@ -227,27 +234,18 @@ export function LiveSheetsHeader({
           </form>
         )}
 
-        <button
-          type="button"
-          className="gsheet-btn-action paste"
-          onClick={onOpenPasteModal}
-          title="Pegar lista de paquetes de Excel / Google Sheets"
-          style={{ height: '30px', padding: '0 10px', fontSize: '11.5px' }}
-        >
-          <ClipboardPaste size={13} />
-          <span>Pegar Lista</span>
-        </button>
-
-        <button
-          type="button"
-          className="gsheet-btn-action secondary"
-          onClick={onLoadFromDatabase}
-          title="Cargar paquetes desde la base de datos"
-          style={{ height: '30px', padding: '0 9px', fontSize: '11.5px' }}
-        >
-          <Sparkles size={13} className="text-sky-600" />
-          <span>Cargar BD</span>
-        </button>
+        {templateMode === 'COTEJO' && (
+          <button
+            type="button"
+            className="gsheet-btn-action paste"
+            onClick={onOpenPasteModal}
+            title="Pegar lista de paquetes de Excel / Google Sheets"
+            style={{ height: '30px', padding: '0 10px', fontSize: '11.5px' }}
+          >
+            <ClipboardPaste size={13} />
+            <span>Pegar Lista</span>
+          </button>
+        )}
 
         <button
           type="button"
@@ -260,48 +258,83 @@ export function LiveSheetsHeader({
           <span>XLSX</span>
         </button>
 
-        <button
-          type="button"
-          className="gsheet-btn-action secondary"
-          onClick={onResetScans}
-          title="Reiniciar todos los códigos escaneados en Columna D"
-          style={{ height: '30px', padding: '0 8px', fontSize: '11.5px' }}
-        >
-          <Undo2 size={12} className="text-amber-600" />
-        </button>
-      </div>
-
-      {/* Derecha: Estadísticas + Voz TTS + Sincronizar a Lince */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-        <div className="gsheet-stats-pill" style={{ padding: '3px 9px', fontSize: '11px', gap: '6px' }}>
-          <span>
-            Total: <strong>{stats.total}</strong>
-          </span>
-          <span className="text-slate-300">|</span>
-          <span className="gsheet-stat-tag found">
-            <CheckCircle2 size={12} /> <strong>{stats.encontrados}</strong>
-          </span>
-          <span className="text-slate-300">|</span>
-          <span className="gsheet-stat-tag not-found">
-            <AlertTriangle size={12} /> <strong>{stats.noEncontrados + stats.pendientes}</strong>
-          </span>
-          <span className="text-slate-300">|</span>
-          <span className="text-sky-700 font-mono">
-            <strong>{stats.progreso}%</strong>
-          </span>
-        </div>
-
-        {/* Botón Activar/Desactivar Voz */}
-        {setIsVoiceEnabled && (
+        {!isBlankMode && (
           <button
             type="button"
-            className={`gsheet-btn-tool ${isVoiceEnabled ? 'active' : ''}`}
-            onClick={() => setIsVoiceEnabled(!isVoiceEnabled)}
+            className="gsheet-btn-action secondary"
+            onClick={onResetScans}
             title={
-              isVoiceEnabled
-                ? 'Voz activada: anuncia el nombre del cliente, código repetido o no encontrado'
-                : 'Voz desactivada (clic para activar)'
+              isWrLookupMode
+                ? 'Limpiar todos los códigos WR consultados en la hoja'
+                : 'Reiniciar todos los códigos escaneados en Columna D'
             }
+            style={{ height: '30px', padding: '0 8px', fontSize: '11.5px' }}
+          >
+            <Undo2 size={12} className="text-amber-600" />
+          </button>
+        )}
+      </div>
+
+      {/* Derecha: Estadísticas + Voz TTS + Sincronizar a Lince (solo en plantillas operativas) */}
+      {!isBlankMode && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div className="gsheet-stats-pill" style={{ padding: '3px 9px', fontSize: '11px', gap: '6px' }}>
+            <span>
+              Total: <strong>{stats.total}</strong>
+            </span>
+            <span className="text-slate-300">|</span>
+            <span className="gsheet-stat-tag found">
+              <CheckCircle2 size={12} /> <strong>{stats.encontrados}</strong>
+            </span>
+            <span className="text-slate-300">|</span>
+            <span className="gsheet-stat-tag not-found">
+              <AlertTriangle size={12} /> <strong>{stats.noEncontrados + stats.pendientes}</strong>
+            </span>
+            <span className="text-slate-300">|</span>
+            <span className="text-sky-700 font-mono">
+              <strong>{stats.progreso}%</strong>
+            </span>
+          </div>
+
+          {/* Botón Activar/Desactivar Voz */}
+          {setIsVoiceEnabled && (
+            <button
+              type="button"
+              className={`gsheet-btn-tool ${isVoiceEnabled ? 'active' : ''}`}
+              onClick={() => setIsVoiceEnabled(!isVoiceEnabled)}
+              title={
+                isVoiceEnabled
+                  ? 'Voz activada: anuncia el nombre del cliente o no encontrado'
+                  : 'Voz desactivada (clic para activar)'
+              }
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '0 8px',
+                height: '30px',
+                borderRadius: '6px',
+                border: isVoiceEnabled ? '1px solid #10b981' : '1px solid #cbd5e1',
+                background: isVoiceEnabled ? '#ecfdf5' : '#f8fafc',
+                color: isVoiceEnabled ? '#047857' : '#64748b',
+                fontSize: '11px',
+                fontWeight: 700
+              }}
+            >
+              <Mic size={12} />
+              <span>{isVoiceEnabled ? 'Voz ON' : 'Voz OFF'}</span>
+            </button>
+          )}
+
+          {/* Botón Probar Voz */}
+          <button
+            type="button"
+            onClick={() => {
+              if (setIsMuted && isMuted) setIsMuted(false);
+              if (setIsVoiceEnabled && !isVoiceEnabled) setIsVoiceEnabled(true);
+              soundEffects.testVoice();
+            }}
+            title="Probar y activar el altavoz de voz en español"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -309,71 +342,44 @@ export function LiveSheetsHeader({
               padding: '0 8px',
               height: '30px',
               borderRadius: '6px',
-              border: isVoiceEnabled ? '1px solid #10b981' : '1px solid #cbd5e1',
-              background: isVoiceEnabled ? '#ecfdf5' : '#f8fafc',
-              color: isVoiceEnabled ? '#047857' : '#64748b',
+              border: '1px solid #bae6fd',
+              background: '#f0f9ff',
+              color: '#0369a1',
               fontSize: '11px',
-              fontWeight: 700
+              fontWeight: 600,
+              cursor: 'pointer'
             }}
           >
-            <Mic size={12} />
-            <span>{isVoiceEnabled ? 'Voz ON' : 'Voz OFF'}</span>
+            <Volume2 size={12} />
+            <span>Probar Voz</span>
           </button>
-        )}
 
-        {/* Botón Probar Voz (Desbloquea y verifica el motor TTS del navegador al instante) */}
-        <button
-          type="button"
-          onClick={() => {
-            if (setIsMuted && isMuted) setIsMuted(false);
-            if (setIsVoiceEnabled && !isVoiceEnabled) setIsVoiceEnabled(true);
-            soundEffects.testVoice();
-          }}
-          title="Probar y activar el altavoz de voz en español"
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '4px',
-            padding: '0 8px',
-            height: '30px',
-            borderRadius: '6px',
-            border: '1px solid #bae6fd',
-            background: '#f0f9ff',
-            color: '#0369a1',
-            fontSize: '11px',
-            fontWeight: 600,
-            cursor: 'pointer'
-          }}
-        >
-          <Volume2 size={12} />
-          <span>Probar Voz</span>
-        </button>
+          {setIsMuted && (
+            <button
+              type="button"
+              className={`gsheet-btn-tool ${!isMuted ? 'active' : ''}`}
+              onClick={() => setIsMuted(!isMuted)}
+              title={isMuted ? 'Audio silenciado (clic para activar)' : 'Silenciar audio'}
+              style={{ height: '30px', width: '30px' }}
+            >
+              {isMuted ? <VolumeX size={14} className="text-red-500" /> : <Volume2 size={14} />}
+            </button>
+          )}
 
-        {setIsMuted && (
-          <button
-            type="button"
-            className={`gsheet-btn-tool ${!isMuted ? 'active' : ''}`}
-            onClick={() => setIsMuted(!isMuted)}
-            title={isMuted ? 'Audio silenciado (clic para activar)' : 'Silenciar audio'}
-            style={{ height: '30px', width: '30px' }}
-          >
-            {isMuted ? <VolumeX size={14} className="text-red-500" /> : <Volume2 size={14} />}
-          </button>
-        )}
-
-        {onSyncToMainPackages && (
-          <button
-            type="button"
-            className="gsheet-btn-action secondary"
-            onClick={onSyncToMainPackages}
-            title="Actualizar estado de los paquetes encontrados a 'En Almacén Central Lince'"
-            style={{ height: '30px', padding: '0 10px', fontSize: '11.5px' }}
-          >
-            <ArrowRight size={13} className="text-blue-600" />
-            <span>Sincronizar a Lince</span>
-          </button>
-        )}
-      </div>
+          {templateMode === 'COTEJO' && onSyncToMainPackages && (
+            <button
+              type="button"
+              className="gsheet-btn-action secondary"
+              onClick={onSyncToMainPackages}
+              title="Actualizar estado de los paquetes encontrados a 'En Almacén Central Lince'"
+              style={{ height: '30px', padding: '0 10px', fontSize: '11.5px' }}
+            >
+              <ArrowRight size={13} className="text-blue-600" />
+              <span>Sincronizar a Lince</span>
+            </button>
+          )}
+        </div>
+      )}
     </header>
   );
 }

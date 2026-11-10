@@ -11,6 +11,8 @@ export type {
   TipoEstadoItemCotejo
 } from '@/types';
 
+export type SheetTemplateMode = 'BLANK' | 'COTEJO' | 'WR_LOOKUP';
+
 export interface Collaborator {
   id: string;
   name: string;
@@ -55,6 +57,9 @@ export interface SheetRow {
   codigoEscaneado: string;
   estado: 'ENCONTRADO' | 'NO ENCONTRADO' | 'PENDIENTE' | '';
   nombreEscaneado: string;
+  pesoKg?: string;
+  ubicacion?: string;
+  estadoAmexLabel?: string;
   isSeparator?: boolean;
   isGroupStart?: boolean;
   isGroupEnd?: boolean;

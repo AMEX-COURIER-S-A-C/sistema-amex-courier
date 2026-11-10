@@ -23,6 +23,7 @@ import {
   Menu
 } from 'lucide-react';
 import { getSheetLongCode } from '../utils/codeFormatters';
+import { SheetTemplateMode } from '../types';
 import { confirmDialog, promptDialog } from '@/lib/dialog';
 import './sheets-hub.css';
 
@@ -31,7 +32,11 @@ interface SheetsHubProps {
   isLoading: boolean;
   currentUser?: { nombre: string; rol: string } | null;
   onOpenSheet: (sheetId: string) => void;
-  onCreateSheet: (title: string, tipoProceso?: TipoProcesoCotejo) => Promise<void>;
+  onCreateSheet: (
+    title: string,
+    tipoProceso?: TipoProcesoCotejo,
+    templateMode?: SheetTemplateMode
+  ) => Promise<void>;
   onRenameSheet: (sheetId: string, newTitle: string) => Promise<void>;
   onDeleteSheet: (sheetId: string) => Promise<void>;
   onDuplicateSheet: (sheetId: string) => Promise<void>;
@@ -273,7 +278,7 @@ export default function SheetsHub({
           <button
             type="button"
             className="gsheet-hub-icon-btn"
-            onClick={() => onCreateSheet('AMEX WR')}
+            onClick={() => onCreateSheet('Hoja en blanco', 'OTRO', 'BLANK')}
             title="Crear nueva hoja en blanco"
           >
             <Plus size={20} />
@@ -295,7 +300,7 @@ export default function SheetsHub({
             <button
               type="button"
               className="gsheet-hub-template-gallery-btn"
-              onClick={() => onCreateSheet('AMEX WR')}
+              onClick={() => onCreateSheet('Hoja en blanco', 'OTRO', 'BLANK')}
             >
               <span>Galería de plantillas</span>
               <ChevronDown size={14} />
@@ -303,10 +308,11 @@ export default function SheetsHub({
           </div>
 
           <div className="gsheet-hub-templates-cards">
-            {/* Tarjeta 1: En Blanco con el Plus multicolor de Google */}
+            {/* Tarjeta 1: En Blanco (100% libre desde fila 1) */}
             <div
               className="gsheet-hub-card-item"
-              onClick={() => onCreateSheet('AMEX WR', 'RECEPCION_LINCE')}
+              onClick={() => onCreateSheet('Hoja en blanco', 'OTRO', 'BLANK')}
+              title="Hoja de cálculo 100% vacía y libre desde la fila 1"
             >
               <div className="gsheet-hub-card-preview blank">
                 <svg className="google-plus-icon" viewBox="0 0 36 36">
@@ -317,79 +323,73 @@ export default function SheetsHub({
                 </svg>
               </div>
               <span className="gsheet-hub-card-label">En blanco</span>
+              <span style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                Hoja libre desde fila 1
+              </span>
             </div>
 
-            {/* Tarjeta 2: Manifiesto Desconsolidación */}
+            {/* Tarjeta 2: Hoja de Cotejo (Compara D contra A y B) */}
             <div
               className="gsheet-hub-card-item"
-              onClick={() => onCreateSheet('Manifiesto Desconsolidación', 'RECEPCION_LINCE')}
+              onClick={() => onCreateSheet('Hoja de Cotejo', 'RECEPCION_LINCE', 'COTEJO')}
+              title="Compara los códigos escaneados en Columna D contra la Columna A y B de la misma hoja"
             >
               <div className="gsheet-hub-card-preview">
                 <div className="template-mock-grid">
                   <div className="template-mock-header" />
                   <div className="template-mock-row">
-                    <div className="template-mock-cell" style={{ width: '40%' }} />
+                    <div className="template-mock-cell" style={{ width: '35%' }} />
                     <div className="template-mock-cell" style={{ width: '30%', background: '#c6f6d5' }} />
-                    <div className="template-mock-cell" style={{ width: '30%' }} />
+                    <div className="template-mock-cell" style={{ width: '35%', background: '#dcfce7' }} />
                   </div>
                   <div className="template-mock-row">
-                    <div className="template-mock-cell" style={{ width: '40%' }} />
+                    <div className="template-mock-cell" style={{ width: '35%' }} />
                     <div className="template-mock-cell" style={{ width: '30%', background: '#c6f6d5' }} />
-                    <div className="template-mock-cell" style={{ width: '30%' }} />
+                    <div className="template-mock-cell" style={{ width: '35%', background: '#dcfce7' }} />
                   </div>
                   <div className="template-mock-row">
-                    <div className="template-mock-cell" style={{ width: '40%' }} />
+                    <div className="template-mock-cell" style={{ width: '35%' }} />
                     <div className="template-mock-cell" style={{ width: '30%' }} />
-                    <div className="template-mock-cell" style={{ width: '30%' }} />
+                    <div className="template-mock-cell" style={{ width: '35%' }} />
                   </div>
                 </div>
               </div>
-              <span className="gsheet-hub-card-label">Manifiesto Desconsolidación</span>
+              <span className="gsheet-hub-card-label">Hoja de Cotejo</span>
+              <span style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                Compara Col D con Col A y B
+              </span>
             </div>
 
-            {/* Tarjeta 3: Cotejo Lince Express */}
+            {/* Tarjeta 3: Escáner WR Consulta BD (Escanea WR en A y bota Nombre, Tracking, Peso y Ubicación al costado) */}
             <div
               className="gsheet-hub-card-item"
-              onClick={() => onCreateSheet('Cotejo Lince Express', 'RECEPCION_LINCE')}
+              onClick={() => onCreateSheet('Escáner WR Consulta BD', 'AUDITORIA', 'WR_LOOKUP')}
+              title="Escanea o pega códigos WR en la Columna A y rellena automáticamente Nombre, Tracking, Peso, Ubicación y Estado desde tu almacén"
             >
               <div className="gsheet-hub-card-preview">
                 <div className="template-mock-grid">
                   <div className="template-mock-header" style={{ background: '#1a73e8' }} />
                   <div className="template-mock-row">
-                    <div className="template-mock-cell" style={{ width: '20%' }} />
-                    <div className="template-mock-cell" style={{ width: '50%' }} />
+                    <div className="template-mock-cell" style={{ width: '28%', background: '#dbeafe' }} />
+                    <div className="template-mock-cell" style={{ width: '42%', background: '#dcfce7' }} />
                     <div className="template-mock-cell" style={{ width: '30%' }} />
                   </div>
                   <div className="template-mock-row">
-                    <div className="template-mock-cell" style={{ width: '20%' }} />
-                    <div className="template-mock-cell" style={{ width: '50%' }} />
+                    <div className="template-mock-cell" style={{ width: '28%', background: '#dbeafe' }} />
+                    <div className="template-mock-cell" style={{ width: '42%', background: '#dcfce7' }} />
+                    <div className="template-mock-cell" style={{ width: '30%' }} />
+                  </div>
+                  <div className="template-mock-row">
+                    <div className="template-mock-cell" style={{ width: '28%', background: '#dbeafe' }} />
+                    <div className="template-mock-cell" style={{ width: '42%', background: '#dcfce7' }} />
                     <div className="template-mock-cell" style={{ width: '30%' }} />
                   </div>
                 </div>
               </div>
-              <span className="gsheet-hub-card-label">Cotejo Lince Express</span>
-            </div>
-
-
-            {/* Tarjeta 5: Inventario Central */}
-            <div
-              className="gsheet-hub-card-item"
-              onClick={() => onCreateSheet('Inventario Bultos Central', 'INVENTARIO_ANAQUEL')}
-            >
-              <div className="gsheet-hub-card-preview">
-                <div className="template-mock-grid">
-                  <div className="template-mock-header" style={{ background: '#fbbc05' }} />
-                  <div className="template-mock-row">
-                    <div className="template-mock-cell" style={{ width: '45%' }} />
-                    <div className="template-mock-cell" style={{ width: '55%' }} />
-                  </div>
-                  <div className="template-mock-row">
-                    <div className="template-mock-cell" style={{ width: '45%' }} />
-                    <div className="template-mock-cell" style={{ width: '55%' }} />
-                  </div>
-                </div>
-              </div>
-              <span className="gsheet-hub-card-label">Inventario Central</span>
+              <span className="gsheet-hub-card-label">Escáner WR Consulta BD</span>
+              <span style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                WR → Cliente, Tracking y Ubicación
+              </span>
             </div>
           </div>
         </div>
