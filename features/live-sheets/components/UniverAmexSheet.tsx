@@ -122,7 +122,19 @@ const STYLE_CELL_DEFAULT = {
   vt: 2
 };
 
-function buildRowCells(row: SheetRow) {
+/**
+ * Construye las 6 celdas A..F de una fila limpiando explícitamente `p: null`
+ * para que ningún formato rich-text pegado desde Excel/Google Sheets bloquee el color o valor.
+ */
+function buildRowCells(row: {
+  nombre: string;
+  codigoWarehouse: string;
+  codigoTib: string;
+  codigoEscaneado: string;
+  estado: string;
+  nombreEscaneado: string;
+  isManifestFound: boolean;
+}) {
   const isManifestFound = !!row.isManifestFound;
   const isScanFound = row.estado === 'ENCONTRADO';
   const isScanNotFound = row.estado === 'NO ENCONTRADO';
@@ -134,19 +146,31 @@ function buildRowCells(row: SheetRow) {
     : STYLE_CELL_DEFAULT;
 
   return [
-    { v: row.nombre || '', s: STYLE_CELL_DEFAULT },
+    { v: row.nombre || '', p: null, s: STYLE_CELL_DEFAULT },
     {
       v: row.codigoWarehouse || '',
+      p: null,
       s: isManifestFound ? STYLE_MANIFEST_FOUND : STYLE_MANIFEST_NORMAL
     },
     {
       v: row.codigoTib || '',
+      p: null,
       s: isManifestFound ? STYLE_MANIFEST_FOUND : STYLE_TIB_NORMAL
     },
-    { v: row.codigoEscaneado || '', s: scanStyle },
-    { v: row.estado || '', s: scanStyle },
-    { v: row.nombreEscaneado || '', s: STYLE_CELL_DEFAULT }
+    { v: row.codigoEscaneado || '', p: null, s: scanStyle },
+    { v: row.estado || '', p: null, s: scanStyle },
+    { v: row.nombreEscaneado || '', p: null, s: STYLE_CELL_DEFAULT }
   ];
+}
+
+/**
+ * Limpia saltos de línea y espacios invisibles de valores leídos de celdas (incluyendo rich text `p`).
+ */
+function cleanCellText(val: unknown): string {
+  if (val === null || val === undefined) return '';
+  return String(val)
+    .replace(/[\r\n]+/g, ' ')
+    .trim();
 }
 
 export default function UniverAmexSheet({
@@ -161,7 +185,6 @@ export default function UniverAmexSheet({
   extraCells,
   setExtraCells,
   persistExtraCells,
-  resolveScannedCodeMatch,
   playScanFeedback,
   setActiveCell,
   setSelectionRange,
@@ -171,8 +194,10 @@ export default function UniverAmexSheet({
   const univerAPIRef = useRef<any>(null);
   const isProgrammaticRef = useRef<boolean>(false);
   const previousRowCountRef = useRef<number>(0);
+  const dbSyncQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const inFlightDbOpsRef = useRef<number>(0);
 
-  // Refs actualizadas para usar dentro de los listeners de Univer sin recrear la instancia
+  // Refs actualizadas para usar dentro de los listeners de Univer
   const itemsRef = useRef<ItemCotejo[]>(items);
   itemsRef.current = items;
 
@@ -194,9 +219,6 @@ export default function UniverAmexSheet({
   const persistExtraCellsRef = useRef(persistExtraCells);
   persistExtraCellsRef.current = persistExtraCells;
 
-  const resolveScannedCodeMatchRef = useRef(resolveScannedCodeMatch);
-  resolveScannedCodeMatchRef.current = resolveScannedCodeMatch;
-
   const playScanFeedbackRef = useRef(playScanFeedback);
   playScanFeedbackRef.current = playScanFeedback;
 
@@ -217,11 +239,11 @@ export default function UniverAmexSheet({
     FIXED_HEADERS.forEach((h, colIdx) => {
       initialCellData[0][colIdx] = {
         v: h,
+        p: null,
         s: STYLE_HEADER
       };
     });
 
-    // Poblar filas iniciales si ya están cargadas
     sheetRowsRef.current.forEach((row, idx) => {
       const r = idx + 1;
       const cells = buildRowCells(row);
@@ -231,7 +253,6 @@ export default function UniverAmexSheet({
       });
     });
 
-    // Poblar celdas extra (G..Z o filas libres)
     Object.entries(extraCellsRef.current || {}).forEach(([key, val]) => {
       if (!val) return;
       const [colLetter, rowStr] = key.split('-');
@@ -241,9 +262,9 @@ export default function UniverAmexSheet({
         const r = rowNum - 1;
         if (!initialCellData[r]) initialCellData[r] = {};
         if (String(val).startsWith('=')) {
-          initialCellData[r][colIdx] = { f: String(val), s: STYLE_CELL_DEFAULT };
+          initialCellData[r][colIdx] = { f: String(val), p: null, s: STYLE_CELL_DEFAULT };
         } else {
-          initialCellData[r][colIdx] = { v: String(val), s: STYLE_CELL_DEFAULT };
+          initialCellData[r][colIdx] = { v: String(val), p: null, s: STYLE_CELL_DEFAULT };
         }
       }
     });
@@ -313,7 +334,7 @@ export default function UniverAmexSheet({
       isProgrammaticRef.current = false;
     });
 
-    // Listener de selección para actualizar estadísticas (Suma, Promedio, Recuento) y presencia
+    // Listener de selección
     const selectionDisp = univerAPI.addEvent(
       univerAPI.Event.SelectionChanged,
       (params: any) => {
@@ -343,10 +364,10 @@ export default function UniverAmexSheet({
       }
     );
 
-    // Listener de cambios de valor en celdas (edición directa, pegado Ctrl+V, suprimir Delete, deshacer Ctrl+Z)
+    // Listener de cambios de valor en celdas (edición directa, pegado Ctrl+V con rich text o texto plano, Delete, Ctrl+Z)
     const valueChangeDisp = univerAPI.addEvent(
       univerAPI.Event.SheetValueChanged,
-      async (params: any) => {
+      (params: any) => {
         if (isProgrammaticRef.current) return;
 
         const effectedRanges: any[] = params?.effectedRanges || [];
@@ -356,9 +377,11 @@ export default function UniverAmexSheet({
         const worksheet = activeWorkbook?.getActiveSheet();
         if (!worksheet) return;
 
-        const touchedDataRows = new Set<number>();
+        const touchedRowsInThisEvent = new Set<number>();
+        const touchedColsInThisEvent = new Set<number>();
         let touchedHeaderRow = false;
         const touchedExtraCoords: Array<{ r: number; c: number }> = [];
+        let maxTouchedRow = 0;
 
         for (const fRange of effectedRanges) {
           const startR = fRange.getRow();
@@ -371,11 +394,40 @@ export default function UniverAmexSheet({
               touchedHeaderRow = true;
               continue;
             }
+            if (r > maxTouchedRow) maxTouchedRow = r;
             for (let c = startC; c < startC + width; c++) {
+              touchedColsInThisEvent.add(c);
               if (c < 6) {
-                touchedDataRows.add(r);
+                touchedRowsInThisEvent.add(r);
               } else if (c < 26) {
                 touchedExtraCoords.push({ r, c });
+              }
+            }
+          }
+        }
+
+        // También inspeccionar directamente las llaves de payload.params.cellValue por si algún rango fue disperso
+        const rawCellValueMatrix = params?.payload?.params?.cellValue;
+        if (rawCellValueMatrix && typeof rawCellValueMatrix === 'object') {
+          for (const rKey of Object.keys(rawCellValueMatrix)) {
+            const r = Number(rKey);
+            if (isNaN(r)) continue;
+            if (r === 0) {
+              touchedHeaderRow = true;
+              continue;
+            }
+            if (r > maxTouchedRow) maxTouchedRow = r;
+            const rowObj = rawCellValueMatrix[rKey];
+            if (rowObj && typeof rowObj === 'object') {
+              for (const cKey of Object.keys(rowObj)) {
+                const c = Number(cKey);
+                if (isNaN(c)) continue;
+                touchedColsInThisEvent.add(c);
+                if (c < 6) {
+                  touchedRowsInThisEvent.add(r);
+                } else if (c < 26) {
+                  touchedExtraCoords.push({ r, c });
+                }
               }
             }
           }
@@ -387,7 +439,7 @@ export default function UniverAmexSheet({
           try {
             const headerRange = worksheet.getRange(0, 0, 1, 6);
             headerRange.setValues([
-              FIXED_HEADERS.map(h => ({ v: h, s: STYLE_HEADER }))
+              FIXED_HEADERS.map(h => ({ v: h, p: null, s: STYLE_HEADER }))
             ]);
           } finally {
             queueMicrotask(() => {
@@ -404,8 +456,9 @@ export default function UniverAmexSheet({
             if (!colLetter) continue;
             const cellRange = worksheet.getRange(r, c, 1, 1);
             const formula = cellRange.getFormula?.() || '';
-            const rawVal = cellRange.getValue?.();
-            const finalStr = formula ? formula : rawVal !== null && rawVal !== undefined ? String(rawVal).trim() : '';
+            const dispVal = cellRange.getDisplayValues?.()?.[0]?.[0];
+            const rawVal = dispVal !== undefined && dispVal !== '' ? dispVal : cellRange.getValue?.();
+            const finalStr = formula ? formula : cleanCellText(rawVal);
             const key = `${colLetter}-${r + 1}`;
             if (finalStr) {
               nextExtra[key] = finalStr;
@@ -417,275 +470,417 @@ export default function UniverAmexSheet({
           void persistExtraCellsRef.current(nextExtra);
         }
 
-        if (touchedDataRows.size === 0) return;
+        if (touchedRowsInThisEvent.size === 0) return;
 
-        const sortedRows = Array.from(touchedDataRows).sort((a, b) => a - b);
-        const currentItems = [...itemsRef.current];
-        const currentHojaId = activeHojaIdRef.current;
-        const nowIso = new Date().toISOString();
+        // Leer TODA la región activa de filas (desde fila 1 hasta max(items.length, maxTouchedRow))
+        // usando getDisplayValues() para capturar tanto cell.v como rich-text cell.p pegado desde Excel/Sheets
+        const totalRowsToInspect = Math.max(itemsRef.current.length, maxTouchedRow);
+        if (totalRowsToInspect <= 0) return;
 
-        const dbUpdates: Array<{ id: string; patch: Record<string, any> }> = [];
-        const newDbRows: Array<{
-          rowIndex: number;
-          payload: Record<string, any>;
+        const fullRange = worksheet.getRange(1, 0, totalRowsToInspect, 6);
+        const displayGrid: string[][] = fullRange.getDisplayValues?.() || [];
+        const rawGrid: any[][] = fullRange.getValues?.() || [];
+
+        const gridRows: Array<{
+          r: number;
+          itemIdx: number;
+          rawA: string;
+          rawB: string;
+          rawC: string;
+          rawD: string;
+          rawE: string;
+          rawF: string;
         }> = [];
-        const updatedItemsMap = new Map<string, ItemCotejo>();
 
-        let feedbackTriggered = false;
-        const seenScansInBatch = new Set<string>();
+        for (let i = 0; i < totalRowsToInspect; i++) {
+          const dRow = displayGrid[i] || [];
+          const vRow = rawGrid[i] || [];
+          const pick = (col: number) => {
+            const d = cleanCellText(dRow[col]);
+            if (d) return d;
+            return cleanCellText(vRow[col]);
+          };
+          gridRows.push({
+            r: i + 1,
+            itemIdx: i,
+            rawA: pick(0),
+            rawB: pick(1),
+            rawC: pick(2),
+            rawD: pick(3),
+            rawE: pick(4),
+            rawF: pick(5)
+          });
+        }
 
-        for (const r of sortedRows) {
-          const itemIdx = r - 1;
-          const rowRange = worksheet.getRange(r, 0, 1, 6);
-          const rowVals = rowRange.getValues()?.[0] || [];
+        // 1. Construir el manifiesto en vivo de toda la hoja (con herencia de cliente por grupo en Columna A)
+        let runningGroupName = '';
+        const liveManifest: Array<{
+          itemIdx: number;
+          effectiveConsignee: string;
+          rawConsignee: string;
+          wrClean: string;
+          wrDigits: string;
+          tibClean: string;
+        }> = [];
 
-          const rawA = String(rowVals[0] ?? '').trim();
-          const rawB = String(rowVals[1] ?? '').trim();
-          const rawD = String(rowVals[3] ?? '').trim();
-          const rawE = String(rowVals[4] ?? '').trim();
-          const rawF = String(rowVals[5] ?? '').trim();
+        for (const gr of gridRows) {
+          let rawConsignee = gr.rawA;
+          const wrClean = gr.rawB.toUpperCase().replace(/\s+/g, '');
+          const wrDigits = wrClean.replace(/^[A-Za-z]+0*/, '');
+          const tibClean = extractLast6Digits(gr.rawB) || gr.rawC.toUpperCase().replace(/\s+/g, '');
 
-          const existing = itemIdx >= 0 && itemIdx < currentItems.length ? currentItems[itemIdx] : undefined;
+          // Si se pegó un WR en B y A está vacío o '[NOMBRE]', buscar nombre en BD de paquetes
+          if (wrClean && (!rawConsignee || rawConsignee === '[NOMBRE]')) {
+            const dbMatch = paquetesRef.current.find(
+              p =>
+                p.numeroReciboBodega &&
+                (p.numeroReciboBodega.toUpperCase().replace(/\s+/g, '') === wrClean ||
+                  p.numeroReciboBodega.replace(/^[A-Za-z]+0*/, '') === wrDigits)
+            );
+            if (dbMatch?.nombreConsignatario) {
+              rawConsignee = dbMatch.nombreConsignatario.trim();
+            }
+          }
 
-          if (existing) {
-            const prevA = (existing.consignatario || '').trim();
-            const prevB = (existing.codigoWr || '').trim();
-            const prevD = (existing.tracking || '').trim();
-            const prevF = (existing.notas || '').trim();
+          if (rawConsignee && rawConsignee !== '[NOMBRE]') {
+            runningGroupName = rawConsignee;
+          } else if (!wrClean && !rawConsignee) {
+            runningGroupName = '';
+          }
 
-            const bChanged = rawB !== prevB;
-            const dChanged =
-              rawD.toUpperCase().replace(/\s+/g, '') !== prevD.toUpperCase().replace(/\s+/g, '');
+          const effectiveConsignee =
+            rawConsignee && rawConsignee !== '[NOMBRE]'
+              ? rawConsignee
+              : wrClean
+              ? runningGroupName
+              : '';
 
-            // Resolver consignatario si se pegó WR en B y A está vacío o '[NOMBRE]'
-            let nextConsignatario = rawA;
-            if (bChanged && rawB && (!rawA || rawA === '[NOMBRE]')) {
-              const cleanWr = rawB.toUpperCase().replace(/\s+/g, '');
-              const dbPkg = paquetesRef.current.find(
-                p => p.numeroReciboBodega && p.numeroReciboBodega.toUpperCase().replace(/\s+/g, '') === cleanWr
-              );
-              if (dbPkg?.nombreConsignatario) {
-                nextConsignatario = dbPkg.nombreConsignatario;
+          liveManifest.push({
+            itemIdx: gr.itemIdx,
+            effectiveConsignee,
+            rawConsignee,
+            wrClean,
+            wrDigits,
+            tibClean
+          });
+        }
+
+        // Conjunto de todos los códigos escaneados en Columna D de la hoja para colorear B y C
+        const allLiveScannedCodes = new Set<string>();
+        for (const gr of gridRows) {
+          if (gr.rawD) {
+            const cleanD = gr.rawD.toUpperCase().replace(/\s+/g, '');
+            const digitsD = cleanD.replace(/^[A-Za-z]+0*/, '');
+            if (cleanD) {
+              allLiveScannedCodes.add(cleanD);
+              if (digitsD) {
+                allLiveScannedCodes.add(digitsD);
+                allLiveScannedCodes.add(`WR${digitsD}`);
               }
             }
-
-            const nextCodigoWr = rawB;
-            const nextCasillero = extractLast6Digits(rawB) || (rawB ? '' : existing.casillero || '');
-
-            let nextTracking = existing.tracking || '';
-            let nextEstado: TipoEstadoItemCotejo = existing.estado || 'PENDIENTE';
-            let nextNotas = rawF;
-
-            if (dChanged) {
-              if (rawD) {
-                const match = resolveScannedCodeMatchRef.current(rawD, itemIdx);
-                const isBatchDup = seenScansInBatch.has(match.cleanCode);
-                seenScansInBatch.add(match.cleanCode);
-
-                nextTracking = match.cleanCode;
-                nextEstado = match.isMatch ? 'ESCANEADO' : 'NO_LISTADO';
-                nextNotas = match.isMatch ? match.resolvedName : 'NO ASIGNADO';
-
-                if (!feedbackTriggered) {
-                  feedbackTriggered = true;
-                  playScanFeedbackRef.current(
-                    match.isMatch,
-                    match.hasValidName,
-                    match.clientName,
-                    match.isDuplicate || isBatchDup
-                  );
-                }
-              } else {
-                // Se borró el código escaneado en la Columna D
-                nextTracking = '';
-                nextEstado = 'PENDIENTE';
-                nextNotas = '';
-              }
-            } else if (rawE) {
-              const upperE = rawE.toUpperCase();
-              if (upperE === 'ENCONTRADO' || upperE === 'ESCANEADO') {
-                nextEstado = 'ESCANEADO';
-              } else if (upperE === 'NO ENCONTRADO' || upperE === 'NO_LISTADO') {
-                nextEstado = 'NO_LISTADO';
-              }
-            } else if (!rawD) {
-              nextEstado = 'PENDIENTE';
-            }
-
-            const patch: Record<string, any> = {
-              consignatario: nextConsignatario,
-              codigo_wr: nextCodigoWr,
-              casillero: nextCasillero,
-              tracking: nextTracking || null,
-              notas: nextNotas || null,
-              estado: nextEstado,
-              actualizado_en: nowIso
-            };
-
-            if (dChanged) {
-              patch.veces_escaneado = rawD ? (existing.vecesEscaneado || 0) + 1 : 0;
-              patch.escaneado_en = rawD ? nowIso : null;
-              patch.escaneado_por = rawD ? operatorNameRef.current : null;
-            }
-
-            if (
-              nextConsignatario !== prevA ||
-              nextCodigoWr !== prevB ||
-              dChanged ||
-              nextNotas !== prevF
-            ) {
-              dbUpdates.push({ id: existing.id, patch });
-              updatedItemsMap.set(existing.id, {
-                ...existing,
-                consignatario: nextConsignatario,
-                codigoWr: nextCodigoWr,
-                casillero: nextCasillero,
-                tracking: nextTracking,
-                notas: nextNotas,
-                estado: nextEstado,
-                escaneadoEn: dChanged ? (rawD ? nowIso : undefined) : existing.escaneadoEn,
-                escaneadoPor: dChanged ? (rawD ? operatorNameRef.current : undefined) : existing.escaneadoPor,
-                vecesEscaneado: dChanged ? (rawD ? (existing.vecesEscaneado || 0) + 1 : 0) : existing.vecesEscaneado,
-                actualizadoEn: nowIso
-              });
-            }
-          } else {
-            // Nueva fila más allá de items.length
-            if (!rawA && !rawB && !rawD && !rawE && !rawF) {
-              continue;
-            }
-
-            const cleanWr = rawB.toUpperCase().replace(/\s+/g, '');
-            const dbPkg = cleanWr
-              ? paquetesRef.current.find(
-                  p => p.numeroReciboBodega && p.numeroReciboBodega.toUpperCase().replace(/\s+/g, '') === cleanWr
-                )
-              : undefined;
-
-            const finalConsignatario =
-              rawA && rawA !== '[NOMBRE]' ? rawA : dbPkg?.nombreConsignatario || '';
-            const finalCasillero = extractLast6Digits(rawB) || '';
-
-            let finalTracking = '';
-            let finalEstado: TipoEstadoItemCotejo = 'PENDIENTE';
-            let finalNotas = rawF;
-
-            if (rawD) {
-              const match = resolveScannedCodeMatchRef.current(rawD);
-              const isBatchDup = seenScansInBatch.has(match.cleanCode);
-              seenScansInBatch.add(match.cleanCode);
-
-              finalTracking = match.cleanCode;
-              finalEstado = match.isMatch ? 'ESCANEADO' : 'NO_LISTADO';
-              finalNotas = rawF || (match.isMatch ? match.resolvedName : 'NO ASIGNADO');
-
-              if (!feedbackTriggered) {
-                feedbackTriggered = true;
-                playScanFeedbackRef.current(
-                  match.isMatch,
-                  match.hasValidName,
-                  match.clientName,
-                  match.isDuplicate || isBatchDup
-                );
-              }
-            }
-
-            newDbRows.push({
-              rowIndex: itemIdx,
-              payload: {
-                hoja_id: currentHojaId,
-                consignatario: finalConsignatario,
-                codigo_wr: rawB,
-                casillero: finalCasillero,
-                tracking: finalTracking || null,
-                peso_kg: dbPkg?.pesoKg || 0,
-                posicion_estante: dbPkg?.posicionEstante || 'REC',
-                notas: finalNotas || null,
-                estado: finalEstado,
-                veces_escaneado: finalTracking ? 1 : 0,
-                escaneado_en: finalTracking ? nowIso : null,
-                escaneado_por: finalTracking ? operatorNameRef.current : null,
-                orden: itemIdx + 1
-              }
-            });
           }
         }
 
-        // Aplicar actualizaciones optimistas a React state
-        if (updatedItemsMap.size > 0) {
-          setItems(prev => prev.map(it => updatedItemsMap.get(it.id) || it));
+        // Función para evaluar un código escaneado en Columna D contra el manifiesto en vivo + BD paquetes
+        const matchAgainstLiveSheet = (scanText: string, rowIdx: number) => {
+          const cleanCode = scanText.toUpperCase().replace(/\s+/g, '');
+          const cleanDigits = cleanCode.replace(/^[A-Za-z]+0*/, '');
+
+          const manifestEntry = liveManifest.find(m => {
+            if (!m.wrClean && !m.tibClean) return false;
+            return (
+              (m.wrClean && m.wrClean === cleanCode) ||
+              (m.wrClean && `WR${m.wrClean}` === cleanCode) ||
+              (m.wrDigits && cleanDigits && m.wrDigits === cleanDigits) ||
+              (m.tibClean && m.tibClean === cleanCode) ||
+              (m.tibClean && cleanDigits && m.tibClean === cleanDigits)
+            );
+          });
+
+          const dbPackage = paquetesRef.current.find(
+            p =>
+              p.numeroReciboBodega &&
+              (p.numeroReciboBodega.toUpperCase().replace(/\s+/g, '') === cleanCode ||
+                `WR${p.numeroReciboBodega.toUpperCase().replace(/\s+/g, '')}` === cleanCode ||
+                (cleanDigits && p.numeroReciboBodega.replace(/^[A-Za-z]+0*/, '') === cleanDigits))
+          );
+
+          const isMatch = !!(manifestEntry || dbPackage);
+          const clientName =
+            manifestEntry?.effectiveConsignee ||
+            dbPackage?.nombreConsignatario?.trim() ||
+            liveManifest[rowIdx]?.effectiveConsignee ||
+            '';
+
+          const hasValidName =
+            !!clientName &&
+            clientName !== '[NOMBRE]' &&
+            clientName !== 'CLIENTE AMEX' &&
+            clientName !== 'NO ASIGNADO';
+
+          // Detectar si está repetido en otra fila de la Columna D
+          const isDuplicate = gridRows.some((other, idx) => {
+            if (idx === rowIdx || !other.rawD) return false;
+            const otherClean = other.rawD.toUpperCase().replace(/\s+/g, '');
+            const otherDigits = otherClean.replace(/^[A-Za-z]+0*/, '');
+            return (
+              otherClean === cleanCode ||
+              `WR${otherClean}` === cleanCode ||
+              otherClean === `WR${cleanCode}` ||
+              (cleanDigits.length >= 5 && otherDigits === cleanDigits)
+            );
+          });
+
+          return {
+            cleanCode,
+            cleanDigits,
+            isMatch,
+            isDuplicate,
+            clientName,
+            hasValidName,
+            resolvedName: hasValidName ? clientName : isMatch ? 'CLIENTE AMEX' : 'NO ASIGNADO'
+          };
+        };
+
+        // 2. Construir el estado reconciliado de cada fila y pintar inmediatamente en Univer
+        let feedbackPlayed = false;
+        const reconciledCellsMatrix: any[][] = [];
+
+        interface ReconciledRowData {
+          itemIdx: number;
+          consignatario: string;
+          codigoWr: string;
+          casillero: string;
+          tracking: string;
+          estado: TipoEstadoItemCotejo;
+          displayEstado: 'ENCONTRADO' | 'NO ENCONTRADO' | '';
+          notas: string;
+          isManifestFound: boolean;
+          scanChangedInThisEvent: boolean;
         }
 
-        // Persistir updates en Supabase
-        if (dbUpdates.length > 0) {
-          await Promise.all(
-            dbUpdates.map(u =>
-              supabase.from('hojas_cotejo_items').update(u.patch).eq('id', u.id)
-            )
+        const reconciledRows: ReconciledRowData[] = [];
+
+        for (let i = 0; i < gridRows.length; i++) {
+          const gr = gridRows[i];
+          const mf = liveManifest[i];
+          const existingItem = itemsRef.current[i];
+
+          const consignatario = mf.rawConsignee || gr.rawA;
+          const codigoWr = gr.rawB;
+          const casillero = extractLast6Digits(codigoWr) || (codigoWr ? '' : gr.rawC);
+
+          const isManifestFound = !!(
+            (mf.wrClean && allLiveScannedCodes.has(mf.wrClean)) ||
+            (mf.wrClean && allLiveScannedCodes.has(`WR${mf.wrClean}`)) ||
+            (mf.tibClean && allLiveScannedCodes.has(mf.tibClean)) ||
+            (mf.wrDigits && allLiveScannedCodes.has(mf.wrDigits))
+          );
+
+          let tracking = '';
+          let estado: TipoEstadoItemCotejo = 'PENDIENTE';
+          let displayEstado: 'ENCONTRADO' | 'NO ENCONTRADO' | '' = '';
+          let notas = '';
+
+          const prevTrackingClean = (existingItem?.tracking || '').trim().toUpperCase().replace(/\s+/g, '');
+          const currentDClean = gr.rawD.toUpperCase().replace(/\s+/g, '');
+          const scanChangedInThisEvent =
+            touchedRowsInThisEvent.has(gr.r) &&
+            touchedColsInThisEvent.has(3) &&
+            currentDClean !== prevTrackingClean;
+
+          if (gr.rawD) {
+            const match = matchAgainstLiveSheet(gr.rawD, i);
+            tracking = match.cleanCode;
+            estado = match.isMatch ? 'ESCANEADO' : 'NO_LISTADO';
+            displayEstado = match.isMatch ? 'ENCONTRADO' : 'NO ENCONTRADO';
+            notas = match.isMatch ? match.resolvedName : 'NO ASIGNADO';
+
+            if (scanChangedInThisEvent && !feedbackPlayed) {
+              feedbackPlayed = true;
+              playScanFeedbackRef.current(
+                match.isMatch,
+                match.hasValidName,
+                match.clientName,
+                match.isDuplicate
+              );
+            }
+          }
+
+          reconciledRows.push({
+            itemIdx: i,
+            consignatario,
+            codigoWr,
+            casillero,
+            tracking,
+            estado,
+            displayEstado,
+            notas,
+            isManifestFound,
+            scanChangedInThisEvent
+          });
+
+          reconciledCellsMatrix.push(
+            buildRowCells({
+              nombre: consignatario,
+              codigoWarehouse: codigoWr,
+              codigoTib: casillero,
+              codigoEscaneado: tracking,
+              estado: displayEstado,
+              nombreEscaneado: notas,
+              isManifestFound
+            })
           );
         }
 
-        // Persistir nuevas filas (incluyendo filas puente vacías si el usuario escribió más abajo)
-        if (newDbRows.length > 0) {
-          const maxTargetIdx = Math.max(...newDbRows.map(n => n.rowIndex));
-          const byIndex = new Map(newDbRows.map(n => [n.rowIndex, n.payload]));
-          const payloadsToInsert: any[] = [];
-
-          for (let idx = currentItems.length; idx <= maxTargetIdx; idx++) {
-            const existingPayload = byIndex.get(idx);
-            if (existingPayload) {
-              payloadsToInsert.push(existingPayload);
-            } else {
-              payloadsToInsert.push({
-                hoja_id: currentHojaId,
-                consignatario: '',
-                codigo_wr: '',
-                casillero: '',
-                tracking: null,
-                peso_kg: 0,
-                posicion_estante: 'REC',
-                notas: null,
-                estado: 'PENDIENTE',
-                veces_escaneado: 0,
-                escaneado_en: null,
-                escaneado_por: null,
-                orden: idx + 1
-              });
-            }
-          }
-
-          const { data: inserted } = await supabase
-            .from('hojas_cotejo_items')
-            .insert(payloadsToInsert)
-            .select();
-
-          if (inserted && inserted.length > 0) {
-            const mappedInserted: ItemCotejo[] = inserted.map(row => ({
-              id: row.id,
-              hojaId: row.hoja_id,
-              codigoWr: row.codigo_wr || '',
-              tracking: (row as any).tracking || '',
-              casillero: row.casillero || '',
-              consignatario: row.consignatario || '',
-              pesoKg: Number(row.peso_kg || 0),
-              posicionEstante: row.posicion_estante || 'REC',
-              notas: row.notas || '',
-              estado: (row.estado as TipoEstadoItemCotejo) || 'PENDIENTE',
-              escaneadoEn: row.escaneado_en,
-              escaneadoPor: row.escaneado_por,
-              vecesEscaneado: row.veces_escaneado || 0,
-              orden: row.orden,
-              creadoEn: row.creado_en,
-              actualizadoEn: row.actualizado_en
-            }));
-
-            setItems(prev => {
-              const existingIds = new Set(prev.map(p => p.id));
-              const fresh = mappedInserted.filter(m => !existingIds.has(m.id));
-              return [...prev, ...fresh];
-            });
-          }
+        // Pintar inmediatamente todas las celdas A..F reconciliadas (con p: null y colores exactos)
+        isProgrammaticRef.current = true;
+        try {
+          fullRange.setValues(reconciledCellsMatrix);
+          previousRowCountRef.current = reconciledCellsMatrix.length;
+        } finally {
+          queueMicrotask(() => {
+            isProgrammaticRef.current = false;
+          });
         }
+
+        // 3. Encolar sincronización con React state y Supabase en orden estricto (sin condiciones de carrera)
+        const currentHojaId = activeHojaIdRef.current;
+        const currentOperator = operatorNameRef.current;
+        inFlightDbOpsRef.current += 1;
+
+        dbSyncQueueRef.current = dbSyncQueueRef.current
+          .then(async () => {
+            const nowIso = new Date().toISOString();
+            const latestItems = [...itemsRef.current];
+            const dbUpdates: Array<{ id: string; patch: Record<string, any> }> = [];
+            const newPayloads: Array<Record<string, any>> = [];
+            const updatedItemsList: ItemCotejo[] = [...latestItems];
+
+            for (const rec of reconciledRows) {
+              const existing = latestItems[rec.itemIdx];
+              if (existing && !existing.id.startsWith('temp-')) {
+                const changed =
+                  (existing.consignatario || '') !== rec.consignatario ||
+                  (existing.codigoWr || '') !== rec.codigoWr ||
+                  (existing.casillero || '') !== rec.casillero ||
+                  (existing.tracking || '') !== rec.tracking ||
+                  (existing.notas || '') !== rec.notas ||
+                  existing.estado !== rec.estado;
+
+                if (changed) {
+                  const patch: Record<string, any> = {
+                    consignatario: rec.consignatario,
+                    codigo_wr: rec.codigoWr,
+                    casillero: rec.casillero,
+                    tracking: rec.tracking || null,
+                    notas: rec.notas || null,
+                    estado: rec.estado,
+                    actualizado_en: nowIso
+                  };
+
+                  if (rec.scanChangedInThisEvent) {
+                    patch.veces_escaneado = rec.tracking ? (existing.vecesEscaneado || 0) + 1 : 0;
+                    patch.escaneado_en = rec.tracking ? nowIso : null;
+                    patch.escaneado_por = rec.tracking ? currentOperator : null;
+                  }
+
+                  dbUpdates.push({ id: existing.id, patch });
+                  updatedItemsList[rec.itemIdx] = {
+                    ...existing,
+                    consignatario: rec.consignatario,
+                    codigoWr: rec.codigoWr,
+                    casillero: rec.casillero,
+                    tracking: rec.tracking,
+                    notas: rec.notas,
+                    estado: rec.estado,
+                    actualizadoEn: nowIso
+                  };
+                }
+              } else if (
+                rec.consignatario ||
+                rec.codigoWr ||
+                rec.tracking ||
+                rec.notas ||
+                rec.itemIdx < reconciledRows.length
+              ) {
+                // Verificar si hay alguna fila con datos desde este índice en adelante
+                const hasAnyDataFromHere = reconciledRows
+                  .slice(rec.itemIdx)
+                  .some(r => r.consignatario || r.codigoWr || r.tracking || r.notas);
+
+                if (hasAnyDataFromHere) {
+                  newPayloads.push({
+                    hoja_id: currentHojaId,
+                    consignatario: rec.consignatario,
+                    codigo_wr: rec.codigoWr,
+                    casillero: rec.casillero,
+                    tracking: rec.tracking || null,
+                    peso_kg: 0,
+                    posicion_estante: 'REC',
+                    notas: rec.notas || null,
+                    estado: rec.estado,
+                    veces_escaneado: rec.tracking ? 1 : 0,
+                    escaneado_en: rec.tracking ? nowIso : null,
+                    escaneado_por: rec.tracking ? currentOperator : null,
+                    orden: rec.itemIdx + 1
+                  });
+                }
+              }
+            }
+
+            if (dbUpdates.length > 0) {
+              itemsRef.current = updatedItemsList;
+              setItems(updatedItemsList);
+              await Promise.all(
+                dbUpdates.map(u =>
+                  supabase.from('hojas_cotejo_items').update(u.patch).eq('id', u.id)
+                )
+              );
+            }
+
+            if (newPayloads.length > 0) {
+              const { data: inserted } = await supabase
+                .from('hojas_cotejo_items')
+                .insert(newPayloads)
+                .select();
+
+              if (inserted && inserted.length > 0) {
+                const mappedInserted: ItemCotejo[] = inserted.map(row => ({
+                  id: row.id,
+                  hojaId: row.hoja_id,
+                  codigoWr: row.codigo_wr || '',
+                  tracking: (row as any).tracking || '',
+                  casillero: row.casillero || '',
+                  consignatario: row.consignatario || '',
+                  pesoKg: Number(row.peso_kg || 0),
+                  posicionEstante: row.posicion_estante || 'REC',
+                  notas: row.notas || '',
+                  estado: (row.estado as TipoEstadoItemCotejo) || 'PENDIENTE',
+                  escaneadoEn: row.escaneado_en,
+                  escaneadoPor: row.escaneado_por,
+                  vecesEscaneado: row.veces_escaneado || 0,
+                  orden: row.orden,
+                  creadoEn: row.creado_en,
+                  actualizadoEn: row.actualizado_en
+                }));
+
+                setItems(prev => {
+                  const existingIds = new Set(prev.map(p => p.id));
+                  const fresh = mappedInserted.filter(m => !existingIds.has(m.id));
+                  const merged = [...prev, ...fresh].sort((a, b) => (a.orden || 0) - (b.orden || 0));
+                  itemsRef.current = merged;
+                  return merged;
+                });
+              }
+            }
+          })
+          .catch(err => {
+            console.error('[UniverAmexSheet] Error en cola de sincronización:', err);
+          })
+          .finally(() => {
+            inFlightDbOpsRef.current = Math.max(0, inFlightDbOpsRef.current - 1);
+          });
       }
     );
 
@@ -704,8 +899,9 @@ export default function UniverAmexSheet({
     };
   }, [activeHojaId]);
 
-  // Sincronizar cambios de sheetRows (pistola superior, modales, TIB automático, colores de estado, Realtime) hacia Univer
+  // Sincronizar cambios externos de sheetRows (pistola superior, modales, Cargar BD, Reiniciar, Realtime) hacia Univer
   useEffect(() => {
+    if (inFlightDbOpsRef.current > 0) return;
     const univerAPI = univerAPIRef.current;
     if (!univerAPI) return;
 
@@ -724,11 +920,10 @@ export default function UniverAmexSheet({
         dataRange.setValues(matrix);
       }
 
-      // Si había más filas antes (ej. al cambiar o limpiar hoja), limpiar las filas sobrantes
       if (prevLen > currentLen) {
         const diff = prevLen - currentLen;
         const emptyMatrix = Array.from({ length: diff }, () =>
-          Array.from({ length: 6 }, () => ({ v: '', s: STYLE_CELL_DEFAULT }))
+          Array.from({ length: 6 }, () => ({ v: '', p: null, s: STYLE_CELL_DEFAULT }))
         );
         const clearRange = worksheet.getRange(currentLen + 1, 0, diff, 6);
         clearRange.setValues(emptyMatrix);

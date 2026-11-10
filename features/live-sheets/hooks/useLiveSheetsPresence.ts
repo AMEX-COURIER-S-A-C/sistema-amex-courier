@@ -139,7 +139,7 @@ export function useLiveSheetsPresence({
               creadoEn: row.creado_en,
               actualizadoEn: row.actualizado_en
             };
-            return [...prev, mapped];
+            return [...prev, mapped].sort((a, b) => (a.orden || 0) - (b.orden || 0));
           });
         }
       )
