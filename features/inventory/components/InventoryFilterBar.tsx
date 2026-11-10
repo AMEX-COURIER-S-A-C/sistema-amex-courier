@@ -106,8 +106,11 @@ export default function InventoryFilterBar({
   const currentYear = new Date().getFullYear();
   const yearsList = [currentYear + 1, currentYear, currentYear - 1, currentYear - 2, currentYear - 3];
 
-  // Conteo de filtros secundarios activos
+  // Conteo de filtros desplegables activos dentro del panel de Filtros
   const activeSecondaryCount = [
+    shelfFilter !== 'ALL',
+    Boolean(statusAmexFilter && statusAmexFilter !== 'en_almacen'),
+    Boolean(deliveryTypeFilter && deliveryTypeFilter !== 'ALL'),
     locationFilter !== 'ALL',
     floorFilter !== 'ALL',
     packageTypeFilter !== 'ALL',
@@ -117,9 +120,6 @@ export default function InventoryFilterBar({
 
   const hasAnyFilterActive =
     Boolean(searchTerm) ||
-    shelfFilter !== 'ALL' ||
-    (statusAmexFilter && statusAmexFilter !== 'en_almacen') ||
-    (deliveryTypeFilter && deliveryTypeFilter !== 'ALL') ||
     activeSecondaryCount > 0;
 
   const handleResetFilters = () => {
@@ -245,108 +245,7 @@ export default function InventoryFilterBar({
           </button>
         </div>
 
-        {/* Filtro Rápido: Ubicación */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#475569' }}>Ubicación:</span>
-          <select
-            value={shelfFilter}
-            onChange={e => {
-              setShelfFilter(e.target.value);
-              setFloorFilter('ALL');
-            }}
-            style={{
-              padding: '6px 10px',
-              borderRadius: '7px',
-              border: '1px solid #cbd5e1',
-              fontSize: '12px',
-              background: '#ffffff',
-              fontWeight: 600,
-              color: '#1e293b'
-            }}
-          >
-            <option value="ALL">Todas las Ubicaciones</option>
-            {Object.keys(shelfGroups).map(shelfKey => {
-              const label =
-                shelfKey === 'OFI'
-                  ? 'Oficina (OFI)'
-                  : shelfKey === 'DSP-Z1'
-                  ? 'Despacho Zona 1 (DSP-Z1)'
-                  : shelfKey === 'DSP-Z2'
-                  ? 'Despacho Zona 2 (DSP-Z2)'
-                  : shelfKey === 'PAS-Z1'
-                  ? 'Pasadizo Zona 1 (PAS-Z1)'
-                  : shelfKey === 'PAS-Z2'
-                  ? 'Pasadizo Zona 2 (PAS-Z2)'
-                  : shelfKey.startsWith('PAS')
-                  ? `Pasadizo (${shelfKey})`
-                  : shelfKey.startsWith('DSP')
-                  ? `Despacho (${shelfKey})`
-                  : shelfKey.startsWith('A') || shelfKey.startsWith('E')
-                  ? `Anaquel ${shelfKey}`
-                  : `Ubicación ${shelfKey}`;
-
-              return (
-                <option key={shelfKey} value={shelfKey}>
-                  {label}
-                </option>
-              );
-            })}
-          </select>
-        </div>
-
-        {/* Filtro Rápido: Estado AMEX */}
-        {setStatusAmexFilter && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <span style={{ fontSize: '11.5px', fontWeight: 800, color: '#0369a1' }}>Estado AMEX:</span>
-            <select
-              value={statusAmexFilter}
-              onChange={e => setStatusAmexFilter(e.target.value)}
-              style={{
-                padding: '6px 10px',
-                borderRadius: '7px',
-                border: '1px solid #93c5fd',
-                fontSize: '12px',
-                background: '#f0f9ff',
-                fontWeight: 700,
-                color: '#0369a1'
-              }}
-            >
-              <option value="ALL">Todos los Estados ({amexStatusCounts?.total ?? totalPaquetesCount})</option>
-              <option value="en_almacen">📦 En Almacén ({amexStatusCounts?.en_almacen ?? 0})</option>
-              <option value="listo_recojo">🏪 Listo Recojo ({amexStatusCounts?.listo_recojo ?? 0})</option>
-              <option value="en_ruta">🚚 En Ruta ({amexStatusCounts?.en_ruta ?? 0})</option>
-              <option value="entregado">✅ Entregado ({amexStatusCounts?.entregado ?? 0})</option>
-            </select>
-          </div>
-        )}
-
-        {/* Filtro Rápido: Tipo de Entrega */}
-        {setDeliveryTypeFilter && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <span style={{ fontSize: '11.5px', fontWeight: 800, color: '#475569' }}>Tipo Entrega:</span>
-            <select
-              value={deliveryTypeFilter || 'ALL'}
-              onChange={e => setDeliveryTypeFilter(e.target.value)}
-              style={{
-                padding: '6px 10px',
-                borderRadius: '7px',
-                border: '1px solid #cbd5e1',
-                fontSize: '12px',
-                background: '#ffffff',
-                fontWeight: 700,
-                color: '#334155'
-              }}
-            >
-              <option value="ALL">Todas las Modalidades</option>
-              <option value="Presencial">🏢 Presencial</option>
-              <option value="Agencia">📦 Agencia</option>
-              <option value="Domicilio">🚐 A Domicilio</option>
-              <option value="Motorizado">🛵 Motorizado (Cliente)</option>
-            </select>
-          </div>
-        )}
-
-        {/* Botón Filtros Avanzados */}
+        {/* Botón Filtros (muestra / oculta las barras desplegables) */}
         <button
           type="button"
           onClick={() => setShowAdvanced(prev => !prev)}
@@ -355,18 +254,21 @@ export default function InventoryFilterBar({
             background: showAdvanced || activeSecondaryCount > 0 ? '#eff6ff' : '#ffffff',
             border: showAdvanced || activeSecondaryCount > 0 ? '1px solid #93c5fd' : '1px solid #cbd5e1',
             color: showAdvanced || activeSecondaryCount > 0 ? '#1d4ed8' : '#475569',
-            fontSize: '11.5px',
+            fontSize: '12px',
             fontWeight: 700,
-            padding: '6px 10px',
+            padding: '7px 12px',
             borderRadius: '7px',
             display: 'flex',
             alignItems: 'center',
-            gap: '5px',
-            cursor: 'pointer'
+            gap: '6px',
+            cursor: 'pointer',
+            height: '33px',
+            whiteSpace: 'nowrap'
           }}
+          title={showAdvanced ? 'Ocultar barra de filtros desplegables' : 'Mostrar barra de filtros desplegables'}
         >
           <SlidersHorizontal className="w-3.5 h-3.5" />
-          <span>Filtros</span>
+          <span>{showAdvanced ? 'Ocultar Filtros' : 'Filtros'}</span>
           {activeSecondaryCount > 0 && (
             <span
               style={{
@@ -450,7 +352,7 @@ export default function InventoryFilterBar({
         )}
       </div>
 
-      {/* Drawer Colapsable de Filtros Secundarios */}
+      {/* Drawer Colapsable de Filtros Desplegables (controlado por el botón Filtros) */}
       {showAdvanced && (
         <div
           style={{
@@ -462,6 +364,116 @@ export default function InventoryFilterBar({
             fontSize: '11.5px'
           }}
         >
+          {/* FILA PRINCIPAL DE DESPLEGABLES: UBICACIÓN, ESTADO AMEX Y TIPO ENTREGA */}
+          <div
+            style={{
+              display: 'flex',
+              gap: '12px',
+              flexWrap: 'wrap',
+              alignItems: 'center'
+            }}
+          >
+            {/* Filtro: Ubicación */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#475569' }}>Ubicación:</span>
+              <select
+                value={shelfFilter}
+                onChange={e => {
+                  setShelfFilter(e.target.value);
+                  setFloorFilter('ALL');
+                }}
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: '7px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '12px',
+                  background: '#ffffff',
+                  fontWeight: 600,
+                  color: '#1e293b'
+                }}
+              >
+                <option value="ALL">Todas las Ubicaciones</option>
+                {Object.keys(shelfGroups).map(shelfKey => {
+                  const label =
+                    shelfKey === 'OFI'
+                      ? 'Oficina (OFI)'
+                      : shelfKey === 'DSP-Z1'
+                      ? 'Despacho Zona 1 (DSP-Z1)'
+                      : shelfKey === 'DSP-Z2'
+                      ? 'Despacho Zona 2 (DSP-Z2)'
+                      : shelfKey === 'PAS-Z1'
+                      ? 'Pasadizo Zona 1 (PAS-Z1)'
+                      : shelfKey === 'PAS-Z2'
+                      ? 'Pasadizo Zona 2 (PAS-Z2)'
+                      : shelfKey.startsWith('PAS')
+                      ? `Pasadizo (${shelfKey})`
+                      : shelfKey.startsWith('DSP')
+                      ? `Despacho (${shelfKey})`
+                      : shelfKey.startsWith('A') || shelfKey.startsWith('E')
+                      ? `Anaquel ${shelfKey}`
+                      : `Ubicación ${shelfKey}`;
+
+                  return (
+                    <option key={shelfKey} value={shelfKey}>
+                      {label}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
+            {/* Filtro: Estado AMEX */}
+            {setStatusAmexFilter && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span style={{ fontSize: '11.5px', fontWeight: 800, color: '#0369a1' }}>Estado AMEX:</span>
+                <select
+                  value={statusAmexFilter}
+                  onChange={e => setStatusAmexFilter(e.target.value)}
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: '7px',
+                    border: '1px solid #93c5fd',
+                    fontSize: '12px',
+                    background: '#f0f9ff',
+                    fontWeight: 700,
+                    color: '#0369a1'
+                  }}
+                >
+                  <option value="ALL">Todos los Estados ({amexStatusCounts?.total ?? totalPaquetesCount})</option>
+                  <option value="en_almacen">📦 En Almacén ({amexStatusCounts?.en_almacen ?? 0})</option>
+                  <option value="listo_recojo">🏪 Listo Recojo ({amexStatusCounts?.listo_recojo ?? 0})</option>
+                  <option value="en_ruta">🚚 En Ruta ({amexStatusCounts?.en_ruta ?? 0})</option>
+                  <option value="entregado">✅ Entregado ({amexStatusCounts?.entregado ?? 0})</option>
+                </select>
+              </div>
+            )}
+
+            {/* Filtro: Tipo de Entrega */}
+            {setDeliveryTypeFilter && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span style={{ fontSize: '11.5px', fontWeight: 800, color: '#475569' }}>Tipo Entrega:</span>
+                <select
+                  value={deliveryTypeFilter || 'ALL'}
+                  onChange={e => setDeliveryTypeFilter(e.target.value)}
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: '7px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '12px',
+                    background: '#ffffff',
+                    fontWeight: 700,
+                    color: '#334155'
+                  }}
+                >
+                  <option value="ALL">Todas las Modalidades</option>
+                  <option value="Presencial">🏢 Presencial</option>
+                  <option value="Agencia">📦 Agencia</option>
+                  <option value="Domicilio">🚐 A Domicilio</option>
+                  <option value="Motorizado">🛵 Motorizado (Cliente)</option>
+                </select>
+              </div>
+            )}
+          </div>
           {/* FILA 1: FILTRO PROFESIONAL DE FECHAS (Día, Mes, Año, Rango) */}
           {dateFilter && setDateFilter && (
             <div
