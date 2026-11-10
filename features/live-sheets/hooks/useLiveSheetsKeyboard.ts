@@ -151,7 +151,7 @@ export function useLiveSheetsKeyboard({
     [visibleRows]
   );
 
-  // Resolver coincidencia de código con columnas B, A (con herencia de grupo) y BD de paquetes
+  // Resolver coincidencia de código exclusivamente contra las columnas B/C y el nombre de la Columna A (con herencia de grupo) de la hoja actual
   const resolveScannedCodeMatch = useCallback(
     (scannedText: string, targetItemIndex?: number) => {
       const cleanCode = scannedText.trim().toUpperCase().replace(/\s+/g, '');
@@ -160,15 +160,7 @@ export function useLiveSheetsKeyboard({
       // 1. Manifiesto de la hoja actual (incluye nombre heredado de grupo en Columna A)
       const matchedManifest = checkCodeInManifest(cleanCode);
 
-      // 2. Base de datos global de paquetes
-      const dbPackage = paquetes.find(
-        p =>
-          (p.numeroReciboBodega && p.numeroReciboBodega.toUpperCase().replace(/\s+/g, '') === cleanCode) ||
-          (p.numeroReciboBodega && `WR${p.numeroReciboBodega.toUpperCase().replace(/\s+/g, '')}` === cleanCode) ||
-          (p.numeroReciboBodega && p.numeroReciboBodega.replace(/^[A-Za-z]+0*/, '') === cleanDigits)
-      );
-
-      // 3. Fila actual objetivo si coincide con su propio WR o TIB
+      // 2. Fila actual objetivo si coincide con su propio WR o TIB en la hoja
       let rowItemMatch = false;
       let rowItemConsignee = '';
       if (typeof targetItemIndex === 'number' && targetItemIndex >= 0 && targetItemIndex < items.length) {
@@ -188,7 +180,7 @@ export function useLiveSheetsKeyboard({
         }
       }
 
-      const isMatch = !!(matchedManifest || dbPackage || rowItemMatch);
+      const isMatch = !!(matchedManifest || rowItemMatch);
 
       let clientName = '';
       if (
@@ -198,48 +190,8 @@ export function useLiveSheetsKeyboard({
         matchedManifest.consignatario.trim() !== '[NOMBRE]'
       ) {
         clientName = matchedManifest.consignatario.trim();
-      } else if (
-        dbPackage?.nombreConsignatario &&
-        dbPackage.nombreConsignatario.trim() &&
-        dbPackage.nombreConsignatario.trim() !== '[NOMBRE]'
-      ) {
-        clientName = dbPackage.nombreConsignatario.trim();
       } else if (rowItemConsignee) {
         clientName = rowItemConsignee;
-      } else if (
-        typeof targetItemIndex === 'number' &&
-        targetItemIndex >= 0 &&
-        items[targetItemIndex]?.consignatario &&
-        items[targetItemIndex]?.consignatario?.trim() &&
-        items[targetItemIndex]?.consignatario?.trim() !== '[NOMBRE]'
-      ) {
-        clientName = items[targetItemIndex]?.consignatario?.trim() || '';
-      }
-
-      // Buscar en paquetes usando el WR de referencia si aún no hay nombre
-      if (!clientName || clientName === '[NOMBRE]') {
-        const refWr = (
-          matchedManifest?.codigoWr ||
-          (typeof targetItemIndex === 'number' && targetItemIndex >= 0 ? items[targetItemIndex]?.codigoWr : '')
-        )
-          ?.toUpperCase()
-          .replace(/\s+/g, '');
-        if (refWr) {
-          const refDigits = refWr.replace(/^[A-Za-z]+0*/, '');
-          const pkgForRef = paquetes.find(
-            p =>
-              (p.numeroReciboBodega && p.numeroReciboBodega.toUpperCase().replace(/\s+/g, '') === refWr) ||
-              (p.numeroReciboBodega && `WR${p.numeroReciboBodega.toUpperCase().replace(/\s+/g, '')}` === refWr) ||
-              (p.numeroReciboBodega && p.numeroReciboBodega.replace(/^[A-Za-z]+0*/, '') === refDigits)
-          );
-          if (
-            pkgForRef?.nombreConsignatario &&
-            pkgForRef.nombreConsignatario.trim() &&
-            pkgForRef.nombreConsignatario.trim() !== '[NOMBRE]'
-          ) {
-            clientName = pkgForRef.nombreConsignatario.trim();
-          }
-        }
       }
 
       const hasValidName =
@@ -254,7 +206,7 @@ export function useLiveSheetsKeyboard({
         resolvedName: hasValidName ? clientName : isMatch ? 'CLIENTE AMEX' : 'NO ASIGNADO'
       };
     },
-    [checkCodeInManifest, items, paquetes]
+    [checkCodeInManifest, items]
   );
 
   // Reproducir sonido + voz para escaneo en Columna D (encontrado / no encontrado)

@@ -249,39 +249,18 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
       let scannedName = (it.notas || '').trim();
 
       if (scannedCode) {
-        const cleanScanned = scannedCode.toUpperCase().replace(/\s+/g, '');
-        const cleanDigits = cleanScanned.replace(/^[A-Za-z]+0*/, '');
-
-        // 1. Buscar coincidencia en el manifiesto de la hoja (con nombre heredado de grupo)
+        // 1. Buscar coincidencia únicamente en el manifiesto de la hoja actual (con nombre heredado de grupo en Columna A)
         const manifestMatch = checkCodeInManifest(scannedCode);
 
-        // 2. Buscar coincidencia en la base de datos de paquetes
-        const dbPackage = paquetes.find(
-          p =>
-            (p.numeroReciboBodega && p.numeroReciboBodega.toUpperCase().replace(/\s+/g, '') === cleanScanned) ||
-            (p.numeroReciboBodega && `WR${p.numeroReciboBodega.toUpperCase().replace(/\s+/g, '')}` === cleanScanned) ||
-            (p.numeroReciboBodega && p.numeroReciboBodega.replace(/^[A-Za-z]+0*/, '') === cleanDigits)
-        );
-
-        // 3. Resolver el nombre correspondiente a la columna A y B
+        // 2. Resolver el nombre correspondiente exclusivamente desde la Columna A de la fila encontrada en la hoja
         const relatedName =
           manifestMatch && manifestMatch.consignatario && manifestMatch.consignatario !== '[NOMBRE]'
-            ? manifestMatch.consignatario
-            : dbPackage?.nombreConsignatario
-            ? dbPackage.nombreConsignatario
-            : effectiveGroupConsignee && effectiveGroupConsignee !== '[NOMBRE]'
-            ? effectiveGroupConsignee
+            ? manifestMatch.consignatario.trim()
             : '';
 
-        if (manifestMatch || dbPackage) {
+        if (manifestMatch) {
           displayEstado = 'ENCONTRADO';
-          scannedName = relatedName || scannedName || 'CLIENTE AMEX';
-        } else if (it.estado === 'ESCANEADO') {
-          displayEstado = 'ENCONTRADO';
-          scannedName = relatedName || scannedName || effectiveGroupConsignee || 'CLIENTE AMEX';
-        } else if (it.estado === 'NO_LISTADO') {
-          displayEstado = 'NO ENCONTRADO';
-          scannedName = scannedName || 'NO ASIGNADO';
+          scannedName = relatedName || 'CLIENTE AMEX';
         } else {
           displayEstado = 'NO ENCONTRADO';
           scannedName = 'NO ASIGNADO';

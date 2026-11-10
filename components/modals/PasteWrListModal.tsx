@@ -31,7 +31,7 @@ export default function PasteWrListModal({
   paquetes = []
 }: PasteWrListModalProps) {
   const [rawText, setRawText] = useState('');
-  const [autoEnrich, setAutoEnrich] = useState(true);
+  const [autoEnrich, setAutoEnrich] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

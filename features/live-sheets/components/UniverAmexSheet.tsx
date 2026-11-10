@@ -522,23 +522,10 @@ export default function UniverAmexSheet({
         }> = [];
 
         for (const gr of gridRows) {
-          let rawConsignee = gr.rawA;
+          const rawConsignee = gr.rawA;
           const wrClean = gr.rawB.toUpperCase().replace(/\s+/g, '');
           const wrDigits = wrClean.replace(/^[A-Za-z]+0*/, '');
           const tibClean = extractLast6Digits(gr.rawB) || gr.rawC.toUpperCase().replace(/\s+/g, '');
-
-          // Si se pegó un WR en B y A está vacío o '[NOMBRE]', buscar nombre en BD de paquetes
-          if (wrClean && (!rawConsignee || rawConsignee === '[NOMBRE]')) {
-            const dbMatch = paquetesRef.current.find(
-              p =>
-                p.numeroReciboBodega &&
-                (p.numeroReciboBodega.toUpperCase().replace(/\s+/g, '') === wrClean ||
-                  p.numeroReciboBodega.replace(/^[A-Za-z]+0*/, '') === wrDigits)
-            );
-            if (dbMatch?.nombreConsignatario) {
-              rawConsignee = dbMatch.nombreConsignatario.trim();
-            }
-          }
 
           if (rawConsignee && rawConsignee !== '[NOMBRE]') {
             runningGroupName = rawConsignee;
@@ -579,8 +566,8 @@ export default function UniverAmexSheet({
           }
         }
 
-        // Función para evaluar un código escaneado en Columna D contra el manifiesto en vivo + BD paquetes
-        const matchAgainstLiveSheet = (scanText: string, rowIdx: number) => {
+        // Función para evaluar un código escaneado en Columna D exclusivamente contra el manifiesto de la hoja actual (Columnas B/C y nombre de Columna A)
+        const matchAgainstLiveSheet = (scanText: string) => {
           const cleanCode = scanText.toUpperCase().replace(/\s+/g, '');
           const cleanDigits = cleanCode.replace(/^[A-Za-z]+0*/, '');
 
@@ -595,20 +582,8 @@ export default function UniverAmexSheet({
             );
           });
 
-          const dbPackage = paquetesRef.current.find(
-            p =>
-              p.numeroReciboBodega &&
-              (p.numeroReciboBodega.toUpperCase().replace(/\s+/g, '') === cleanCode ||
-                `WR${p.numeroReciboBodega.toUpperCase().replace(/\s+/g, '')}` === cleanCode ||
-                (cleanDigits && p.numeroReciboBodega.replace(/^[A-Za-z]+0*/, '') === cleanDigits))
-          );
-
-          const isMatch = !!(manifestEntry || dbPackage);
-          const clientName =
-            manifestEntry?.effectiveConsignee ||
-            dbPackage?.nombreConsignatario?.trim() ||
-            liveManifest[rowIdx]?.effectiveConsignee ||
-            '';
+          const isMatch = !!manifestEntry;
+          const clientName = manifestEntry?.effectiveConsignee?.trim() || '';
 
           const hasValidName =
             !!clientName &&
@@ -674,7 +649,7 @@ export default function UniverAmexSheet({
             currentDClean !== prevTrackingClean;
 
           if (gr.rawD) {
-            const match = matchAgainstLiveSheet(gr.rawD, i);
+            const match = matchAgainstLiveSheet(gr.rawD);
             tracking = match.cleanCode;
             estado = match.isMatch ? 'ESCANEADO' : 'NO_LISTADO';
             displayEstado = match.isMatch ? 'ENCONTRADO' : 'NO ENCONTRADO';
