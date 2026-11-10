@@ -261,7 +261,10 @@ export default function UniverAmexSheet({
           header: true,
           toolbar: true,
           formulaBar: true,
-          footer: false
+          footer: false,
+          sheets: {
+            allowArrowKeyWrapOnSheetBoundary: false
+          }
         })
       ]
     });
