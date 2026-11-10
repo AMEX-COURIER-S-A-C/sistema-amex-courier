@@ -1,10 +1,30 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createUniver, LocaleType, mergeLocales } from '@univerjs/presets';
 import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core';
 import UniverPresetSheetsCoreEsES from '@univerjs/preset-sheets-core/locales/es-ES';
 import '@univerjs/preset-sheets-core/lib/index.css';
+
+import { UniverSheetsFilterPreset } from '@univerjs/preset-sheets-filter';
+import UniverPresetSheetsFilterEsES from '@univerjs/preset-sheets-filter/locales/es-ES';
+import '@univerjs/preset-sheets-filter/lib/index.css';
+
+import { UniverSheetsSortPreset } from '@univerjs/preset-sheets-sort';
+import UniverPresetSheetsSortEsES from '@univerjs/preset-sheets-sort/locales/es-ES';
+import '@univerjs/preset-sheets-sort/lib/index.css';
+
+import { UniverSheetsFindReplacePreset } from '@univerjs/preset-sheets-find-replace';
+import UniverPresetSheetsFindReplaceEsES from '@univerjs/preset-sheets-find-replace/locales/es-ES';
+import '@univerjs/preset-sheets-find-replace/lib/index.css';
+
+import { UniverSheetsDataValidationPreset } from '@univerjs/preset-sheets-data-validation';
+import UniverPresetSheetsDataValidationEsES from '@univerjs/preset-sheets-data-validation/locales/es-ES';
+import '@univerjs/preset-sheets-data-validation/lib/index.css';
+
+import { UniverSheetsConditionalFormattingPreset } from '@univerjs/preset-sheets-conditional-formatting';
+import UniverPresetSheetsConditionalFormattingEsES from '@univerjs/preset-sheets-conditional-formatting/locales/es-ES';
+import '@univerjs/preset-sheets-conditional-formatting/lib/index.css';
 
 import { supabase } from '@/lib/supabase/client';
 import { ItemCotejo, Paquete, TipoEstadoItemCotejo } from '@/types';
@@ -214,6 +234,10 @@ function cleanCellText(val: unknown): string {
     .trim();
 }
 
+function computeRowSignature(cells: Array<{ v: string; s: any }>): string {
+  return cells.map(c => `${c.v ?? ''}§${c.s?.bg?.rgb ?? ''}`).join('|');
+}
+
 export default function UniverAmexSheet({
   activeHojaId,
   templateMode = 'COTEJO',
@@ -235,9 +259,33 @@ export default function UniverAmexSheet({
   const hostRef = useRef<HTMLDivElement>(null);
   const univerAPIRef = useRef<any>(null);
   const isProgrammaticRef = useRef<boolean>(false);
+  const isLocalExtraEditRef = useRef<boolean>(false);
   const previousRowCountRef = useRef<number>(0);
+  const rowSignaturesRef = useRef<string[]>([]);
   const dbSyncQueueRef = useRef<Promise<void>>(Promise.resolve());
   const inFlightDbOpsRef = useRef<number>(0);
+  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
+
+  // Índice O(1) de paquetes por WR y dígitos para consultas instantáneas (< 0.01ms)
+  const paquetesByWrMap = useMemo(() => {
+    const map = new Map<string, Paquete>();
+    for (const p of paquetes) {
+      if (!p.numeroReciboBodega) continue;
+      const wrUpper = p.numeroReciboBodega.toUpperCase().replace(/\s+/g, '');
+      if (!wrUpper) continue;
+      map.set(wrUpper, p);
+      map.set(`WR${wrUpper}`, p);
+      const digits = wrUpper.replace(/^[A-Za-z]+0*/, '');
+      if (digits) {
+        if (!map.has(digits)) map.set(digits, p);
+        if (!map.has(`WR${digits}`)) map.set(`WR${digits}`, p);
+      }
+    }
+    return map;
+  }, [paquetes]);
+
+  const paquetesByWrMapRef = useRef<Map<string, Paquete>>(paquetesByWrMap);
+  paquetesByWrMapRef.current = paquetesByWrMap;
 
   // Refs actualizadas para usar dentro de los listeners de Univer
   const templateModeRef = useRef<SheetTemplateMode>(templateMode);
@@ -294,14 +342,19 @@ export default function UniverAmexSheet({
         };
       });
 
+      const initialSigs: string[] = [];
       sheetRowsRef.current.forEach((row, idx) => {
         const r = idx + 1;
         const cells = isWrLookupMode ? buildLookupRowCells(row) : buildRowCells(row);
+        initialSigs.push(computeRowSignature(cells));
         initialCellData[r] = {};
         cells.forEach((c, colIdx) => {
           initialCellData[r][colIdx] = c;
         });
       });
+      rowSignaturesRef.current = initialSigs;
+    } else {
+      rowSignaturesRef.current = [];
     }
 
     Object.entries(extraCellsRef.current || {}).forEach(([key, val]) => {
@@ -327,7 +380,14 @@ export default function UniverAmexSheet({
     const { univer, univerAPI } = createUniver({
       locale: LocaleType.ES_ES,
       locales: {
-        [LocaleType.ES_ES]: mergeLocales(UniverPresetSheetsCoreEsES)
+        [LocaleType.ES_ES]: mergeLocales(
+          UniverPresetSheetsCoreEsES,
+          UniverPresetSheetsFilterEsES,
+          UniverPresetSheetsSortEsES,
+          UniverPresetSheetsFindReplaceEsES,
+          UniverPresetSheetsDataValidationEsES,
+          UniverPresetSheetsConditionalFormattingEsES
+        )
       },
       presets: [
         UniverSheetsCorePreset({
@@ -339,7 +399,15 @@ export default function UniverAmexSheet({
           sheets: {
             allowArrowKeyWrapOnSheetBoundary: false
           }
-        })
+        }),
+        UniverSheetsFilterPreset(),
+        UniverSheetsSortPreset(),
+        UniverSheetsFindReplacePreset(),
+        UniverSheetsDataValidationPreset({
+          showEditOnDropdown: true,
+          showSearchOnDropdown: true
+        }),
+        UniverSheetsConditionalFormattingPreset()
       ]
     });
 
@@ -499,6 +567,8 @@ export default function UniverAmexSheet({
                 delete nextExtra[key];
               }
             }
+            isLocalExtraEditRef.current = true;
+            extraCellsRef.current = nextExtra;
             setExtraCells(nextExtra);
             void persistExtraCellsRef.current(nextExtra);
           }
@@ -661,8 +731,10 @@ export default function UniverAmexSheet({
 
         const reconciledRows: ReconciledRowData[] = [];
 
-        // MODO 3: ESCÁNER WR CONSULTA BD (escribe en Columna A y rellena B..F con datos de paquetes)
+        // MODO 3: ESCÁNER WR CONSULTA BD (escribe en Columna A y rellena B..F con datos de paquetes en O(1))
         if (liveMode === 'WR_LOOKUP') {
+          const pkgMap = paquetesByWrMapRef.current;
+
           for (let i = 0; i < gridRows.length; i++) {
             const gr = gridRows[i];
             const existingItem = itemsRef.current[i];
@@ -677,16 +749,10 @@ export default function UniverAmexSheet({
               currentAClean !== prevWrClean;
 
             if (currentAClean) {
-              const dbPkg = paquetesRef.current.find(p => {
-                if (!p.numeroReciboBodega) return false;
-                const pWr = p.numeroReciboBodega.toUpperCase().replace(/\s+/g, '');
-                const pDigits = pWr.replace(/^[A-Za-z]+0*/, '');
-                return (
-                  pWr === currentAClean ||
-                  `WR${pWr}` === currentAClean ||
-                  (currentADigits && pDigits === currentADigits)
-                );
-              });
+              const dbPkg =
+                pkgMap.get(currentAClean) ||
+                pkgMap.get(`WR${currentAClean}`) ||
+                (currentADigits ? pkgMap.get(currentADigits) : undefined);
 
               const isFound = !!dbPkg;
               const resolvedWr = dbPkg?.numeroReciboBodega?.toUpperCase() || currentAClean;
@@ -773,16 +839,18 @@ export default function UniverAmexSheet({
             }
           }
         } else {
-          // MODO 2: HOJA DE COTEJO (Compara Columna D contra Columnas B/C y nombre de Columna A)
+          // MODO 2: HOJA DE COTEJO (Compara Columna D contra Columnas B/C y nombre de Columna A en O(1))
           let runningGroupName = '';
-          const liveManifest: Array<{
+          interface ManifestEntry {
             itemIdx: number;
             effectiveConsignee: string;
             rawConsignee: string;
             wrClean: string;
             wrDigits: string;
             tibClean: string;
-          }> = [];
+          }
+          const liveManifest: ManifestEntry[] = [];
+          const manifestLookupMap = new Map<string, ManifestEntry>();
 
           for (const gr of gridRows) {
             const rawConsignee = gr.rawA;
@@ -803,14 +871,24 @@ export default function UniverAmexSheet({
                 ? runningGroupName
                 : '';
 
-            liveManifest.push({
+            const entry: ManifestEntry = {
               itemIdx: gr.itemIdx,
               effectiveConsignee,
               rawConsignee,
               wrClean,
               wrDigits,
               tibClean
-            });
+            };
+            liveManifest.push(entry);
+
+            if (wrClean) {
+              if (!manifestLookupMap.has(wrClean)) manifestLookupMap.set(wrClean, entry);
+              if (!manifestLookupMap.has(`WR${wrClean}`)) manifestLookupMap.set(`WR${wrClean}`, entry);
+              if (wrDigits && !manifestLookupMap.has(wrDigits)) manifestLookupMap.set(wrDigits, entry);
+            }
+            if (tibClean && !manifestLookupMap.has(tibClean)) {
+              manifestLookupMap.set(tibClean, entry);
+            }
           }
 
           const allLiveScannedCodes = new Set<string>();
@@ -832,16 +910,10 @@ export default function UniverAmexSheet({
             const cleanCode = scanText.toUpperCase().replace(/\s+/g, '');
             const cleanDigits = cleanCode.replace(/^[A-Za-z]+0*/, '');
 
-            const manifestEntry = liveManifest.find(m => {
-              if (!m.wrClean && !m.tibClean) return false;
-              return (
-                (m.wrClean && m.wrClean === cleanCode) ||
-                (m.wrClean && `WR${m.wrClean}` === cleanCode) ||
-                (m.wrDigits && cleanDigits && m.wrDigits === cleanDigits) ||
-                (m.tibClean && m.tibClean === cleanCode) ||
-                (m.tibClean && cleanDigits && m.tibClean === cleanDigits)
-              );
-            });
+            const manifestEntry =
+              manifestLookupMap.get(cleanCode) ||
+              manifestLookupMap.get(`WR${cleanCode}`) ||
+              (cleanDigits ? manifestLookupMap.get(cleanDigits) : undefined);
 
             const isMatch = !!manifestEntry;
             const clientName = manifestEntry?.effectiveConsignee?.trim() || '';
@@ -936,27 +1008,76 @@ export default function UniverAmexSheet({
           }
         }
 
-        // Pintar inmediatamente todas las celdas A..F reconciliadas (con p: null y colores exactos)
+        // Pintar selectivamente solo las filas que cambiaron (diffing O(1) para fluidez instantánea)
         isProgrammaticRef.current = true;
         try {
-          fullRange.setValues(reconciledCellsMatrix);
+          const prevSigs = rowSignaturesRef.current;
+          const nextSigs: string[] = new Array(reconciledCellsMatrix.length);
+          const changedRowIndices: number[] = [];
+
+          for (let i = 0; i < reconciledCellsMatrix.length; i++) {
+            const sig = computeRowSignature(reconciledCellsMatrix[i]);
+            nextSigs[i] = sig;
+            if (prevSigs[i] !== sig || touchedRowsInThisEvent.has(i + 1)) {
+              changedRowIndices.push(i);
+            }
+          }
+
+          if (changedRowIndices.length > 0) {
+            if (changedRowIndices.length <= 6) {
+              for (const rowIdx of changedRowIndices) {
+                worksheet.getRange(rowIdx + 1, 0, 1, 6).setValues([reconciledCellsMatrix[rowIdx]]);
+              }
+            } else {
+              const minIdx = changedRowIndices[0];
+              const maxIdx = changedRowIndices[changedRowIndices.length - 1];
+              const sliceLen = maxIdx - minIdx + 1;
+              worksheet
+                .getRange(minIdx + 1, 0, sliceLen, 6)
+                .setValues(reconciledCellsMatrix.slice(minIdx, maxIdx + 1));
+            }
+          }
+
+          rowSignaturesRef.current = nextSigs;
           previousRowCountRef.current = reconciledCellsMatrix.length;
+
+          // Auto-avance a la fila inferior cuando se pistolea/da Enter en 1 sola celda de escaneo (Col A en WR_LOOKUP, Col D en COTEJO)
+          const targetScanCol = liveMode === 'WR_LOOKUP' ? 0 : 3;
+          if (
+            touchedColsInThisEvent.size === 1 &&
+            touchedColsInThisEvent.has(targetScanCol) &&
+            touchedRowsInThisEvent.size === 1
+          ) {
+            const [singleTouchedRow] = Array.from(touchedRowsInThisEvent);
+            const recRow = reconciledRows[singleTouchedRow - 1];
+            const hasScanText = liveMode === 'WR_LOOKUP' ? !!recRow?.codigoWr : !!recRow?.tracking;
+            if (hasScanText) {
+              const nextZeroRow = singleTouchedRow + 1;
+              const nextRange = worksheet.getRange(nextZeroRow, targetScanCol, 1, 1);
+              if (typeof worksheet.setActiveSelection === 'function') {
+                worksheet.setActiveSelection(nextRange);
+              } else if (typeof nextRange?.activate === 'function') {
+                nextRange.activate();
+              }
+            }
+          }
         } finally {
           queueMicrotask(() => {
             isProgrammaticRef.current = false;
           });
         }
 
-        // 3. Encolar sincronización con React state y Supabase en orden estricto (sin condiciones de carrera)
+        // 3. Encolar sincronización por lotes (Batch Upsert) con React state y Supabase
         const currentHojaId = activeHojaIdRef.current;
         const currentOperator = operatorNameRef.current;
         inFlightDbOpsRef.current += 1;
+        setIsSyncingCloud(true);
 
         dbSyncQueueRef.current = dbSyncQueueRef.current
           .then(async () => {
             const nowIso = new Date().toISOString();
             const latestItems = [...itemsRef.current];
-            const dbUpdates: Array<{ id: string; patch: Record<string, any> }> = [];
+            const upsertBatch: Array<Record<string, any>> = [];
             const newPayloads: Array<Record<string, any>> = [];
             const updatedItemsList: ItemCotejo[] = [...latestItems];
 
@@ -974,7 +1095,26 @@ export default function UniverAmexSheet({
                   existing.estado !== rec.estado;
 
                 if (changed) {
-                  const patch: Record<string, any> = {
+                  const hasScanVal = liveMode === 'WR_LOOKUP' ? !!rec.codigoWr : !!rec.tracking;
+                  const nextVeces = rec.scanChangedInThisEvent
+                    ? hasScanVal
+                      ? (existing.vecesEscaneado || 0) + 1
+                      : 0
+                    : existing.vecesEscaneado || 0;
+                  const nextEscaneadoEn = rec.scanChangedInThisEvent
+                    ? hasScanVal
+                      ? nowIso
+                      : null
+                    : existing.escaneadoEn || null;
+                  const nextEscaneadoPor = rec.scanChangedInThisEvent
+                    ? hasScanVal
+                      ? currentOperator
+                      : null
+                    : existing.escaneadoPor || null;
+
+                  upsertBatch.push({
+                    id: existing.id,
+                    hoja_id: existing.hojaId || currentHojaId,
                     consignatario: rec.consignatario,
                     codigo_wr: rec.codigoWr,
                     casillero: rec.casillero,
@@ -983,17 +1123,13 @@ export default function UniverAmexSheet({
                     posicion_estante: rec.posicionEstante || 'REC',
                     notas: rec.notas || null,
                     estado: rec.estado,
+                    veces_escaneado: nextVeces,
+                    escaneado_en: nextEscaneadoEn,
+                    escaneado_por: nextEscaneadoPor,
+                    orden: existing.orden || rec.itemIdx + 1,
                     actualizado_en: nowIso
-                  };
+                  });
 
-                  if (rec.scanChangedInThisEvent) {
-                    const hasScanVal = liveMode === 'WR_LOOKUP' ? !!rec.codigoWr : !!rec.tracking;
-                    patch.veces_escaneado = hasScanVal ? (existing.vecesEscaneado || 0) + 1 : 0;
-                    patch.escaneado_en = hasScanVal ? nowIso : null;
-                    patch.escaneado_por = hasScanVal ? currentOperator : null;
-                  }
-
-                  dbUpdates.push({ id: existing.id, patch });
                   updatedItemsList[rec.itemIdx] = {
                     ...existing,
                     consignatario: rec.consignatario,
@@ -1004,6 +1140,9 @@ export default function UniverAmexSheet({
                     posicionEstante: rec.posicionEstante,
                     notas: rec.notas,
                     estado: rec.estado,
+                    vecesEscaneado: nextVeces,
+                    escaneadoEn: nextEscaneadoEn || undefined,
+                    escaneadoPor: nextEscaneadoPor || undefined,
                     actualizadoEn: nowIso
                   };
                 }
@@ -1039,14 +1178,10 @@ export default function UniverAmexSheet({
               }
             }
 
-            if (dbUpdates.length > 0) {
+            if (upsertBatch.length > 0) {
               itemsRef.current = updatedItemsList;
               setItems(updatedItemsList);
-              await Promise.all(
-                dbUpdates.map(u =>
-                  supabase.from('hojas_cotejo_items').update(u.patch).eq('id', u.id)
-                )
-              );
+              await supabase.from('hojas_cotejo_items').upsert(upsertBatch, { onConflict: 'id' });
             }
 
             if (newPayloads.length > 0) {
@@ -1090,6 +1225,9 @@ export default function UniverAmexSheet({
           })
           .finally(() => {
             inFlightDbOpsRef.current = Math.max(0, inFlightDbOpsRef.current - 1);
+            if (inFlightDbOpsRef.current === 0) {
+              setIsSyncingCloud(false);
+            }
           });
       }
     );
@@ -1109,9 +1247,13 @@ export default function UniverAmexSheet({
     };
   }, [activeHojaId, templateMode]);
 
-  // Sincronizar extraCells en modo BLANK cuando se cargan de Supabase
+  // Sincronizar extraCells en modo BLANK solo cuando provienen de una carga inicial/remota (no del propio teclado local)
   useEffect(() => {
     if (templateMode !== 'BLANK') return;
+    if (isLocalExtraEditRef.current) {
+      isLocalExtraEditRef.current = false;
+      return;
+    }
     const univerAPI = univerAPIRef.current;
     if (!univerAPI) return;
     const activeWorkbook = univerAPI.getActiveWorkbook();
@@ -1143,7 +1285,7 @@ export default function UniverAmexSheet({
     }
   }, [extraCells, templateMode]);
 
-  // Sincronizar cambios externos de sheetRows (pistola superior, modales, Cargar BD, Reiniciar, Realtime) hacia Univer
+  // Sincronizar cambios externos de sheetRows (pistola superior, modales, Reiniciar, Realtime) usando diffing por fila
   useEffect(() => {
     if (templateMode === 'BLANK') return;
     if (inFlightDbOpsRef.current > 0) return;
@@ -1158,13 +1300,35 @@ export default function UniverAmexSheet({
     try {
       const currentLen = sheetRows.length;
       const prevLen = previousRowCountRef.current;
+      const prevSigs = rowSignaturesRef.current;
+      const nextSigs: string[] = new Array(currentLen);
 
       if (currentLen > 0) {
         const matrix = sheetRows.map(r =>
           templateMode === 'WR_LOOKUP' ? buildLookupRowCells(r) : buildRowCells(r)
         );
-        const dataRange = worksheet.getRange(1, 0, currentLen, 6);
-        dataRange.setValues(matrix);
+        const changedIndices: number[] = [];
+        for (let i = 0; i < currentLen; i++) {
+          const sig = computeRowSignature(matrix[i]);
+          nextSigs[i] = sig;
+          if (prevSigs[i] !== sig) {
+            changedIndices.push(i);
+          }
+        }
+
+        if (changedIndices.length > 0) {
+          if (changedIndices.length <= 6) {
+            for (const idx of changedIndices) {
+              worksheet.getRange(idx + 1, 0, 1, 6).setValues([matrix[idx]]);
+            }
+          } else {
+            const minIdx = changedIndices[0];
+            const maxIdx = changedIndices[changedIndices.length - 1];
+            worksheet
+              .getRange(minIdx + 1, 0, maxIdx - minIdx + 1, 6)
+              .setValues(matrix.slice(minIdx, maxIdx + 1));
+          }
+        }
       }
 
       if (prevLen > currentLen) {
@@ -1176,6 +1340,7 @@ export default function UniverAmexSheet({
         clearRange.setValues(emptyMatrix);
       }
 
+      rowSignaturesRef.current = nextSigs;
       previousRowCountRef.current = currentLen;
     } catch (err) {
       console.error('[UniverAmexSheet] Error sincronizando filas con Univer:', err);
@@ -1199,14 +1364,14 @@ export default function UniverAmexSheet({
         background: '#ffffff'
       }}
     >
-      {isLoadingItems && (
+      {(isLoadingItems || isSyncingCloud) && (
         <div
           style={{
             position: 'absolute',
             top: 8,
             right: 16,
             zIndex: 40,
-            background: 'rgba(15, 23, 42, 0.85)',
+            background: isSyncingCloud ? 'rgba(3, 105, 161, 0.9)' : 'rgba(15, 23, 42, 0.85)',
             color: '#f8fafc',
             fontSize: '11px',
             fontWeight: 600,
@@ -1218,7 +1383,7 @@ export default function UniverAmexSheet({
             pointerEvents: 'none'
           }}
         >
-          <span>Sincronizando hoja...</span>
+          <span>{isSyncingCloud ? 'Guardando en la nube...' : 'Sincronizando hoja...'}</span>
         </div>
       )}
       <div

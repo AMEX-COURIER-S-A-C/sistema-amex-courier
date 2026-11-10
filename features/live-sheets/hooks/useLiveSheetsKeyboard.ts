@@ -95,6 +95,7 @@ export function useLiveSheetsKeyboard({
   // Celdas libres adicionales para columnas G..Z o filas libres
   const [extraCells, setExtraCells] = useState<Record<string, string>>({});
   const loadedExtraHojaRef = useRef<string | null>(null);
+  const extraSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Cargar extraCells guardados en la hoja activa cuando cambia activeHojaId
   useEffect(() => {
@@ -112,27 +113,38 @@ export function useLiveSheetsKeyboard({
     }
   }, [activeHojaId, hojas]);
 
-  // Persistir cambios en extraCells (columnas G..Z o toda la hoja en modo BLANK) en Supabase
+  // Persistir cambios en extraCells (columnas G..Z o toda la hoja en modo BLANK) en Supabase con debounce de 350ms
   const persistExtraCells = useCallback(
     async (nextExtra: Record<string, string>) => {
       if (!activeHojaId) return;
-      const currentHoja = hojas.find(h => h.id === activeHojaId);
+      const targetHojaId = activeHojaId;
+      const currentHoja = hojas.find(h => h.id === targetHojaId);
+      const currentDesc = currentHoja?.descripcion || 'Cotejo y pistoleo en tiempo real de bultos recibidos';
+      const currentMode = templateMode;
+
       if (setHojas) {
         setHojas(prev =>
           prev.map(h =>
-            h.id === activeHojaId
+            h.id === targetHojaId
               ? ({ ...h, extraCells: nextExtra } as HojaCotejo)
               : h
           )
         );
       }
-      await sheetsService.saveSheetExtraMeta(
-        activeHojaId,
-        currentHoja?.descripcion || 'Cotejo y pistoleo en tiempo real de bultos recibidos',
-        nextExtra,
-        undefined,
-        templateMode
-      );
+
+      if (extraSaveTimerRef.current) {
+        clearTimeout(extraSaveTimerRef.current);
+      }
+
+      extraSaveTimerRef.current = setTimeout(() => {
+        void sheetsService.saveSheetExtraMeta(
+          targetHojaId,
+          currentDesc,
+          nextExtra,
+          undefined,
+          currentMode
+        );
+      }, 350);
     },
     [activeHojaId, hojas, setHojas, templateMode]
   );

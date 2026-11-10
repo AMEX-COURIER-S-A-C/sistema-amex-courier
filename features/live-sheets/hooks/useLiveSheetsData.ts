@@ -207,44 +207,65 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
     return set;
   }, [items]);
 
-  // Comprobar coincidencia con manifiesto (incluyendo herencia de nombre de grupo en Columna A)
+  // Índice O(1) de paquetes por código WR / dígitos para búsquedas instantáneas
+  const paquetesByWrMap = useMemo(() => {
+    const map = new Map<string, Paquete>();
+    for (const p of paquetes) {
+      if (!p.numeroReciboBodega) continue;
+      const wrUpper = p.numeroReciboBodega.toUpperCase().replace(/\s+/g, '');
+      if (!wrUpper) continue;
+      map.set(wrUpper, p);
+      map.set(`WR${wrUpper}`, p);
+      const digits = wrUpper.replace(/^[A-Za-z]+0*/, '');
+      if (digits) {
+        if (!map.has(digits)) map.set(digits, p);
+        if (!map.has(`WR${digits}`)) map.set(`WR${digits}`, p);
+      }
+    }
+    return map;
+  }, [paquetes]);
+
+  // Índice O(1) del manifiesto de la hoja actual (con nombre heredado de grupo en Columna A)
+  const manifestByCodeMap = useMemo(() => {
+    const map = new Map<string, ItemCotejo>();
+    items.forEach((m, idx) => {
+      const mWr = (m.codigoWr || '').toUpperCase().replace(/\s+/g, '');
+      const mTib = (m.casillero || '').toUpperCase().replace(/\s+/g, '');
+      if (!mWr && !mTib) return;
+
+      const inheritedName =
+        inheritedConsignees.get(m.id || `idx-${idx}`) ||
+        m.consignatario ||
+        '';
+      const resolvedItem: ItemCotejo =
+        inheritedName && (!m.consignatario || m.consignatario === '[NOMBRE]')
+          ? { ...m, consignatario: inheritedName }
+          : m;
+
+      if (mWr) {
+        if (!map.has(mWr)) map.set(mWr, resolvedItem);
+        if (!map.has(`WR${mWr}`)) map.set(`WR${mWr}`, resolvedItem);
+        const mDigits = mWr.replace(/^[A-Za-z]+0*/, '');
+        if (mDigits && !map.has(mDigits)) map.set(mDigits, resolvedItem);
+      }
+      if (mTib && !map.has(mTib)) {
+        map.set(mTib, resolvedItem);
+      }
+    });
+    return map;
+  }, [items, inheritedConsignees]);
+
+  // Comprobar coincidencia con manifiesto en O(1) (incluyendo herencia de nombre de grupo en Columna A)
   const checkCodeInManifest = useCallback(
     (scannedText: string): ItemCotejo | undefined => {
       const cleanCode = scannedText.trim().toUpperCase().replace(/\s+/g, '');
       if (!cleanCode) return undefined;
+      const direct = manifestByCodeMap.get(cleanCode) || manifestByCodeMap.get(`WR${cleanCode}`);
+      if (direct) return direct;
       const cleanDigits = cleanCode.replace(/^[A-Za-z]+0*/, '');
-
-      const foundIdx = items.findIndex(m => {
-        const mWr = (m.codigoWr || '').toUpperCase().replace(/\s+/g, '');
-        const mTib = (m.casillero || '').toUpperCase().replace(/\s+/g, '');
-        const mDigits = mWr.replace(/^[A-Za-z]+0*/, '');
-
-        return (
-          (mWr && mWr === cleanCode) ||
-          (mWr && `WR${mWr}` === cleanCode) ||
-          (mDigits && cleanDigits && mDigits === cleanDigits) ||
-          (mTib && mTib === cleanCode) ||
-          (mTib && cleanDigits && mTib === cleanDigits)
-        );
-      });
-
-      if (foundIdx === -1) return undefined;
-
-      const foundItem = items[foundIdx];
-      const inheritedName =
-        inheritedConsignees.get(foundItem.id || `idx-${foundIdx}`) ||
-        foundItem.consignatario ||
-        '';
-
-      if (inheritedName && (!foundItem.consignatario || foundItem.consignatario === '[NOMBRE]')) {
-        return {
-          ...foundItem,
-          consignatario: inheritedName
-        };
-      }
-      return foundItem;
+      return cleanDigits ? manifestByCodeMap.get(cleanDigits) : undefined;
     },
-    [items, inheritedConsignees]
+    [manifestByCodeMap]
   );
 
   // Transformar ítems en filas 1:1 exactas según la plantilla activa
@@ -263,16 +284,9 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
         const cleanDigits = cleanWr.replace(/^[A-Za-z]+0*/, '');
 
         const dbPkg = cleanWr
-          ? paquetes.find(p => {
-              if (!p.numeroReciboBodega) return false;
-              const pWr = p.numeroReciboBodega.toUpperCase().replace(/\s+/g, '');
-              const pDigits = pWr.replace(/^[A-Za-z]+0*/, '');
-              return (
-                pWr === cleanWr ||
-                `WR${pWr}` === cleanWr ||
-                (cleanDigits && pDigits === cleanDigits)
-              );
-            })
+          ? paquetesByWrMap.get(cleanWr) ||
+            paquetesByWrMap.get(`WR${cleanWr}`) ||
+            (cleanDigits ? paquetesByWrMap.get(cleanDigits) : undefined)
           : undefined;
 
         const baseId = it.id || `item-${idx}`;
@@ -414,7 +428,7 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
     });
 
     return rows;
-  }, [activeTemplateMode, allScannedCodes, checkCodeInManifest, inheritedConsignees, items, paquetes]);
+  }, [activeTemplateMode, allScannedCodes, checkCodeInManifest, inheritedConsignees, items, paquetesByWrMap]);
 
   // Filtrado de filas
   const visibleRows = useMemo(() => {
