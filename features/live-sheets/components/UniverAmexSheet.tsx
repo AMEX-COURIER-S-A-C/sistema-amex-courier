@@ -133,7 +133,7 @@ function buildRowCells(row: {
   codigoEscaneado: string;
   estado: string;
   nombreEscaneado: string;
-  isManifestFound: boolean;
+  isManifestFound?: boolean;
 }) {
   const isManifestFound = !!row.isManifestFound;
   const isScanFound = row.estado === 'ENCONTRADO';
