@@ -276,7 +276,7 @@ export default function ScannerTab({
     e.preventDefault();
     if (!editingLog) return;
 
-    const isNoFloor = editingLog.anaquel === 'OFI' || editingLog.anaquel === 'DSP-Z1' || editingLog.anaquel === 'DSP-Z2';
+    const isNoFloor = editingLog.anaquel === 'OFI' || editingLog.anaquel === 'DSP-Z1' || editingLog.anaquel === 'DSP-Z2' || editingLog.anaquel === 'PAS-Z1' || editingLog.anaquel === 'PAS-Z2';
     const loc = isNoFloor ? (editingLog.anaquel as string) : `${editingLog.anaquel || 'A1'}-${editingLog.piso || 'P1'}`;
     const updatedLog: ScannedLog = {
       ...editingLog,
@@ -1795,7 +1795,7 @@ export default function ScannerTab({
                           value={editingLog.anaquel || 'A1'}
                           onChange={e => {
                             const val = e.target.value;
-                            const noFloor = val === 'OFI' || val.startsWith('DSP');
+                            const noFloor = val === 'OFI' || val.startsWith('DSP') || val.startsWith('PAS');
                             setEditingLog({
                               ...editingLog,
                               anaquel: val,
@@ -1809,6 +1809,8 @@ export default function ScannerTab({
                           <option value="OFI">🏢 Oficina (OFI)</option>
                           <option value="DSP-Z1">📦 Despacho Zona 1 (DSP-Z1)</option>
                           <option value="DSP-Z2">📦 Despacho Zona 2 (DSP-Z2)</option>
+                          <option value="PAS-Z1">🚪 Pasadizo Zona 1 (PAS-Z1)</option>
+                          <option value="PAS-Z2">🚪 Pasadizo Zona 2 (PAS-Z2)</option>
                         </select>
                       </div>
 

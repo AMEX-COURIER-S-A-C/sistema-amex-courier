@@ -3,13 +3,7 @@
 import React from 'react';
 import {
   Activity,
-  Plus,
-  Zap,
-  Receipt,
-  Car,
-  RefreshCw,
-  Clock,
-  Calendar
+  RefreshCw
 } from 'lucide-react';
 import { TimeFilter } from '../types';
 
@@ -18,17 +12,15 @@ interface DashboardHeaderProps {
   onChangeTimeFilter: (filter: TimeFilter) => void;
   isRefreshing: boolean;
   onRefresh: () => void;
-  onNewPackage: () => void;
-  onNavigateTab: (tabId: string) => void;
+  onNewPackage?: () => void;
+  onNavigateTab?: (tabId: string) => void;
 }
 
 export function DashboardHeader({
   timeFilter,
   onChangeTimeFilter,
   isRefreshing,
-  onRefresh,
-  onNewPackage,
-  onNavigateTab
+  onRefresh
 }: DashboardHeaderProps) {
   return (
     <div
@@ -73,11 +65,11 @@ export function DashboardHeader({
               style={{
                 padding: '2px 8px',
                 borderRadius: '9999px',
-                fontSize: '12px',
-                fontWeight: 500,
-                background: '#f1f5f9',
-                color: '#334155',
-                border: '1px solid #e2e8f0',
+                fontSize: '11px',
+                fontWeight: 600,
+                background: '#f0fdf4',
+                color: '#15803d',
+                border: '1px solid #bbf7d0',
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '6px'
@@ -88,20 +80,20 @@ export function DashboardHeader({
                   width: '6px',
                   height: '6px',
                   borderRadius: '50%',
-                  background: '#10b981',
+                  background: '#16a34a',
                   display: 'inline-block'
                 }}
               />
-              Tiempo Real · Almacén Lince
+              En Vivo · Sede Lince
             </span>
           </div>
           <p style={{ fontSize: '12px', color: '#64748b', margin: '4px 0 0 0', lineHeight: 1.4 }}>
-            Monitoreo centralizado de carga activa, almacenamiento WMS y flujos de liquidación
+            Monitoreo centralizado de carga activa, almacenamiento WMS y excepciones de entrega
           </p>
         </div>
       </div>
 
-      {/* Lado Derecho: Filtros Temporales & Acciones Rápidas */}
+      {/* Lado Derecho: Filtros Temporales & Refrescar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
         {/* Selector de Rango de Fechas (Segmented Control) */}
         <div
@@ -148,102 +140,29 @@ export function DashboardHeader({
           })}
         </div>
 
-        {/* Acciones Rápidas con 1 Color de Acento */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {/* Botón Primario: ÚNICO poseedor del Acento (#2563eb) */}
-          <button
-            type="button"
-            onClick={onNewPackage}
-            style={{
-              background: '#2563eb',
-              color: '#ffffff',
-              border: 'none',
-              padding: '8px 16px',
-              borderRadius: '8px',
-              fontSize: '14px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
-              boxShadow: '0 1px 2px rgba(37,99,235,0.2)',
-              transition: 'background 0.12s ease'
-            }}
-          >
-            <Plus style={{ width: '16px', height: '16px' }} />
-            <span>Registrar WR</span>
-          </button>
-
-          {/* Botones Secundarios: Grises Neutros */}
-          <button
-            type="button"
-            onClick={() => onNavigateTab('live-sheets')}
-            style={{
-              background: '#ffffff',
-              color: '#0f172a',
-              border: '1px solid #e2e8f0',
-              padding: '8px 14px',
-              borderRadius: '8px',
-              fontSize: '14px',
-              fontWeight: 500,
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              transition: 'background 0.12s ease'
-            }}
-            title="Abrir libro de manifiestos y cotejo en vivo"
-          >
-            <Zap style={{ width: '14px', height: '14px', color: '#64748b' }} />
-            <span>Amex Excel</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onNavigateTab('fico-cobros')}
-            style={{
-              background: '#ffffff',
-              color: '#0f172a',
-              border: '1px solid #e2e8f0',
-              padding: '8px 14px',
-              borderRadius: '8px',
-              fontSize: '14px',
-              fontWeight: 500,
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              transition: 'background 0.12s ease'
-            }}
-            title="Ir a gestión de cobros y conciliación de vouchers"
-          >
-            <Receipt style={{ width: '14px', height: '14px', color: '#64748b' }} />
-            <span>Cobros</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={onRefresh}
-            style={{
-              background: '#ffffff',
-              border: '1px solid #e2e8f0',
-              color: '#475569',
-              padding: '8px 10px',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'all 0.12s ease'
-            }}
-            title="Refrescar métricas de operación"
-          >
-            <RefreshCw
-              className={isRefreshing ? 'animate-spin' : ''}
-              style={{ width: '16px', height: '16px' }}
-            />
-          </button>
-        </div>
+        {/* Botón de Refrescar Métricas */}
+        <button
+          type="button"
+          onClick={onRefresh}
+          style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            color: '#475569',
+            padding: '8px 10px',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'all 0.12s ease'
+          }}
+          title="Refrescar métricas de operación"
+        >
+          <RefreshCw
+            className={isRefreshing ? 'animate-spin' : ''}
+            style={{ width: '16px', height: '16px' }}
+          />
+        </button>
       </div>
     </div>
   );

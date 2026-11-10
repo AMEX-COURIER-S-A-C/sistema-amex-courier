@@ -64,7 +64,6 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
     try {
       setIsLoadingItems(true);
       const mappedItems = await sheetsService.fetchItems(hojaId);
-      // Deduplicar items por id para evitar colisiones
       const seen = new Set<string>();
       const deduped: ItemCotejo[] = [];
       for (const item of mappedItems) {
@@ -144,6 +143,29 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
     }
   }, [activeLibroId]);
 
+  // Mapa de nombre de consignatario heredado hacia abajo para grupos de paquetes de un mismo cliente
+  const inheritedConsignees = useMemo(() => {
+    const map = new Map<string, string>();
+    let currentGroupConsignee = '';
+
+    items.forEach((it, idx) => {
+      const rawName = (it.consignatario || '').trim();
+      const hasWr = !!(it.codigoWr || '').trim();
+
+      if (rawName && rawName !== '[NOMBRE]') {
+        currentGroupConsignee = rawName;
+      } else if (!hasWr && !rawName) {
+        // Fila completamente vacía rompe el grupo
+        currentGroupConsignee = '';
+      }
+
+      const key = it.id || `idx-${idx}`;
+      map.set(key, rawName && rawName !== '[NOMBRE]' ? rawName : hasWr ? currentGroupConsignee : '');
+    });
+
+    return map;
+  }, [items]);
+
   // Códigos escaneados en columna D
   const allScannedCodes = useMemo(() => {
     const set = new Set<string>();
@@ -163,13 +185,14 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
     return set;
   }, [items]);
 
-  // Comprobar coincidencia con manifiesto
+  // Comprobar coincidencia con manifiesto (incluyendo herencia de nombre de grupo en Columna A)
   const checkCodeInManifest = useCallback(
-    (scannedText: string) => {
+    (scannedText: string): ItemCotejo | undefined => {
       const cleanCode = scannedText.trim().toUpperCase().replace(/\s+/g, '');
+      if (!cleanCode) return undefined;
       const cleanDigits = cleanCode.replace(/^[A-Za-z]+0*/, '');
 
-      return items.find(m => {
+      const foundIdx = items.findIndex(m => {
         const mWr = (m.codigoWr || '').toUpperCase().replace(/\s+/g, '');
         const mTib = (m.casillero || '').toUpperCase().replace(/\s+/g, '');
         const mDigits = mWr.replace(/^[A-Za-z]+0*/, '');
@@ -182,37 +205,34 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
           (mTib && cleanDigits && mTib === cleanDigits)
         );
       });
+
+      if (foundIdx === -1) return undefined;
+
+      const foundItem = items[foundIdx];
+      const inheritedName =
+        inheritedConsignees.get(foundItem.id || `idx-${foundIdx}`) ||
+        foundItem.consignatario ||
+        '';
+
+      if (inheritedName && (!foundItem.consignatario || foundItem.consignatario === '[NOMBRE]')) {
+        return {
+          ...foundItem,
+          consignatario: inheritedName
+        };
+      }
+      return foundItem;
     },
-    [items]
+    [items, inheritedConsignees]
   );
 
-  // Transformar ítems en filas de hoja de cálculo
+  // Transformar ítems en filas 1:1 exactas (sin insertar filas separadoras fantasma)
   const sheetRows = useMemo(() => {
     const rows: SheetRow[] = [];
     const seenRowIds = new Set<string>();
-    let prevConsignee = '';
 
     items.forEach((it, idx) => {
       const consignee = (it.consignatario || '').trim();
-
-      if (prevConsignee && consignee && consignee !== prevConsignee) {
-        const sepId = `sep-${it.id || idx}-${idx}`;
-        if (!seenRowIds.has(sepId)) {
-          seenRowIds.add(sepId);
-          rows.push({
-            id: sepId,
-            nombre: '',
-            codigoWarehouse: '',
-            codigoTib: '',
-            codigoEscaneado: '',
-            estado: 'PENDIENTE',
-            nombreEscaneado: '',
-            isSeparator: true
-          });
-        }
-      }
-
-      prevConsignee = consignee;
+      const effectiveGroupConsignee = inheritedConsignees.get(it.id || `idx-${idx}`) || consignee;
 
       const wrUpper = (it.codigoWr || '').toUpperCase().replace(/\s+/g, '');
       const tibUpper = (it.casillero || '').toUpperCase().replace(/\s+/g, '');
@@ -232,7 +252,7 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
         const cleanScanned = scannedCode.toUpperCase().replace(/\s+/g, '');
         const cleanDigits = cleanScanned.replace(/^[A-Za-z]+0*/, '');
 
-        // 1. Buscar coincidencia en el manifiesto de la hoja (relacionado con columna B y columna A)
+        // 1. Buscar coincidencia en el manifiesto de la hoja (con nombre heredado de grupo)
         const manifestMatch = checkCodeInManifest(scannedCode);
 
         // 2. Buscar coincidencia en la base de datos de paquetes
@@ -249,16 +269,16 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
             ? manifestMatch.consignatario
             : dbPackage?.nombreConsignatario
             ? dbPackage.nombreConsignatario
-            : manifestMatch?.consignatario && manifestMatch.consignatario !== '[NOMBRE]'
-            ? manifestMatch.consignatario
-            : (it.consignatario && it.consignatario !== '[NOMBRE]' ? it.consignatario : '');
+            : effectiveGroupConsignee && effectiveGroupConsignee !== '[NOMBRE]'
+            ? effectiveGroupConsignee
+            : '';
 
         if (manifestMatch || dbPackage) {
           displayEstado = 'ENCONTRADO';
           scannedName = relatedName || scannedName || 'CLIENTE AMEX';
         } else if (it.estado === 'ESCANEADO') {
           displayEstado = 'ENCONTRADO';
-          scannedName = relatedName || scannedName || it.consignatario || 'CLIENTE AMEX';
+          scannedName = relatedName || scannedName || effectiveGroupConsignee || 'CLIENTE AMEX';
         } else if (it.estado === 'NO_LISTADO') {
           displayEstado = 'NO ENCONTRADO';
           scannedName = scannedName || 'NO ASIGNADO';
@@ -269,10 +289,14 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
       }
 
       const tib = extractLast6Digits(it.codigoWr) || it.casillero || '';
-      const isGroupStart = (idx === 0 || (items[idx - 1]?.consignatario || '').trim() !== consignee) && !!consignee;
-      const isGroupEnd = (idx === items.length - 1 || (items[idx + 1]?.consignatario || '').trim() !== consignee) && !!consignee;
+      const prevEffective =
+        idx > 0 ? inheritedConsignees.get(items[idx - 1]?.id || `idx-${idx - 1}`) || '' : '';
+      const nextEffective =
+        idx < items.length - 1 ? inheritedConsignees.get(items[idx + 1]?.id || `idx-${idx + 1}`) || '' : '';
 
-      // Asegurar id 100% único
+      const isGroupStart = (idx === 0 || prevEffective !== effectiveGroupConsignee) && !!effectiveGroupConsignee;
+      const isGroupEnd = (idx === items.length - 1 || nextEffective !== effectiveGroupConsignee) && !!effectiveGroupConsignee;
+
       const baseId = it.id || `item-${idx}`;
       const uniqueRowId = seenRowIds.has(baseId) ? `${baseId}-${idx}` : baseId;
       seenRowIds.add(uniqueRowId);
@@ -294,7 +318,7 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
     });
 
     return rows;
-  }, [allScannedCodes, checkCodeInManifest, items, paquetes]);
+  }, [allScannedCodes, checkCodeInManifest, inheritedConsignees, items, paquetes]);
 
   // Filtrado de filas
   const visibleRows = useMemo(() => {
@@ -337,8 +361,8 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
   const handleLoadFromDatabase = async () => {
     if (!activeHojaId || paquetes.length === 0) return;
 
-    const existingCodes = new Set(items.map(i => i.codigoWr.toUpperCase()));
-    const unaddedPackages = paquetes.filter(p => !existingCodes.has(p.numeroReciboBodega.toUpperCase()));
+    const existingCodes = new Set(items.map(i => (i.codigoWr || '').toUpperCase()));
+    const unaddedPackages = paquetes.filter(p => p.numeroReciboBodega && !existingCodes.has(p.numeroReciboBodega.toUpperCase()));
 
     if (unaddedPackages.length === 0) {
       await alertDialog({
@@ -352,10 +376,10 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
     const rowsToInsert = unaddedPackages.map((p, idx) => ({
       hoja_id: activeHojaId,
       codigo_wr: p.numeroReciboBodega.toUpperCase(),
-      casillero: p.numeroReciboBodega.replace(/^[A-Za-z]+0*/, ''),
+      casillero: extractLast6Digits(p.numeroReciboBodega),
       consignatario: p.nombreConsignatario || '',
       peso_kg: p.pesoKg || 0,
-      posicion_estante: p.posicionEstante || 'REC',
+      posicion_estante: p.posicionEstante || 'OFI',
       notas: '',
       estado: 'PENDIENTE',
       veces_escaneado: 0,
@@ -390,6 +414,8 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
         'NOMBRE ESCANEADO': r.nombreEscaneado
       }));
 
+    if (exportData.length === 0) return;
+
     const columns = Object.keys(exportData[0]).map((key) => ({
       header: { value: key, fontWeight: 'bold' as const },
       cell: (row: Record<string, string | number>) => ({ value: row[key] ?? '' }),
@@ -402,7 +428,7 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
     if (!activeHojaId) return;
     const confirmed = await confirmDialog({
       title: 'Reiniciar cotejo',
-      message: '¿Seguro que deseas reiniciar el cotejo? Los códigos escaneados se borrarán y volverán a PENDIENTE.',
+      message: '¿Seguro que deseas reiniciar el cotejo? Los códigos escaneados en la Columna D se borrarán y volverán a PENDIENTE.',
       confirmText: 'Sí, reiniciar cotejo',
       variant: 'warning'
     });
@@ -430,7 +456,7 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
   };
 
   const handleSyncToMainPackages = async () => {
-    const scannedItems = items.filter(i => i.estado === 'ESCANEADO');
+    const scannedItems = items.filter(i => i.estado === 'ESCANEADO' || (i.tracking && checkCodeInManifest(i.tracking)));
     if (scannedItems.length === 0) {
       await alertDialog({
         title: 'Sin paquetes encontrados',
@@ -695,6 +721,7 @@ export function useLiveSheetsData({ paquetes, operatorName }: UseLiveSheetsDataP
     setIsStarred,
     searchInSheet,
     setSearchInSheet,
+    inheritedConsignees,
     allScannedCodes,
     checkCodeInManifest,
     sheetRows,

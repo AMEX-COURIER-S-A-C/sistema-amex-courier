@@ -4,6 +4,8 @@ import React, { useState } from 'react';
 import { useDashboardMetrics } from '../hooks/useDashboardMetrics';
 import { DashboardHeader } from './DashboardHeader';
 import { ExecutiveKpiGrid } from './ExecutiveKpiGrid';
+import { LogisticsPipelineSection } from './LogisticsPipelineSection';
+import { ActivityVelocityChart } from './ActivityVelocityChart';
 import { DailyTasksSection } from './DailyTasksSection';
 import { AnalyticsChartsSection } from './AnalyticsChartsSection';
 import { LivePackagesStream } from './LivePackagesStream';
@@ -35,6 +37,8 @@ export default function DashboardTab({
     paymentStats,
     deliveryChannels,
     packageTypes,
+    pipelineStages,
+    dailyActivity,
     filteredPaquetes
   } = useDashboardMetrics({
     paquetes,
@@ -83,22 +87,36 @@ export default function DashboardTab({
         onNavigateTab={onNavigateTab}
       />
 
-      {/* 3. TAREAS OPERATIVAS DIARIAS & PRIORIDADES */}
+      {/* 3. PIPELINE DE FLUJO LOGÍSTICO INTEGRAL (MIAMI -> VUELO -> LINCE -> REPARTO -> ENTREGADO) */}
+      <LogisticsPipelineSection
+        stages={pipelineStages}
+        activeFilter={packageFilter}
+        onSelectFilter={setPackageFilter}
+        onNavigateTab={onNavigateTab}
+      />
+
+      {/* 4. GRÁFICO INTERACTIVO DE VELOCIDAD & TENDENCIA DIARIA */}
+      <ActivityVelocityChart
+        data={dailyActivity}
+      />
+
+      {/* 5. TAREAS OPERATIVAS DIARIAS & PRIORIDADES */}
       <DailyTasksSection
         tasks={dailyTasks}
         onNavigateTab={onNavigateTab}
       />
 
-      {/* 4. SECCIÓN ANALÍTICA: CAPACIDAD WMS, CANALES & RECAUDACIÓN */}
+      {/* 6. SECCIÓN ANALÍTICA: CAPACIDAD WMS, CANALES & RECAUDACIÓN (CON DONUT CHART) */}
       <AnalyticsChartsSection
         shelfStats={shelfStats}
         paymentStats={paymentStats}
         deliveryChannels={deliveryChannels}
         packageTypes={packageTypes}
+        unslottedCount={kpis.paquetesSinUbicar}
         onNavigateTab={onNavigateTab}
       />
 
-      {/* 5. FLUJO OPERATIVO EN VIVO: CONSOLA DE RASTREO WRs */}
+      {/* 7. FLUJO OPERATIVO EN VIVO: CONSOLA DE RASTREO WRs */}
       <LivePackagesStream
         paquetes={filteredPaquetes}
         allPaquetesCount={paquetes.length}

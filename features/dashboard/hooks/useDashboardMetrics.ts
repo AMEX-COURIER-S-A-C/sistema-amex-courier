@@ -15,7 +15,9 @@ import {
   PaymentMethodStat,
   DeliveryChannelStat,
   PackageTypeStat,
-  ExecutiveKpis
+  ExecutiveKpis,
+  PipelineStageStat,
+  DailyActivityDataPoint
 } from '../types';
 
 interface UseDashboardMetricsProps {
@@ -31,7 +33,7 @@ export function useDashboardMetrics({
   entregas = [],
   cobros = []
 }: UseDashboardMetricsProps) {
-  const [timeFilter, setTimeFilter] = useState<TimeFilter>('ALL');
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>('WEEK');
   const [packageFilter, setPackageFilter] = useState<PackageStatusFilter>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -181,6 +183,23 @@ export function useDashboardMetrics({
     return clientesActivos.size;
   }, [paquetes]);
 
+  // Paquetes en almacén rezagados (> 7 días) y listos para despacho
+  const paquetesRezagados = useMemo(() => {
+    const now = Date.now();
+    const sieteDiasMs = 7 * 24 * 60 * 60 * 1000;
+    return paquetesLince.filter(p => {
+      if (!p.creadoEn) return false;
+      const t = new Date(p.creadoEn).getTime();
+      return !isNaN(t) && (now - t) > sieteDiasMs;
+    });
+  }, [paquetesLince]);
+
+  const paquetesListosDespacho = useMemo(() => {
+    return paquetesLince.filter(p => p.posicionEstante && p.posicionEstante !== 'SIN_ASIGNAR' && !p.posicionEstante.includes('REC'));
+  }, [paquetesLince]);
+
+
+
   // KPIs Maestros
   const kpis: ExecutiveKpis = useMemo(() => {
     const totalPkg = paquetes.length;
@@ -211,7 +230,9 @@ export function useDashboardMetrics({
       clientesConPaquetesActivos: clientesConPaquetes,
       tasaEntregaPorcentaje: tasaEntrega,
       ordenesMostradorActivas: ordenesActivas.length,
-      ordenesMostradorListas: ordenesListas.length
+      ordenesMostradorListas: ordenesListas.length,
+      paquetesRezagadosCount: paquetesRezagados.length,
+      paquetesListosDespachoCount: paquetesListosDespacho.length
     };
   }, [
     paquetes,
@@ -224,7 +245,9 @@ export function useDashboardMetrics({
     clientes,
     clientesConPaquetes,
     ordenesActivas,
-    ordenesListas
+    ordenesListas,
+    paquetesRezagados,
+    paquetesListosDespacho
   ]);
 
   // TAREAS DIARIAS OPERATIVAS (Backlog Crítico del Negocio)
@@ -537,6 +560,141 @@ export function useDashboardMetrics({
     ];
   }, [paquetes]);
 
+  // 1. Pipeline de Flujo Logístico Integral (5 Etapas)
+  const pipelineStages: PipelineStageStat[] = useMemo(() => {
+    const total = paquetes.length || 1;
+
+    const miamiCount = paquetes.filter(
+      p => (p.estadoTib === 'Recibido' || !p.ubicacionActual || p.ubicacionActual !== 'AmexLince') &&
+           p.estadoEntrega !== 'Entregado' &&
+           p.estadoEntrega !== 'EntregadoDomicilio' &&
+           p.estadoEntrega !== 'RecogidoAlmacen' &&
+           p.estadoTib !== 'Enviado' &&
+           p.estadoTib !== 'EnAlmacen'
+    ).length;
+
+    const transitoCount = paquetes.filter(
+      p => p.estadoTib === 'Enviado' &&
+           p.ubicacionActual !== 'AmexLince' &&
+           p.estadoEntrega !== 'Entregado' &&
+           p.estadoEntrega !== 'EntregadoDomicilio' &&
+           p.estadoEntrega !== 'RecogidoAlmacen'
+    ).length;
+
+    const linceCount = paquetesLince.length;
+    const rutaCount = paquetesEnRuta.length;
+    const entregadosCount = paquetesEntregados.length;
+
+    return [
+      {
+        id: 'miami',
+        label: 'Miami Hub (TIB)',
+        sublabel: 'Recepción y fotos en USA',
+        count: miamiCount,
+        percentage: Math.round((miamiCount / total) * 100),
+        color: '#0284c7',
+        targetTab: 'manifiestos-tib'
+      },
+      {
+        id: 'transito',
+        label: 'Tránsito Aéreo',
+        sublabel: 'Vuelo USA → Aduanas Lima',
+        count: transitoCount,
+        percentage: Math.round((transitoCount / total) * 100),
+        color: '#6366f1',
+        targetTab: 'manifiestos-tib'
+      },
+      {
+        id: 'lince',
+        label: 'Custodia Lince (WMS)',
+        sublabel: paquetesSinUbicar.length > 0 ? `${paquetesSinUbicar.length} sin estante` : 'Almacenado en anaqueles',
+        count: linceCount,
+        percentage: Math.round((linceCount / total) * 100),
+        color: '#7c3aed',
+        badge: paquetesSinUbicar.length > 0 ? `${paquetesSinUbicar.length} sin estante` : undefined,
+        statusFilterKey: 'LINCE',
+        targetTab: 'mm-lince'
+      },
+      {
+        id: 'reparto',
+        label: 'Despacho & En Ruta',
+        sublabel: 'Carro AMEX & Courier Lima',
+        count: rutaCount,
+        percentage: Math.round((rutaCount / total) * 100),
+        color: '#f59e0b',
+        statusFilterKey: 'EN_RUTA',
+        targetTab: 'despacho-rutas'
+      },
+      {
+        id: 'entregado',
+        label: 'Entregados',
+        sublabel: 'Completados y liquidados',
+        count: entregadosCount,
+        percentage: Math.round((entregadosCount / total) * 100),
+        color: '#10b981',
+        statusFilterKey: 'ENTREGADO',
+        targetTab: 'formato-entrega'
+      }
+    ];
+  }, [paquetes, paquetesLince, paquetesEnRuta, paquetesEntregados, paquetesSinUbicar]);
+
+  // 2. Tendencia de Actividad Operativa Diaria
+  const dailyActivity: DailyActivityDataPoint[] = useMemo(() => {
+    const daysToShow = timeFilter === 'MONTH' ? 14 : 7;
+    const result: DailyActivityDataPoint[] = [];
+    const now = new Date();
+
+    const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Set', 'Oct', 'Nov', 'Dic'];
+    const dayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+
+    for (let i = daysToShow - 1; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const dateKey = d.toISOString().split('T')[0];
+      const dayName = dayNames[d.getDay()];
+      const dayNum = d.getDate();
+      const monthName = monthNames[d.getMonth()];
+
+      const label = `${dayName} ${dayNum} ${monthName}`;
+      const shortLabel = `${dayNum} ${monthName}`;
+
+      const ingresos = paquetes.filter(p => {
+        if (!p.creadoEn) return false;
+        return p.creadoEn.startsWith(dateKey);
+      }).length;
+
+      const entregas = paquetes.filter(p => {
+        const isDelivered =
+          p.estadoEntrega === 'Entregado' ||
+          p.estadoEntrega === 'EntregadoDomicilio' ||
+          p.estadoEntrega === 'RecogidoAlmacen';
+        if (!isDelivered) return false;
+        const targetDate = p.actualizadoEn || p.creadoEn;
+        return targetDate ? targetDate.startsWith(dateKey) : false;
+      }).length;
+
+      const recaudacionSoles = cobrosFiltrados
+        .filter(c => {
+          const cDate = c.creado_en || c.fecha_operacion;
+          return cDate ? cDate.startsWith(dateKey) && c.moneda === 'PEN' && c.estado === 'VALIDADO' : false;
+        })
+        .reduce((acc, c) => acc + (Number(c.monto) || 0), 0);
+
+      result.push({
+        date: dateKey,
+        label,
+        shortLabel,
+        ingresos,
+        entregas,
+        recaudacionSoles: Math.round(recaudacionSoles)
+      });
+    }
+
+    return result;
+  }, [paquetes, cobrosFiltrados, timeFilter]);
+
+
+
   // Paquetes Filtrados para la Consola en Vivo
   const filteredPaquetes = useMemo(() => {
     return paquetes.filter(p => {
@@ -589,6 +747,8 @@ export function useDashboardMetrics({
     paymentStats,
     deliveryChannels,
     packageTypes,
+    pipelineStages,
+    dailyActivity,
     filteredPaquetes
   };
 }

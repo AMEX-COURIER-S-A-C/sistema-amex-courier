@@ -7,6 +7,65 @@ import {
 } from '@/types';
 import type { NewSheetItemRow } from '../types';
 
+export interface SheetExtendedMeta {
+  __amexMetaV1: true;
+  desc?: string;
+  extraCells?: Record<string, string>;
+  colWidths?: Record<string, number>;
+}
+
+export function parseSheetMeta(rawDescripcion: string | null | undefined): {
+  description: string;
+  extraCells: Record<string, string>;
+  colWidths: Record<string, number>;
+} {
+  if (!rawDescripcion) {
+    return { description: '', extraCells: {}, colWidths: {} };
+  }
+  const trimmed = rawDescripcion.trim();
+  if (trimmed.startsWith('{') && trimmed.includes('"__amexMetaV1"')) {
+    try {
+      const parsed = JSON.parse(trimmed) as SheetExtendedMeta;
+      return {
+        description: parsed.desc || 'Cotejo y pistoleo en tiempo real de bultos recibidos',
+        extraCells: parsed.extraCells || {},
+        colWidths: parsed.colWidths || {}
+      };
+    } catch {
+      // Fallback a texto plano
+    }
+  }
+  return { description: rawDescripcion, extraCells: {}, colWidths: {} };
+}
+
+export function serializeSheetMeta(
+  description: string,
+  extraCells: Record<string, string>,
+  colWidths?: Record<string, number>
+): string {
+  const cleanExtra: Record<string, string> = {};
+  Object.entries(extraCells || {}).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && String(v).trim() !== '') {
+      cleanExtra[k] = String(v);
+    }
+  });
+
+  const hasExtra = Object.keys(cleanExtra).length > 0;
+  const hasWidths = colWidths && Object.keys(colWidths).length > 0;
+
+  if (!hasExtra && !hasWidths) {
+    return description || 'Cotejo y pistoleo en tiempo real de bultos recibidos';
+  }
+
+  const payload: SheetExtendedMeta = {
+    __amexMetaV1: true,
+    desc: description || 'Cotejo y pistoleo en tiempo real de bultos recibidos',
+    extraCells: cleanExtra,
+    ...(hasWidths ? { colWidths } : {})
+  };
+  return JSON.stringify(payload);
+}
+
 export const sheetsService = {
   async fetchHojas(): Promise<HojaCotejo[]> {
     const { data, error } = await supabase
@@ -21,19 +80,49 @@ export const sheetsService = {
 
     if (!data) return [];
 
-    return data.map(h => ({
-      id: h.id,
-      libroId: h.libro_id || null,
-      nombreHoja: h.nombre_hoja || (h.libro_id ? h.titulo : 'Hoja 1'),
-      titulo: h.titulo,
-      descripcion: h.descripcion || '',
-      tipoProceso: (h.tipo_proceso as TipoProcesoCotejo) || 'RECEPCION_LINCE',
-      estado: h.estado || 'ACTIVA',
-      sedeId: h.sede_id,
-      creadoPor: h.creado_por || 'AMEX',
-      creadoEn: h.creado_en,
-      actualizadoEn: h.actualizado_en
-    }));
+    return data.map(h => {
+      const parsedMeta = parseSheetMeta(h.descripcion);
+      return {
+        id: h.id,
+        libroId: h.libro_id || null,
+        nombreHoja: h.nombre_hoja || (h.libro_id ? h.titulo : 'Hoja 1'),
+        titulo: h.titulo,
+        descripcion: parsedMeta.description,
+        rawDescripcion: h.descripcion || '',
+        extraCells: parsedMeta.extraCells,
+        colWidths: parsedMeta.colWidths,
+        tipoProceso: (h.tipo_proceso as TipoProcesoCotejo) || 'RECEPCION_LINCE',
+        estado: h.estado || 'ACTIVA',
+        sedeId: h.sede_id,
+        creadoPor: h.creado_por || 'AMEX',
+        creadoEn: h.creado_en,
+        actualizadoEn: h.actualizado_en
+      } as HojaCotejo & {
+        rawDescripcion?: string;
+        extraCells?: Record<string, string>;
+        colWidths?: Record<string, number>;
+      };
+    });
+  },
+
+  async saveSheetExtraMeta(
+    hojaId: string,
+    description: string,
+    extraCells: Record<string, string>,
+    colWidths?: Record<string, number>
+  ): Promise<void> {
+    if (!hojaId) return;
+    const serialized = serializeSheetMeta(description, extraCells, colWidths);
+    const { error } = await supabase
+      .from('hojas_cotejo')
+      .update({
+        descripcion: serialized,
+        actualizado_en: new Date().toISOString()
+      })
+      .eq('id', hojaId);
+    if (error) {
+      console.error('[sheetsService] Error guardando metadatos de celdas extra:', error);
+    }
   },
 
   async fetchItems(hojaId: string): Promise<ItemCotejo[]> {
@@ -61,13 +150,13 @@ export const sheetsService = {
     return data.map(i => ({
       id: i.id,
       hojaId: i.hoja_id,
-      codigoWr: i.codigo_wr,
-      tracking: (i as any).tracking,
-      casillero: i.casillero,
-      consignatario: i.consignatario,
+      codigoWr: i.codigo_wr || '',
+      tracking: (i as any).tracking || '',
+      casillero: i.casillero || '',
+      consignatario: i.consignatario || '',
       pesoKg: Number(i.peso_kg || 0),
-      posicionEstante: i.posicion_estante,
-      notas: i.notas,
+      posicionEstante: i.posicion_estante || 'REC',
+      notas: i.notas || '',
       estado: (i.estado as TipoEstadoItemCotejo) || 'PENDIENTE',
       escaneadoEn: i.escaneado_en,
       escaneadoPor: i.escaneado_por,
@@ -221,6 +310,15 @@ export const sheetsService = {
     if (error) throw error;
   },
 
+  async deleteItems(itemIds: string[]): Promise<void> {
+    if (!itemIds || itemIds.length === 0) return;
+    const { error } = await supabase
+      .from('hojas_cotejo_items')
+      .delete()
+      .in('id', itemIds);
+    if (error) throw error;
+  },
+
   async resetScans(hojaId: string): Promise<void> {
     const { error } = await supabase
       .from('hojas_cotejo_items')
@@ -256,14 +354,16 @@ export const sheetsService = {
   async syncScannedToMainPackages(scannedItems: ItemCotejo[]): Promise<number> {
     let updatedCount = 0;
     for (const item of scannedItems) {
+      const codeToSync = (item.codigoWr || item.tracking || '').trim();
+      if (!codeToSync) continue;
       const { error } = await supabase
         .from('paquetes')
         .update({
           ubicacion_actual: 'AmexLince',
-          posicion_estante: item.posicionEstante || 'REC',
+          posicion_estante: item.posicionEstante || 'OFI',
           estado_amex: 'en_almacen'
         })
-        .eq('numero_recibo_bodega', item.codigoWr);
+        .eq('numero_recibo_bodega', codeToSync);
 
       if (!error) updatedCount++;
     }

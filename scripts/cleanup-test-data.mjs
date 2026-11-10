@@ -88,6 +88,9 @@ async function main() {
   console.log(`✓ movimientos_kardex eliminados: ${cKardex ?? 'OK'} ${errKardex ? `(Error: ${errKardex.message})` : ''}`);
 
   // B. Tabla paquetes (Módulo 3)
+  // Las rutas y paradas (Módulo 16), y los manifiestos TIB (Módulo 17), conservan
+  // sus propios WR como datos históricos. No se deben borrar ni modificar por
+  // coincidencia con paquetes.numero_recibo_bodega.
   const { count: cPaquetes, error: errPaq } = await supabase
     .from('paquetes')
     .delete({ count: 'exact' })

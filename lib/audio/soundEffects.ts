@@ -1,39 +1,125 @@
-// Utilidad de sintetizador de audio para escaneo con pistola inalámbrica y feedback háptico
+// Utilidad de sintetizador de audio y voz hablada (TTS) para escaneo con pistola láser y feedback háptico
 
 class SoundSynthesizer {
   private ctx: AudioContext | null = null;
   private isMuted: boolean = false;
-  private volume: number = 0.9;
+  private volume: number = 0.95;
   private voiceEnabled: boolean = true;
+  private cachedVoices: SpeechSynthesisVoice[] = [];
+  // Referencia fuerte para evitar que el Garbage Collector de V8/Chrome destruya el utterance a mitad de locución
+  private activeUtterance: SpeechSynthesisUtterance | null = null;
+  private speechTimer: ReturnType<typeof setTimeout> | null = null;
+  private watchdogTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastSpokenText: string = '';
+  private lastSpokenAt: number = 0;
+  private unlocked: boolean = false;
 
   constructor() {
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.onvoiceschanged = () => {
-        try {
-          window.speechSynthesis.getVoices();
-        } catch {
-          // ignore
-        }
-      };
+    if (typeof window !== 'undefined') {
+      this.initVoices();
+      this.setupAutoUnlock();
     }
+  }
+
+  private initVoices() {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+
+    const loadVoices = () => {
+      try {
+        const voices = window.speechSynthesis.getVoices();
+        if (voices && voices.length > 0) {
+          this.cachedVoices = voices;
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    loadVoices();
+    try {
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    } catch {
+      // ignore
+    }
+  }
+
+  private setupAutoUnlock() {
+    if (typeof window === 'undefined') return;
+
+    const unlock = () => {
+      if (this.unlocked) return;
+      this.unlocked = true;
+      try {
+        const ctx = this.getAudioContext();
+        if (ctx && ctx.state === 'suspended') {
+          void ctx.resume();
+        }
+        if ('speechSynthesis' in window) {
+          this.initVoices();
+          if (window.speechSynthesis.paused) {
+            window.speechSynthesis.resume();
+          }
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    window.addEventListener('pointerdown', unlock, { passive: true });
+    window.addEventListener('keydown', unlock, { passive: true });
   }
 
   private getAudioContext(): AudioContext | null {
     if (typeof window === 'undefined') return null;
     if (!this.ctx) {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (AudioCtx) {
         this.ctx = new AudioCtx();
       }
     }
     if (this.ctx && this.ctx.state === 'suspended') {
-      this.ctx.resume();
+      void this.ctx.resume().catch(() => {});
     }
     return this.ctx;
   }
 
+  private getBestSpanishVoice(): SpeechSynthesisVoice | null {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return null;
+    const voices =
+      this.cachedVoices.length > 0
+        ? this.cachedVoices
+        : window.speechSynthesis.getVoices();
+
+    if (!voices || voices.length === 0) return null;
+
+    // Priorizar voces naturales en español (Perú, Latinoamérica, México, EE.UU., España)
+    const esVoices = voices.filter(v => v.lang.toLowerCase().startsWith('es'));
+    if (esVoices.length === 0) return null;
+
+    return (
+      // Preferir voces locales (offline) en Windows/Mac para evitar que una voz online de Google se cuelgue sin red
+      esVoices.find(v => v.localService && (v.lang === 'es-PE' || v.lang === 'es-MX' || v.lang === 'es-419')) ||
+      esVoices.find(v => v.localService && v.lang.toLowerCase().startsWith('es')) ||
+      esVoices.find(v => v.lang === 'es-PE') ||
+      esVoices.find(v => v.lang === 'es-419') ||
+      esVoices.find(v => v.lang === 'es-MX') ||
+      esVoices.find(v => v.lang === 'es-US') ||
+      esVoices.find(v => v.lang === 'es-ES') ||
+      esVoices[0]
+    );
+  }
+
   public setMuted(muted: boolean) {
     this.isMuted = muted;
+    if (muted && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {
+        // ignore
+      }
+    }
   }
 
   public getIsMuted(): boolean {
@@ -107,21 +193,21 @@ class SoundSynthesizer {
 
       const now = ctx.currentTime;
       const masterGain = ctx.createGain();
-      masterGain.gain.setValueAtTime(this.volume * 0.4, now);
+      masterGain.gain.setValueAtTime(this.volume * 0.45, now);
       masterGain.connect(ctx.destination);
 
       // Tono de advertencia doble
-      [0, 0.12].forEach((offset) => {
+      [0, 0.13].forEach((offset) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.type = 'triangle';
         osc.frequency.setValueAtTime(587.33, now + offset); // D5
-        gain.gain.setValueAtTime(0.3, now + offset);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + offset + 0.09);
+        gain.gain.setValueAtTime(0.35, now + offset);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + offset + 0.1);
         osc.connect(gain);
         gain.connect(masterGain);
         osc.start(now + offset);
-        osc.stop(now + offset + 0.09);
+        osc.stop(now + offset + 0.1);
       });
 
       this.triggerHaptic([100, 50, 100]);
@@ -220,63 +306,158 @@ class SoundSynthesizer {
     }
   }
 
-  // 6. Síntesis de voz hablada en español (Dice el nombre o "No encontrado")
-  public speak(text: string) {
-    if (this.isMuted || !this.voiceEnabled || typeof window === 'undefined' || !window.speechSynthesis) return;
-    const cleanText = text.trim();
+  // 6. Síntesis de voz hablada en español blindada contra bloqueos de Chrome y GC
+  public speak(text: string, options?: { force?: boolean }) {
+    if (this.isMuted || (!this.voiceEnabled && !options?.force)) return;
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+
+    const cleanText = text
+      .replace(/^\[|\]$/g, '')
+      .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, (email) => {
+        return email.split('@')[0].replace(/[._-]/g, ' ').trim();
+      })
+      .replace(/[_-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
     if (!cleanText) return;
 
-    // Si el texto contiene un correo electrónico, extraer únicamente el alias/nombre para no pronunciar el correo
-    const speechSafeText = cleanText.replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, (email) => {
-      const alias = email.split('@')[0].replace(/[._-]/g, ' ').trim();
-      return alias;
-    }).trim();
-    if (!speechSafeText) return;
+    const nowMs = Date.now();
+    // Evitar doble disparo idéntico (< 250ms) por eventos Enter + Blur simultáneos
+    if (!options?.force && cleanText === this.lastSpokenText && nowMs - this.lastSpokenAt < 250) {
+      return;
+    }
+    this.lastSpokenText = cleanText;
+    this.lastSpokenAt = nowMs;
+
+    if (this.speechTimer) {
+      clearTimeout(this.speechTimer);
+      this.speechTimer = null;
+    }
+    if (this.watchdogTimer) {
+      clearTimeout(this.watchdogTimer);
+      this.watchdogTimer = null;
+    }
+
+    const executeSpeak = () => {
+      try {
+        const synth = window.speechSynthesis;
+        if (synth.paused) {
+          synth.resume();
+        }
+
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        this.activeUtterance = utterance; // Mantener referencia fuerte anti-GC
+
+        const bestVoice = this.getBestSpanishVoice();
+        if (bestVoice) {
+          utterance.voice = bestVoice;
+          utterance.lang = bestVoice.lang || 'es-PE';
+        } else {
+          utterance.lang = 'es-PE';
+        }
+
+        utterance.rate = 1.06;
+        utterance.pitch = 1.0;
+        utterance.volume = Math.max(0.85, this.volume);
+
+        const clearRefs = () => {
+          if (this.activeUtterance === utterance) {
+            this.activeUtterance = null;
+          }
+          if (this.watchdogTimer) {
+            clearTimeout(this.watchdogTimer);
+            this.watchdogTimer = null;
+          }
+        };
+
+        utterance.onend = clearRefs;
+        utterance.onerror = () => {
+          clearRefs();
+        };
+
+        synth.speak(utterance);
+
+        // Watchdog por si una voz remota de Chrome queda colgada en cola
+        this.watchdogTimer = setTimeout(() => {
+          try {
+            if (synth.speaking) {
+              synth.cancel();
+            }
+          } catch {
+            // ignore
+          }
+        }, 5500);
+      } catch (err) {
+        console.warn('Speech synthesis speak error:', err);
+      }
+    };
 
     try {
-      window.speechSynthesis.cancel();
-
-      const utterance = new SpeechSynthesisUtterance(speechSafeText);
-      utterance.lang = 'es-PE';
-      utterance.rate = 1.08;
-      utterance.pitch = 1.0;
-      utterance.volume = Math.max(0.7, this.volume);
-
-      // Intentar asignar una voz en español
-      try {
-        const voices = window.speechSynthesis.getVoices();
-        if (voices && voices.length > 0) {
-          const spanishVoice =
-            voices.find(v => v.lang === 'es-PE') ||
-            voices.find(v => v.lang === 'es-419') ||
-            voices.find(v => v.lang === 'es-US') ||
-            voices.find(v => v.lang === 'es-ES') ||
-            voices.find(v => v.lang.toLowerCase().startsWith('es'));
-          if (spanishVoice) {
-            utterance.voice = spanishVoice;
-          }
-        }
-      } catch {
-        // Fallback al idioma por defecto del utterance
+      const synth = window.speechSynthesis;
+      if (synth.speaking || synth.pending) {
+        synth.cancel();
+        // En Chromium es necesario esperar ~65ms tras cancel() para que no cancele también el nuevo utterance
+        this.speechTimer = setTimeout(executeSpeak, 65);
+      } else {
+        executeSpeak();
       }
-
-      if (window.speechSynthesis.paused) {
-        window.speechSynthesis.resume();
-      }
-
-      setTimeout(() => {
-        try {
-          if (window.speechSynthesis.paused) {
-            window.speechSynthesis.resume();
-          }
-          window.speechSynthesis.speak(utterance);
-        } catch (err) {
-          console.warn('Speech synthesis speak error:', err);
-        }
-      }, 20);
     } catch (e) {
       console.warn('Speech synthesis error:', e);
     }
+  }
+
+  // Feedback integral de escaneo WR en Columna D: Bip instantáneo + Voz hablada
+  public announceScanResult(params: {
+    status: 'FOUND' | 'DUPLICATE' | 'NOT_FOUND';
+    clientName?: string;
+  }) {
+    if (this.isMuted) return;
+
+    if (params.status === 'DUPLICATE') {
+      this.playDuplicate();
+      if (this.voiceEnabled) {
+        const namePart =
+          params.clientName &&
+          params.clientName !== 'CLIENTE AMEX' &&
+          params.clientName !== 'NO ASIGNADO' &&
+          params.clientName !== '[NOMBRE]'
+            ? `. ${params.clientName}`
+            : '';
+        this.speak(`Código repetido${namePart}`);
+      }
+      return;
+    }
+
+    if (params.status === 'FOUND') {
+      this.playSuccess();
+      if (this.voiceEnabled) {
+        const spokenName =
+          params.clientName &&
+          params.clientName !== 'CLIENTE AMEX' &&
+          params.clientName !== 'NO ASIGNADO' &&
+          params.clientName !== '[NOMBRE]'
+            ? params.clientName
+            : 'Encontrado';
+        this.speak(spokenName);
+      }
+      return;
+    }
+
+    // NOT_FOUND
+    this.playNotFound();
+    if (this.voiceEnabled) {
+      this.speak('No encontrado');
+    }
+  }
+
+  // Botón de prueba rápida de voz para verificar parlantes y síntesis en el navegador
+  public testVoice() {
+    const wasMuted = this.isMuted;
+    if (wasMuted) this.isMuted = false;
+    this.playSuccess();
+    this.speak('Voz de escáner Amex activada', { force: true });
+    if (wasMuted) this.isMuted = true;
   }
 
   // 7. Vibración háptica en celulares y tablets

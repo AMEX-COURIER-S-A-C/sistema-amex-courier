@@ -13,6 +13,7 @@
  *   CLOUDFLARE_R2_ACCOUNT_ID, CLOUDFLARE_R2_ACCESS_KEY_ID,
  *   CLOUDFLARE_R2_SECRET_ACCESS_KEY, CLOUDFLARE_R2_BUCKET_NAME,
  *   CLOUDFLARE_R2_ROOT_FOLDER (opcional, default 'FOLDER AMEX')
+ *   TIB_API_EMAIL, TIB_API_PASSWORD (para informes diarios TIB)
  * Opcionales:
  *   PROCESSOR (ruta del binario C#), EMPTY_TEMPLATE (plantilla fuente vacía),
  *   WORK_DIR (default os.tmpdir()/amex-jobs), POLL_INTERVAL_MS (default 5000),
@@ -29,12 +30,14 @@ const crypto = require('node:crypto');
 const { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const XLSX = require('xlsx');
 const { createProcessorClient } = require('./processor-client');
+const { createTibDailyScheduler, createTibDailySync, TIB_API_DEFAULT_URL } = require('./tib-daily-sync');
 
 // ---------------------------------------------------------------- config
 
 // Cargar .env.local de la raíz si existe (desarrollo local)
 const candidateEnvPaths = [
   path.resolve(__dirname, '..', '.env.local'),
+  path.resolve(__dirname, '..', '.env.tib'),
   path.resolve(__dirname, '..', '..', '.env.local'),
 ];
 for (const rootEnvPath of candidateEnvPaths) {
@@ -46,14 +49,16 @@ for (const rootEnvPath of candidateEnvPaths) {
         const idx = trimmed.indexOf('=');
         if (idx > 0) {
           const k = trimmed.slice(0, idx).trim();
-          const v = trimmed.slice(idx + 1).trim();
+          let v = trimmed.slice(idx + 1).trim();
+          if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+            v = v.slice(1, -1);
+          }
           if (!process.env[k]) {
             process.env[k] = v;
           }
         }
       }
     }
-    break;
   }
 }
 
@@ -67,6 +72,11 @@ const R2_ACCESS_KEY = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID || '';
 const R2_SECRET_KEY = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY || '';
 const R2_BUCKET = process.env.CLOUDFLARE_R2_BUCKET_NAME || 'amex-courier-cloud';
 const R2_ROOT = (process.env.CLOUDFLARE_R2_ROOT_FOLDER || 'FOLDER AMEX').replace(/^\/+|\/+$/g, '');
+const TIB_API_URL = (process.env.TIB_API_URL || TIB_API_DEFAULT_URL).trim();
+const TIB_API_EMAIL = (process.env.TIB_API_EMAIL || '').trim();
+const TIB_API_PASSWORD = process.env.TIB_API_PASSWORD || '';
+const TIB_DAILY_SYNC_ENABLED =
+  process.env.TIB_DAILY_SYNC_ENABLED !== 'false' && Boolean(TIB_API_EMAIL && TIB_API_PASSWORD);
 
 const defaultProcessor = process.platform === 'win32'
   ? (fs.existsSync(path.resolve(__dirname, 'processor', 'AmexInventoryProcessor', 'publish', 'win-x64', 'AmexInventoryProcessor.exe'))
@@ -366,6 +376,60 @@ async function getOrSyncCachedTibFile(tipo, r2Key, originalName) {
 
   return { filePath, hit: false };
 }
+
+const tibDailySync = createTibDailySync({
+  tibApiUrl: TIB_API_URL,
+  tibEmail: TIB_API_EMAIL,
+  tibPassword: TIB_API_PASSWORD,
+  r2Root: R2_ROOT,
+  putObject: (key, body, contentType) => s3.send(new PutObjectCommand({
+    Bucket: R2_BUCKET,
+    Key: key,
+    Body: body,
+    ContentType: contentType,
+  })),
+  deleteObject: (key) => s3.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: key })),
+  listActiveFiles: async (date) => sbFetch(
+    `/inventario_tib_diario?select=fecha,tipo,r2_key,nombre_archivo,subido_por_nombre,subido_en,es_activo&fecha=eq.${encodeURIComponent(date)}&es_activo=eq.true&limit=10`
+  ),
+  publishFiles: async (date, files) => sbFetch('/rpc/publish_daily_tib_reports', {
+    method: 'POST',
+    body: JSON.stringify({ p_fecha: date, p_files: files }),
+  }),
+  listInactiveKeys: async () => {
+    const keys = [];
+    const pageSize = 500;
+    for (let offset = 0; offset < 50000; offset += pageSize) {
+      const rows = await sbFetch(
+        `/inventario_tib_diario?select=r2_key&tipo=in.(delivered,sent,received)&es_activo=eq.false&r2_key=not.is.null&limit=${pageSize}&offset=${offset}`
+      );
+      if (!Array.isArray(rows) || rows.length === 0) break;
+      keys.push(...rows.map((row) => row.r2_key).filter(Boolean));
+      if (rows.length < pageSize) break;
+    }
+    const historyRows = await sbFetch('/rpc/get_tib_report_history_cleanup_keys', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    if (Array.isArray(historyRows)) {
+      keys.push(...historyRows.map((row) => row.r2_key).filter(Boolean));
+    }
+    return keys;
+  },
+  markHistoryKeysDeleted: (keys) => sbFetch('/rpc/mark_tib_report_history_r2_keys_deleted', {
+    method: 'POST',
+    body: JSON.stringify({ p_keys: keys }),
+  }),
+  syncCache: (tipo, r2Key, nombreArchivo) => getOrSyncCachedTibFile(tipo, r2Key, nombreArchivo),
+  withRetry,
+  log: workerLog,
+});
+
+const tibDailySyncScheduler = createTibDailyScheduler({
+  enabled: TIB_DAILY_SYNC_ENABLED,
+  sync: () => tibDailySync.runOnce(),
+  log: workerLog,
+});
 
 // ---------------------------------------------------- motor cobros (cruce TIB)
 
@@ -1076,6 +1140,7 @@ const server = http.createServer(async (req, res) => {
     tibCacheDir: TIB_CACHE_DIR,
     tibCache,
     tibMemoryCache,
+    tibDailySync: tibDailySyncScheduler.getState(),
     cgroup: readCgroup(),
     telemetry,
     time: new Date().toISOString(),
@@ -1089,6 +1154,7 @@ function requestGracefulShutdown(signal) {
 
   shutdownRequested = true;
   workerLog('info', `Señal ${signal} recibida; esperando el trabajo actual y cerrando el daemon.`);
+  tibDailySyncScheduler.stop();
   triggerImmediatePoll();
   if (server.listening) {
     server.close((error) => {
@@ -1122,6 +1188,13 @@ Promise.all([
     server.listen(PORT, HOST, () => {
       console.log(`[worker] Health en http://${HOST}:${PORT} | poll reposo ${POLL_INTERVAL_IDLE_MS}ms / activo ${POLL_INTERVAL_BUSY_MS}ms | workDir ${WORK_DIR} | cacheDir ${TIB_CACHE_DIR}`);
       void bootWarmUpTibIndices();
+      if (!TIB_DAILY_SYNC_ENABLED) {
+        workerLog('warn', 'Sincronización diaria TIB desactivada por falta de credenciales TIB_API_EMAIL/TIB_API_PASSWORD o por TIB_DAILY_SYNC_ENABLED=false.');
+      } else {
+        void tibDailySyncScheduler.start().catch((error) => {
+          workerLog('error', `No se pudo iniciar la programación diaria TIB: ${error.message}`, { error: error.stack });
+        });
+      }
     });
     workerLoopPromise = loop();
   })

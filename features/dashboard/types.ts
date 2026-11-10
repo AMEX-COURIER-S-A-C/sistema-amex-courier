@@ -54,6 +54,27 @@ export interface PackageTypeStat {
   color: string;
 }
 
+export interface PipelineStageStat {
+  id: string;
+  label: string;
+  sublabel: string;
+  count: number;
+  percentage: number;
+  color: string;
+  badge?: string;
+  targetTab?: string;
+  statusFilterKey?: PackageStatusFilter;
+}
+
+export interface DailyActivityDataPoint {
+  date: string;
+  label: string;
+  shortLabel: string;
+  ingresos: number;
+  entregas: number;
+  recaudacionSoles: number;
+}
+
 export interface ExecutiveKpis {
   // Finanzas
   totalCobradoSoles: number;
@@ -80,6 +101,8 @@ export interface ExecutiveKpis {
   tasaEntregaPorcentaje: number;
   ordenesMostradorActivas: number;
   ordenesMostradorListas: number;
+  paquetesRezagadosCount: number;
+  paquetesListosDespachoCount: number;
 }
 
 export interface DashboardTabProps {

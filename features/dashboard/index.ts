@@ -8,6 +8,8 @@ export * from './components/DashboardHeader';
 export { default as DashboardTabContent } from './components/DashboardTabContent';
 export { default as DashboardTab } from './components/DashboardTab';
 export * from './components/ExecutiveKpiGrid';
+export * from './components/LogisticsPipelineSection';
+export * from './components/ActivityVelocityChart';
 export * from './components/DailyTasksSection';
 export * from './components/AnalyticsChartsSection';
 export * from './components/LivePackagesStream';

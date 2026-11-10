@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import dynamic from 'next/dynamic';
 import { soundEffects } from '@/lib/audio/soundEffects';
 import PasteWrListModal from '@/components/modals/PasteWrListModal';
 import NewSheetModal from '@/components/modals/NewSheetModal';
@@ -14,10 +15,30 @@ import { useLiveSheetsPresence } from '../hooks/useLiveSheetsPresence';
 import { useLiveSheetsKeyboard } from '../hooks/useLiveSheetsKeyboard';
 import { sheetsService } from '../services/sheets.service';
 import { LiveSheetsHeader } from './LiveSheetsHeader';
-import { LiveSheetsToolbar } from './LiveSheetsToolbar';
-import { FormulaBar } from './FormulaBar';
-import { SpreadsheetGrid } from './SpreadsheetGrid';
 import { LiveSheetsBottomBar } from './LiveSheetsBottomBar';
+
+const UniverAmexSheet = dynamic(() => import('./UniverAmexSheet'), {
+  ssr: false,
+  loading: () => (
+    <div
+      style={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#f8fafc',
+        color: '#475569',
+        gap: '10px',
+        fontSize: '13px',
+        fontWeight: 600
+      }}
+    >
+      <div className="gsheet-spinner" />
+      <span>Cargando motor de hoja de cálculo Univer...</span>
+    </div>
+  )
+});
 
 // Re-export types and constants for backwards compatibility
 export * from '@/features/live-sheets/types';
@@ -29,7 +50,7 @@ export default function LiveSheetsTab({
 }: LiveSheetsTabProps) {
   const operatorName = currentUser?.nombre || 'Operador Lince';
 
-  // 1. Hook para datos, cálculos de filas y estadísticas
+  // 1. Hook para datos, cálculos de filas 1:1 y estadísticas
   const data = useLiveSheetsData({
     paquetes,
     operatorName
@@ -39,15 +60,16 @@ export default function LiveSheetsTab({
   const presence = useLiveSheetsPresence({
     activeHojaId: data.activeHojaId,
     currentUser,
-    activeCell: { col: 'D', row: 2, val: '' }, // Fallback inicial
+    activeCell: { col: 'D', row: 2, val: '' },
     setItems: data.setItems,
     setHojas: data.setHojas,
     setDocTitle: data.setDocTitle
   });
 
-  // 3. Hook para navegación por teclado, escaneo por pistola láser y edición directa
+  // 3. Hook para lógica de escaneo por pistola láser, voz TTS y sincronización de celdas
   const keyboard = useLiveSheetsKeyboard({
     activeHojaId: data.activeHojaId,
+    hojas: data.hojas,
     items: data.items,
     setItems: data.setItems,
     visibleRows: data.visibleRows,
@@ -79,7 +101,7 @@ export default function LiveSheetsTab({
 
   return (
     <div className="gsheet-container">
-      {/* Barra de URL + Header superior */}
+      {/* Barra superior minimalista de control AMEX WR */}
       <LiveSheetsHeader
         activeHojaId={data.activeLibroId || data.activeHojaId || ''}
         docTitle={data.docTitle}
@@ -96,17 +118,6 @@ export default function LiveSheetsTab({
         onFocusBarcodeInput={keyboard.focusBarcodeInput}
         onLoadFromDatabase={data.handleLoadFromDatabase}
         onResetScans={data.handleResetScans}
-      />
-
-      {/* Barra de herramientas */}
-      <LiveSheetsToolbar
-        onResetScans={data.handleResetScans}
-        onRefresh={() => data.fetchItems(data.activeHojaId || '')}
-        onExportExcel={data.handleExportExcel}
-        searchInSheet={data.searchInSheet}
-        setSearchInSheet={data.setSearchInSheet}
-        onOpenPasteModal={() => keyboard.setIsPasteModalOpen(true)}
-        onLoadFromDatabase={data.handleLoadFromDatabase}
         barcodeInput={keyboard.barcodeInput}
         setBarcodeInput={keyboard.setBarcodeInput}
         barcodeInputRef={keyboard.barcodeInputRef}
@@ -119,40 +130,28 @@ export default function LiveSheetsTab({
         onSyncToMainPackages={data.handleSyncToMainPackages}
       />
 
-      {/* Barra de fórmulas */}
-      <FormulaBar
-        activeCell={keyboard.activeCell}
-        setActiveCell={keyboard.setActiveCell}
-        onFormulaSubmit={keyboard.handleFormulaSubmit}
-      />
-
-      {/* Cuadrícula de hoja de cálculo */}
-      <SpreadsheetGrid
+      {/* Motor de hoja de cálculo Univer (Canvas de alto rendimiento, barra de herramientas y fx nativos) */}
+      <UniverAmexSheet
+        activeHojaId={data.activeHojaId || ''}
+        docTitle={data.docTitle}
         isLoadingItems={data.isLoadingItems}
-        isLoadingSheets={data.isLoadingSheets}
-        visibleRows={data.visibleRows}
+        items={data.items}
+        setItems={data.setItems}
+        sheetRows={data.sheetRows}
+        paquetes={paquetes}
+        operatorName={presence.operatorName}
+        extraCells={keyboard.extraCells}
+        setExtraCells={keyboard.setExtraCells}
+        persistExtraCells={keyboard.persistExtraCells}
+        resolveScannedCodeMatch={keyboard.resolveScannedCodeMatch}
+        playScanFeedback={keyboard.playScanFeedback}
         activeCell={keyboard.activeCell}
-        selectionRange={keyboard.selectionRange}
-        editingCell={keyboard.editingCell}
-        editingValue={keyboard.editingValue}
-        setEditingValue={keyboard.setEditingValue}
         setActiveCell={keyboard.setActiveCell}
-        setEditingCell={keyboard.setEditingCell}
-        getRemoteUserOnCell={presence.getRemoteUserOnCell}
-        handleCellClick={keyboard.handleCellClick}
-        handleCellDoubleClick={keyboard.handleCellDoubleClick}
-        handleCellMouseDown={keyboard.handleCellMouseDown}
-        handleCellMouseEnter={keyboard.handleCellMouseEnter}
-        commitInlineCellEdit={keyboard.commitInlineCellEdit}
-        getCellValue={keyboard.getCellValue}
-        getItemIdForRow={keyboard.getItemIdForRow}
+        setSelectionRange={keyboard.setSelectionRange}
         broadcastActiveCell={presence.broadcastActiveCell}
-        handleClearScanAtRow={data.handleClearScanAtRow}
-        onOpenPasteModal={() => keyboard.setIsPasteModalOpen(true)}
-        onLoadFromDatabase={data.handleLoadFromDatabase}
       />
 
-      {/* Barra inferior de pestañas de hojas */}
+      {/* Barra inferior de pestañas de hojas + estadísticas rápidas */}
       <LiveSheetsBottomBar
         hojas={data.activeBookSheets}
         activeHojaId={data.activeHojaId || ''}
@@ -175,7 +174,7 @@ export default function LiveSheetsTab({
           if (!data.activeHojaId || importedItems.length === 0) return;
 
           const rowsToInsert = importedItems.map((it, idx) => ({
-            hoja_id: data.activeHojaId,
+            hoja_id: data.activeHojaId!,
             codigo_wr: it.codigoWr,
             casillero: it.casillero || it.codigoWr.replace(/^[A-Za-z]+0*/, ''),
             tracking: '',

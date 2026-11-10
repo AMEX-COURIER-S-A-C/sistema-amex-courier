@@ -9,8 +9,6 @@ import {
   X,
   AlertCircle,
   ClipboardPaste,
-  Sparkles,
-  Search,
   Phone,
   MessageCircle,
   Smartphone,
@@ -22,12 +20,9 @@ import { CrearRutaInput, CrearParadaInput } from '@/types/despacho';
 import {
   ZONAS_LIMA_DISTRITOS,
   parseQuickPasteRows,
-  normalizeDistrito,
   parseWrAndBultos,
-  parseWrCodes,
   isWrOrWrList
 } from '@/lib/utils/phoneUtils';
-import { supabase } from '@/lib/supabase/client';
 import { confirmDialog } from '@/lib/dialog';
 import { despachoService } from '../services/despacho.service';
 import DistrictSearchSelect from './DistrictSearchSelect';
@@ -80,8 +75,7 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [isSearchingDb, setIsSearchingDb] = useState(false);
-  const [dbEnrichMsg, setDbEnrichMsg] = useState<string | null>(null);
+  const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
   const [activeTabBuilder, setActiveTabBuilder] = useState<'editor' | 'preview'>('editor');
 
   // Cargar usuarios registrados del sistema al abrir el modal
@@ -236,7 +230,7 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
   };
 
   // Procesar pegado de Excel (Quick Paste)
-  const handleProcessQuickPaste = async () => {
+  const handleProcessQuickPaste = () => {
     if (!pasteText.trim()) {
       setPasteError('Pega texto de filas copiado de Excel antes de procesar.');
       return;
@@ -248,173 +242,18 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
       return;
     }
 
-    // Auto-enriquecer con DB si es posible
-    const { enrichedParadas, count } = await enrichParadasWithDbData(parsed);
-
     // Si la primera fila estaba vacía (sin destinatario y sin WRs), reemplazarla
     setParadas(prev => {
       const cleanPrev = prev.filter(p => p.destinatario.trim() !== '' || (p.wrCodes && p.wrCodes.trim() !== ''));
-      return [...cleanPrev, ...enrichedParadas];
+      return [...cleanPrev, ...parsed];
     });
 
     setPasteText('');
     setShowPasteArea(false);
     setPasteError('');
 
-    if (count > 0) {
-      setDbEnrichMsg(`✨ ${enrichedParadas.length} paradas agregadas (${count} autocompletadas desde inventario).`);
-      setTimeout(() => setDbEnrichMsg(null), 5000);
-    }
-  };
-
-  // Enriquecer paradas con datos de clientes desde el inventario en Supabase
-  const enrichParadasWithDbData = async (
-    paradasToEnrich: CrearParadaInput[],
-    forceUpdateNames = false
-  ): Promise<{ enrichedParadas: CrearParadaInput[]; count: number }> => {
-    const wrCodesMap = new Map<number, string[]>();
-    const allWrsToSearch: string[] = [];
-
-    paradasToEnrich.forEach((p, idx) => {
-      const rawWr = p.wrCodes || p.wrBultos || '';
-      const codes = parseWrCodes(rawWr);
-      if (codes.length > 0) {
-        wrCodesMap.set(idx, codes);
-        codes.forEach(c => {
-          if (!allWrsToSearch.includes(c)) allWrsToSearch.push(c);
-        });
-      }
-    });
-
-    if (allWrsToSearch.length === 0) {
-      return { enrichedParadas: paradasToEnrich, count: 0 };
-    }
-
-    setIsSearchingDb(true);
-    try {
-      const { data: dbPackages, error } = await supabase
-        .from('paquetes')
-        .select(`
-          numero_recibo_bodega,
-          nombre_consignatario,
-          tracking,
-          cliente_id,
-          clientes (
-            nombre,
-            apellido,
-            telefono,
-            distrito,
-            direccion_entrega
-          )
-        `)
-        .in('numero_recibo_bodega', allWrsToSearch)
-        .is('eliminado_en', null);
-
-      if (error || !dbPackages || dbPackages.length === 0) {
-        return { enrichedParadas: paradasToEnrich, count: 0 };
-      }
-
-      const pkgMap = new Map<string, any>();
-      dbPackages.forEach((pkg: any) => {
-        if (pkg.numero_recibo_bodega) {
-          pkgMap.set(pkg.numero_recibo_bodega.toUpperCase().trim(), pkg);
-        }
-      });
-
-      let enrichedCount = 0;
-      const updated = paradasToEnrich.map((parada, idx) => {
-        const codes = wrCodesMap.get(idx);
-        if (!codes || codes.length === 0) return parada;
-
-        let matchedPkg: any = null;
-        for (const c of codes) {
-          const found = pkgMap.get(c.toUpperCase());
-          if (found) {
-            matchedPkg = found;
-            break;
-          }
-        }
-
-        if (!matchedPkg) return parada;
-
-        let changed = false;
-        const cliente = matchedPkg.clientes;
-        const cleanDbName = cliente?.nombre
-          ? `${cliente.nombre} ${cliente.apellido || ''}`.trim()
-          : String(matchedPkg.nombre_consignatario || '')
-              .replace(/^AMEX\s+(GLX\s+)?/i, '')
-              .trim();
-
-        let newDestinatario = parada.destinatario;
-        if (
-          forceUpdateNames ||
-          !parada.destinatario?.trim() ||
-          parada.destinatario.toUpperCase().startsWith('WR') ||
-          parada.destinatario === 'Cliente Pendiente'
-        ) {
-          if (cleanDbName) {
-            newDestinatario = cleanDbName;
-            changed = true;
-          }
-        }
-
-        let newDireccion = parada.direccion;
-        if (!parada.direccion?.trim() || parada.direccion === 'Dirección pendiente') {
-          if (cliente?.direccion_entrega) {
-            newDireccion = cliente.direccion_entrega;
-            changed = true;
-          }
-        }
-
-        let newDistrito = parada.distrito;
-        if (!parada.distrito || parada.distrito === 'MIRAFLORES') {
-          if (cliente?.distrito) {
-            newDistrito = normalizeDistrito(cliente.distrito);
-            changed = true;
-          }
-        }
-
-        let newTelefono = parada.telefono;
-        if (!parada.telefono?.trim()) {
-          if (cliente?.telefono) {
-            newTelefono = cliente.telefono;
-            changed = true;
-          }
-        }
-
-        if (changed) {
-          enrichedCount++;
-          return {
-            ...parada,
-            destinatario: newDestinatario || parada.destinatario,
-            direccion: newDireccion,
-            distrito: newDistrito,
-            telefono: newTelefono
-          };
-        }
-
-        return parada;
-      });
-
-      return { enrichedParadas: updated, count: enrichedCount };
-    } catch (err) {
-      console.warn('Error al buscar paquetes en DB para enriquecer paradas:', err);
-      return { enrichedParadas: paradasToEnrich, count: 0 };
-    } finally {
-      setIsSearchingDb(false);
-    }
-  };
-
-  // Botón para buscar datos en inventario para todas las paradas actuales
-  const handleBuscarEnInventario = async () => {
-    const { enrichedParadas, count } = await enrichParadasWithDbData(paradas, true);
-    setParadas(enrichedParadas);
-    if (count > 0) {
-      setDbEnrichMsg(`✅ Se autocompletaron ${count} paradas con datos de clientes desde el inventario.`);
-    } else {
-      setDbEnrichMsg('ℹ️ No se encontraron nuevos datos en el inventario para las paradas actuales.');
-    }
-    setTimeout(() => setDbEnrichMsg(null), 5000);
+    setFeedbackMsg(`${parsed.length} paradas agregadas desde el contenido pegado.`);
+    setTimeout(() => setFeedbackMsg(null), 5000);
   };
 
   // Pegar directo desde portapapeles en el textarea
@@ -456,26 +295,8 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
       handleUpdateFila(index, 'wrBultos', finalWrBultos);
 
       if (parsed.count > 1) {
-        setDbEnrichMsg(`✅ ${parsed.count} códigos WR asignados a esta parada (${finalBultos}).`);
-        setTimeout(() => setDbEnrichMsg(null), 4000);
-      }
-
-      // Si el destinatario está vacío, intentar buscar en DB
-      if (!paradas[index]?.destinatario?.trim() && parsed.wrs.length > 0) {
-        const temp = [...paradas];
-        temp[index] = {
-          ...temp[index],
-          wrCodes: normWrs,
-          bultos: finalBultos,
-          wrBultos: finalWrBultos
-        };
-        enrichParadasWithDbData(temp).then(({ enrichedParadas, count }) => {
-          if (count > 0) {
-            setParadas(enrichedParadas);
-            setDbEnrichMsg('✨ Datos de cliente autocompletados desde el inventario.');
-            setTimeout(() => setDbEnrichMsg(null), 4000);
-          }
-        });
+        setFeedbackMsg(`${parsed.count} códigos WR quedaron guardados en esta parada.`);
+        setTimeout(() => setFeedbackMsg(null), 4000);
       }
     } else {
       handleUpdateFila(index, 'wrCodes', text.trim());
@@ -1032,29 +853,6 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
                 <div className="ruta-builder-toolbar-actions">
                   <button
                     type="button"
-                    onClick={handleBuscarEnInventario}
-                    disabled={isSearchingDb}
-                    style={{
-                      background: '#fdf4ff',
-                      border: '1px solid #f0abfc',
-                      color: '#a21caf',
-                      borderRadius: '8px',
-                      padding: '7px 12px',
-                      fontSize: '12px',
-                      fontWeight: 700,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      cursor: isSearchingDb ? 'wait' : 'pointer'
-                    }}
-                    title="Busca los códigos WR en el inventario del sistema para autocompletar nombres, direcciones y celulares"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-fuchsia-600" />
-                    {isSearchingDb ? 'Buscando en Inventario...' : 'Autocompletar de Inventario'}
-                  </button>
-
-                  <button
-                    type="button"
                     onClick={() => setShowPasteArea(!showPasteArea)}
                     style={{
                       background: showPasteArea ? '#e2e8f0' : '#eff6ff',
@@ -1095,7 +893,7 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
                 </div>
               </div>
 
-              {dbEnrichMsg && (
+              {feedbackMsg && (
                 <div
                   style={{
                     background: '#ecfdf5',
@@ -1111,7 +909,7 @@ export default function RutaBuilderModal({ isOpen, onClose, onSaveRuta }: RutaBu
                   }}
                 >
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                  <span>{dbEnrichMsg}</span>
+                  <span>{feedbackMsg}</span>
                 </div>
               )}
 

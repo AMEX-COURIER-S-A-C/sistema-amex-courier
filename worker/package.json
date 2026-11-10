@@ -7,7 +7,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "start": "node worker.js"
+    "start": "node worker.js",
+    "test": "node --test tib-daily-sync.test.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1101.0",

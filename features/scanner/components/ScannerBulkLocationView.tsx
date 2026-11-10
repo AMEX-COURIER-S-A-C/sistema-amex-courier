@@ -51,7 +51,7 @@ export default function ScannerBulkLocationView({
 
   // 2. Parámetros de Destino WMS
   const [targetUbicacion, setTargetUbicacion] = useState<'AmexLince' | 'Entregado'>('AmexLince');
-  const [targetTipo, setTargetTipo] = useState<'ANAQUEL' | 'OFI' | 'DSP_Z1' | 'DSP_Z2' | 'TRANSITO'>('ANAQUEL');
+  const [targetTipo, setTargetTipo] = useState<'ANAQUEL' | 'OFI' | 'DSP_Z1' | 'DSP_Z2' | 'PAS_Z1' | 'PAS_Z2' | 'TRANSITO'>('ANAQUEL');
   const [targetAnaquel, setTargetAnaquel] = useState('A1');
   const [targetPiso, setTargetPiso] = useState('P1');
   const [targetEstadoAmex, setTargetEstadoAmex] = useState<'en_almacen' | 'listo_recojo' | 'mantener'>('en_almacen');
@@ -168,6 +168,8 @@ export default function ScannerBulkLocationView({
     if (targetTipo === 'OFI') return 'OFI';
     if (targetTipo === 'DSP_Z1') return 'DSP-Z1';
     if (targetTipo === 'DSP_Z2') return 'DSP-Z2';
+    if (targetTipo === 'PAS_Z1') return 'PAS-Z1';
+    if (targetTipo === 'PAS_Z2') return 'PAS-Z2';
     if (targetTipo === 'TRANSITO') return 'TRANSITO';
     return `${targetAnaquel}-${targetPiso}`;
   }, [targetTipo, targetAnaquel, targetPiso]);
@@ -260,6 +262,10 @@ export default function ScannerBulkLocationView({
               ? 'DSP-Z1'
               : targetTipo === 'DSP_Z2'
               ? 'DSP-Z2'
+              : targetTipo === 'PAS_Z1'
+              ? 'PAS-Z1'
+              : targetTipo === 'PAS_Z2'
+              ? 'PAS-Z2'
               : 'TRANSITO',
           targetPiso: targetTipo === 'ANAQUEL' ? targetPiso : null,
           targetPosicion: targetPosicionFinal,
@@ -606,6 +612,38 @@ export default function ScannerBulkLocationView({
                 </button>
                 <button
                   type="button"
+                  onClick={() => setTargetTipo('PAS_Z1')}
+                  style={{
+                    padding: '6px 4px',
+                    borderRadius: '6px',
+                    border: targetTipo === 'PAS_Z1' ? '2px solid #0d9488' : '1px solid #cbd5e1',
+                    background: targetTipo === 'PAS_Z1' ? '#f0fdfa' : '#ffffff',
+                    color: targetTipo === 'PAS_Z1' ? '#0f766e' : '#475569',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    cursor: 'pointer'
+                  }}
+                >
+                  🚪 Pasadizo Z1
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTargetTipo('PAS_Z2')}
+                  style={{
+                    padding: '6px 4px',
+                    borderRadius: '6px',
+                    border: targetTipo === 'PAS_Z2' ? '2px solid #0d9488' : '1px solid #cbd5e1',
+                    background: targetTipo === 'PAS_Z2' ? '#f0fdfa' : '#ffffff',
+                    color: targetTipo === 'PAS_Z2' ? '#0f766e' : '#475569',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    cursor: 'pointer'
+                  }}
+                >
+                  🚪 Pasadizo Z2
+                </button>
+                <button
+                  type="button"
                   onClick={() => setTargetTipo('TRANSITO')}
                   style={{
                     padding: '6px 4px',
@@ -674,7 +712,16 @@ export default function ScannerBulkLocationView({
               </span>
               <span
                 style={{
-                  background: '#047857',
+                  background:
+                    targetTipo === 'ANAQUEL'
+                      ? '#047857'
+                      : targetTipo === 'OFI'
+                      ? '#0284c7'
+                      : targetTipo === 'DSP_Z1' || targetTipo === 'DSP_Z2'
+                      ? '#7c3aed'
+                      : targetTipo === 'PAS_Z1' || targetTipo === 'PAS_Z2'
+                      ? '#0d9488'
+                      : '#d97706',
                   color: '#ffffff',
                   padding: '4px 12px',
                   borderRadius: '6px',

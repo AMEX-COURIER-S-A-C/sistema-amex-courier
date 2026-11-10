@@ -29,6 +29,7 @@ export interface DespachoParada {
   rutaId: string;
   orden: number;
   destinatario: string;
+  /** WRs and box count captured as route-stop text; not a link to module 3 inventory. */
   wrBultos: string;
   wrCodes?: string;
   bultos?: string;
