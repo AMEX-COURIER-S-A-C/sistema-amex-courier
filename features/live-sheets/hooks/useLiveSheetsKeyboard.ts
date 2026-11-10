@@ -59,6 +59,14 @@ export function useLiveSheetsKeyboard({
     itemId: undefined
   });
 
+  // Referencias síncronas para soportar ráfagas rápidas de pistola lectora (2-5 WRs por segundo) sin pisar filas
+  const liveItemsRef = useRef<ItemCotejo[]>(items);
+  liveItemsRef.current = items;
+  const liveActiveRowRef = useRef<number>(activeCell.row);
+  useEffect(() => {
+    liveActiveRowRef.current = activeCell.row;
+  }, [activeCell.row]);
+
   // Range Selection
   const [selectionRange, setSelectionRange] = useState<CellSelectionRange | null>({
     startCol: 'D',
@@ -263,14 +271,20 @@ export function useLiveSheetsKeyboard({
   );
 
   // Procesar escaneo por pistola láser o cámara hacia la Columna D (en COTEJO) o Columna A (en WR_LOOKUP)
+  // Optimizado con refs síncronos y filas optimistas para soportar ráfagas de 2 a 5 WRs por segundo sin pisar ni perder códigos
   const processBarcodeScan = useCallback(
     async (scannedText: string, specificItemIndex?: number) => {
       if (!activeHojaId || !scannedText.trim() || templateMode === 'BLANK') return;
+      if (barcodeInputRef.current) {
+        barcodeInputRef.current.value = '';
+      }
       setBarcodeInput('');
 
       const cleanRaw = scannedText.trim().toUpperCase().replace(/\s+/g, '');
       const cleanDigits = cleanRaw.replace(/^[A-Za-z]+0*/, '');
       const nowIso = new Date().toISOString();
+      const currentItems = liveItemsRef.current;
+      const currentRowCursor = liveActiveRowRef.current;
 
       // MODO 3: ESCÁNER WR CONSULTA BD (escribe en Columna A y rellena B..F con datos de paquetes)
       if (templateMode === 'WR_LOOKUP') {
@@ -310,45 +324,46 @@ export function useLiveSheetsKeyboard({
         const rowEstado: TipoEstadoItemCotejo = isFound ? 'ESCANEADO' : 'NO_LISTADO';
 
         let targetIdx = -1;
-        if (typeof specificItemIndex === 'number' && specificItemIndex >= 0 && specificItemIndex < items.length) {
+        if (typeof specificItemIndex === 'number' && specificItemIndex >= 0 && specificItemIndex < currentItems.length) {
           targetIdx = specificItemIndex;
-        } else if (activeCell.row >= 2) {
-          const candidateIdx = activeCell.row - 2;
-          if (candidateIdx >= 0 && candidateIdx < items.length) {
-            if (!items[candidateIdx].codigoWr || !items[candidateIdx].codigoWr?.trim()) {
+        } else if (currentRowCursor >= 2) {
+          const candidateIdx = currentRowCursor - 2;
+          if (candidateIdx >= 0 && candidateIdx < currentItems.length) {
+            if (!currentItems[candidateIdx].codigoWr || !currentItems[candidateIdx].codigoWr?.trim()) {
               targetIdx = candidateIdx;
             } else {
-              const firstEmpty = items.findIndex(it => !it.codigoWr || !it.codigoWr.trim());
+              const firstEmpty = currentItems.findIndex(it => !it.codigoWr || !it.codigoWr.trim());
               targetIdx = firstEmpty !== -1 ? firstEmpty : -1;
             }
           }
         } else {
-          targetIdx = items.findIndex(it => !it.codigoWr || !it.codigoWr.trim());
+          targetIdx = currentItems.findIndex(it => !it.codigoWr || !it.codigoWr.trim());
         }
 
-        if (targetIdx !== -1 && items[targetIdx]) {
-          const targetItem = items[targetIdx];
+        if (targetIdx !== -1 && currentItems[targetIdx]) {
+          const targetItem = currentItems[targetIdx];
           const nextRowNum = targetIdx + 3;
 
-          setItems(prev =>
-            prev.map((it, idx) =>
-              idx === targetIdx
-                ? {
-                    ...it,
-                    codigoWr: resolvedWr,
-                    consignatario: displayClient,
-                    tracking: displayTracking,
-                    pesoKg: displayPeso,
-                    posicionEstante: displayUbicacion,
-                    notas: displayEstadoAmex,
-                    estado: rowEstado,
-                    escaneadoEn: nowIso,
-                    escaneadoPor: operatorName,
-                    vecesEscaneado: (it.vecesEscaneado || 0) + 1
-                  }
-                : it
-            )
+          const updatedList = currentItems.map((it, idx) =>
+            idx === targetIdx
+              ? {
+                  ...it,
+                  codigoWr: resolvedWr,
+                  consignatario: displayClient,
+                  tracking: displayTracking,
+                  pesoKg: displayPeso,
+                  posicionEstante: displayUbicacion,
+                  notas: displayEstadoAmex,
+                  estado: rowEstado,
+                  escaneadoEn: nowIso,
+                  escaneadoPor: operatorName,
+                  vecesEscaneado: (it.vecesEscaneado || 0) + 1
+                }
+              : it
           );
+          liveItemsRef.current = updatedList;
+          liveActiveRowRef.current = nextRowNum;
+          setItems(updatedList);
 
           setActiveCell({
             col: 'A',
@@ -357,23 +372,58 @@ export function useLiveSheetsKeyboard({
             itemId: getItemIdForRow(nextRowNum)
           });
 
-          await supabase
-            .from('hojas_cotejo_items')
-            .update({
-              codigo_wr: resolvedWr,
-              consignatario: displayClient,
-              tracking: displayTracking,
-              peso_kg: displayPeso,
-              posicion_estante: displayUbicacion,
-              notas: displayEstadoAmex,
-              estado: rowEstado,
-              escaneado_en: nowIso,
-              escaneado_por: operatorName,
-              veces_escaneado: (targetItem.vecesEscaneado || 0) + 1,
-              actualizado_en: nowIso
-            })
-            .eq('id', targetItem.id);
+          if (!targetItem.id.startsWith('temp-')) {
+            await supabase
+              .from('hojas_cotejo_items')
+              .update({
+                codigo_wr: resolvedWr,
+                consignatario: displayClient,
+                tracking: displayTracking,
+                peso_kg: displayPeso,
+                posicion_estante: displayUbicacion,
+                notas: displayEstadoAmex,
+                estado: rowEstado,
+                escaneado_en: nowIso,
+                escaneado_por: operatorName,
+                veces_escaneado: (targetItem.vecesEscaneado || 0) + 1,
+                actualizado_en: nowIso
+              })
+              .eq('id', targetItem.id);
+          }
         } else {
+          const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+          const newOrder = currentItems.length + 1;
+          const nextRowNum = currentItems.length + 3;
+          const optimisticRow: ItemCotejo = {
+            id: tempId,
+            hojaId: activeHojaId,
+            codigoWr: resolvedWr,
+            casillero: cleanDigits,
+            consignatario: displayClient,
+            tracking: displayTracking,
+            pesoKg: displayPeso,
+            posicionEstante: displayUbicacion,
+            notas: displayEstadoAmex,
+            estado: rowEstado,
+            escaneadoEn: nowIso,
+            escaneadoPor: operatorName,
+            vecesEscaneado: 1,
+            orden: newOrder,
+            creadoEn: nowIso,
+            actualizadoEn: nowIso
+          };
+
+          const optimisticList = [...currentItems, optimisticRow];
+          liveItemsRef.current = optimisticList;
+          liveActiveRowRef.current = nextRowNum;
+          setItems(optimisticList);
+          setActiveCell({
+            col: 'A',
+            row: nextRowNum,
+            val: '',
+            itemId: undefined
+          });
+
           const { data: newRow } = await supabase
             .from('hojas_cotejo_items')
             .insert({
@@ -389,42 +439,27 @@ export function useLiveSheetsKeyboard({
               escaneado_en: nowIso,
               escaneado_por: operatorName,
               veces_escaneado: 1,
-              orden: items.length + 1
+              orden: newOrder
             })
             .select()
             .single();
 
           if (newRow) {
             setItems(prev => {
-              if (prev.some(it => it.id === newRow.id)) return prev;
-              return [
-                ...prev,
-                {
-                  id: newRow.id,
-                  hojaId: newRow.hoja_id,
-                  codigoWr: resolvedWr,
-                  casillero: cleanDigits,
-                  consignatario: displayClient,
-                  tracking: displayTracking,
-                  pesoKg: displayPeso,
-                  posicionEstante: displayUbicacion,
-                  notas: displayEstadoAmex,
-                  estado: rowEstado,
-                  escaneadoEn: nowIso,
-                  escaneadoPor: operatorName,
-                  vecesEscaneado: 1,
-                  orden: newRow.orden || items.length + 1,
-                  creadoEn: newRow.creado_en,
-                  actualizadoEn: newRow.actualizado_en
-                }
-              ];
-            });
-
-            setActiveCell({
-              col: 'A',
-              row: items.length + 3,
-              val: '',
-              itemId: newRow.id
+              const reconciled = prev
+                .filter(it => it.id !== newRow.id || it.id === tempId)
+                .map(it =>
+                  it.id === tempId
+                    ? {
+                        ...it,
+                        id: newRow.id,
+                        creadoEn: newRow.creado_en,
+                        actualizadoEn: newRow.actualizado_en
+                      }
+                    : it
+                );
+              liveItemsRef.current = reconciled;
+              return reconciled;
             });
           }
         }
@@ -433,21 +468,21 @@ export function useLiveSheetsKeyboard({
 
       // MODO 2: HOJA DE COTEJO (escribe en Columna D y compara contra Columnas B/C de la hoja)
       let targetItemIndex = -1;
-      if (typeof specificItemIndex === 'number' && specificItemIndex >= 0 && specificItemIndex < items.length) {
+      if (typeof specificItemIndex === 'number' && specificItemIndex >= 0 && specificItemIndex < currentItems.length) {
         targetItemIndex = specificItemIndex;
-      } else if (activeCell.row >= 2) {
-        const candidateIdx = activeCell.row - 2;
-        if (candidateIdx >= 0 && candidateIdx < items.length) {
+      } else if (currentRowCursor >= 2) {
+        const candidateIdx = currentRowCursor - 2;
+        if (candidateIdx >= 0 && candidateIdx < currentItems.length) {
           // Si la fila seleccionada en D está vacía, usarla; si ya está ocupada, buscar la primera fila vacía en D
-          if (!items[candidateIdx].tracking || !items[candidateIdx].tracking?.trim()) {
+          if (!currentItems[candidateIdx].tracking || !currentItems[candidateIdx].tracking?.trim()) {
             targetItemIndex = candidateIdx;
           } else {
-            const firstEmptyIdx = items.findIndex(it => !it.tracking || !it.tracking.trim());
+            const firstEmptyIdx = currentItems.findIndex(it => !it.tracking || !it.tracking.trim());
             targetItemIndex = firstEmptyIdx !== -1 ? firstEmptyIdx : -1;
           }
         }
       } else {
-        targetItemIndex = items.findIndex(it => !it.tracking || !it.tracking.trim());
+        targetItemIndex = currentItems.findIndex(it => !it.tracking || !it.tracking.trim());
       }
 
       const match = resolveScannedCodeMatch(scannedText, targetItemIndex !== -1 ? targetItemIndex : undefined);
@@ -459,25 +494,26 @@ export function useLiveSheetsKeyboard({
       const newEstado: TipoEstadoItemCotejo = isMatch ? 'ESCANEADO' : 'NO_LISTADO';
       const finalNotes = isMatch ? resolvedName : 'NO ASIGNADO';
 
-      if (targetItemIndex !== -1 && items[targetItemIndex]) {
-        const targetItem = items[targetItemIndex];
+      if (targetItemIndex !== -1 && currentItems[targetItemIndex]) {
+        const targetItem = currentItems[targetItemIndex];
         const nextRowNumber = targetItemIndex + 3; // Mover a la siguiente fila (1-based)
 
-        setItems(prev =>
-          prev.map((it, idx) =>
-            idx === targetItemIndex
-              ? {
-                  ...it,
-                  tracking: cleanCode,
-                  notas: finalNotes,
-                  estado: newEstado,
-                  escaneadoEn: nowIso,
-                  escaneadoPor: operatorName,
-                  vecesEscaneado: (it.vecesEscaneado || 0) + 1
-                }
-              : it
-          )
+        const updatedList = currentItems.map((it, idx) =>
+          idx === targetItemIndex
+            ? {
+                ...it,
+                tracking: cleanCode,
+                notas: finalNotes,
+                estado: newEstado,
+                escaneadoEn: nowIso,
+                escaneadoPor: operatorName,
+                vecesEscaneado: (it.vecesEscaneado || 0) + 1
+              }
+            : it
         );
+        liveItemsRef.current = updatedList;
+        liveActiveRowRef.current = nextRowNumber;
+        setItems(updatedList);
 
         setActiveCell({
           col: 'D',
@@ -486,20 +522,55 @@ export function useLiveSheetsKeyboard({
           itemId: getItemIdForRow(nextRowNumber)
         });
 
-        await supabase
-          .from('hojas_cotejo_items')
-          .update({
-            tracking: cleanCode,
-            notas: finalNotes,
-            estado: newEstado,
-            escaneado_en: nowIso,
-            escaneado_por: operatorName,
-            veces_escaneado: (targetItem.vecesEscaneado || 0) + 1,
-            actualizado_en: nowIso
-          })
-          .eq('id', targetItem.id);
+        if (!targetItem.id.startsWith('temp-')) {
+          await supabase
+            .from('hojas_cotejo_items')
+            .update({
+              tracking: cleanCode,
+              notas: finalNotes,
+              estado: newEstado,
+              escaneado_en: nowIso,
+              escaneado_por: operatorName,
+              veces_escaneado: (targetItem.vecesEscaneado || 0) + 1,
+              actualizado_en: nowIso
+            })
+            .eq('id', targetItem.id);
+        }
       } else {
-        // Insertar nueva fila al final de la hoja
+        // Insertar nueva fila optimista al instante en memoria antes del await de red
+        const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const newOrder = currentItems.length + 1;
+        const nextRowNumber = currentItems.length + 3;
+        const optimisticRow: ItemCotejo = {
+          id: tempId,
+          hojaId: activeHojaId,
+          codigoWr: '',
+          casillero: cleanDigits,
+          consignatario: '',
+          tracking: cleanCode,
+          pesoKg: 0,
+          posicionEstante: 'REC',
+          notas: finalNotes,
+          estado: newEstado,
+          escaneadoEn: nowIso,
+          escaneadoPor: operatorName,
+          vecesEscaneado: 1,
+          orden: newOrder,
+          creadoEn: nowIso,
+          actualizadoEn: nowIso
+        };
+
+        const optimisticList = [...currentItems, optimisticRow];
+        liveItemsRef.current = optimisticList;
+        liveActiveRowRef.current = nextRowNumber;
+        setItems(optimisticList);
+        setActiveCell({
+          col: 'D',
+          row: nextRowNumber,
+          val: '',
+          itemId: undefined
+        });
+
         const { data: newRow } = await supabase
           .from('hojas_cotejo_items')
           .insert({
@@ -513,49 +584,34 @@ export function useLiveSheetsKeyboard({
             escaneado_en: nowIso,
             escaneado_por: operatorName,
             veces_escaneado: 1,
-            orden: items.length + 1
+            orden: newOrder
           })
           .select()
           .single();
 
         if (newRow) {
           setItems(prev => {
-            if (prev.some(it => it.id === newRow.id)) return prev;
-            return [
-              ...prev,
-              {
-                id: newRow.id,
-                hojaId: newRow.hoja_id,
-                codigoWr: '',
-                casillero: cleanDigits,
-                consignatario: '',
-                tracking: cleanCode,
-                notas: finalNotes,
-                estado: newEstado,
-                escaneadoEn: nowIso,
-                escaneadoPor: operatorName,
-                vecesEscaneado: 1,
-                orden: newRow.orden || items.length + 1,
-                creadoEn: newRow.creado_en,
-                actualizadoEn: newRow.actualizado_en
-              }
-            ];
-          });
-
-          setActiveCell({
-            col: 'D',
-            row: items.length + 3,
-            val: '',
-            itemId: newRow.id
+            const reconciled = prev
+              .filter(it => it.id !== newRow.id || it.id === tempId)
+              .map(it =>
+                it.id === tempId
+                  ? {
+                      ...it,
+                      id: newRow.id,
+                      creadoEn: newRow.creado_en,
+                      actualizadoEn: newRow.actualizado_en
+                    }
+                  : it
+              );
+            liveItemsRef.current = reconciled;
+            return reconciled;
           });
         }
       }
     },
     [
-      activeCell.row,
       activeHojaId,
       getItemIdForRow,
-      items,
       operatorName,
       paquetes,
       playScanFeedback,
@@ -567,8 +623,13 @@ export function useLiveSheetsKeyboard({
 
   const handleManualScanSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (barcodeInput.trim()) {
-      processBarcodeScan(barcodeInput.trim());
+    const rawDomValue = barcodeInputRef.current?.value?.trim() || barcodeInput.trim();
+    if (rawDomValue) {
+      if (barcodeInputRef.current) {
+        barcodeInputRef.current.value = '';
+      }
+      setBarcodeInput('');
+      void processBarcodeScan(rawDomValue);
       focusBarcodeInput();
     }
   };

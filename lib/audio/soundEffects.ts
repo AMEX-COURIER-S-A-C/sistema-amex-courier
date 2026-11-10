@@ -393,18 +393,21 @@ class SoundSynthesizer {
       }
     };
 
-    try {
-      const synth = window.speechSynthesis;
-      if (synth.speaking || synth.pending) {
-        synth.cancel();
-        // En Chromium es necesario esperar ~65ms tras cancel() para que no cancele también el nuevo utterance
-        this.speechTimer = setTimeout(executeSpeak, 65);
-      } else {
-        executeSpeak();
+    // Diferir la llamada IPC de speechSynthesis fuera del ciclo síncrono de teclado/pistola USB (evita micro-bloqueos en ráfagas)
+    this.speechTimer = setTimeout(() => {
+      try {
+        const synth = window.speechSynthesis;
+        if (synth.speaking || synth.pending) {
+          synth.cancel();
+          // En Chromium es necesario esperar ~55ms tras cancel() para que no cancele también el nuevo utterance
+          this.speechTimer = setTimeout(executeSpeak, 55);
+        } else {
+          executeSpeak();
+        }
+      } catch (e) {
+        console.warn('Speech synthesis error:', e);
       }
-    } catch (e) {
-      console.warn('Speech synthesis error:', e);
-    }
+    }, 35);
   }
 
   // Feedback integral de escaneo WR en Columna D: Bip instantáneo + Voz hablada (Nombre del cliente o 'No encontrado')

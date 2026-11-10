@@ -121,6 +121,21 @@ export function useLiveSheetsPresence({
 
           setItems(prev => {
             if (prev.some(it => it.id === row.id)) return prev;
+            const tempMatchIdx = prev.findIndex(
+              it => it.id.startsWith('temp-') && it.orden === row.orden
+            );
+            if (tempMatchIdx !== -1) {
+              return prev.map((it, idx) =>
+                idx === tempMatchIdx
+                  ? {
+                      ...it,
+                      id: row.id,
+                      creadoEn: row.creado_en ?? it.creadoEn,
+                      actualizadoEn: row.actualizado_en ?? it.actualizadoEn
+                    }
+                  : it
+              );
+            }
             const mapped: ItemCotejo = {
               id: row.id,
               hojaId: row.hoja_id,

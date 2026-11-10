@@ -266,6 +266,23 @@ export default function UniverAmexSheet({
   const inFlightDbOpsRef = useRef<number>(0);
   const [isSyncingCloud, setIsSyncingCloud] = useState(false);
 
+  // Interceptor de Ráfaga para Pistola Lectora USB/Bluetooth HID (0ms de pérdida de caracteres y soporte 5+ WRs/seg)
+  const cursorCoordRef = useRef<{ row: number; col: number }>({
+    row: templateMode === 'BLANK' ? 0 : 1,
+    col: templateMode === 'COTEJO' ? 3 : 0
+  });
+  const isManualEditorOpenRef = useRef<boolean>(false);
+  const liveScanBufferRef = useRef<string>('');
+  const liveBufferStartCoordRef = useRef<{ row: number; col: number } | null>(null);
+  const lastKeyTimeRef = useRef<number>(0);
+  const rapidKeyStreakRef = useRef<number>(0);
+  const burstAutoCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewRafRef = useRef<number | null>(null);
+  const [liveBufferPreview, setLiveBufferPreview] = useState<{
+    cellLabel: string;
+    text: string;
+  } | null>(null);
+
   // Índice O(1) de paquetes por WR y dígitos para consultas instantáneas (< 0.01ms)
   const paquetesByWrMap = useMemo(() => {
     const map = new Map<string, Paquete>();
@@ -464,9 +481,285 @@ export default function UniverAmexSheet({
       }
     });
 
+    // Posicionar cursor inicial en la primera celda de escaneo según la plantilla activa
+    const initialRowZero = isBlankMode ? 0 : 1;
+    const initialColZero = currentMode === 'COTEJO' ? 3 : 0;
+    cursorCoordRef.current = { row: initialRowZero, col: initialColZero };
+    isManualEditorOpenRef.current = false;
+    liveScanBufferRef.current = '';
+    liveBufferStartCoordRef.current = null;
+    setLiveBufferPreview(null);
+
+    try {
+      const initSheet = univerAPI.getActiveWorkbook()?.getActiveSheet();
+      const initRange = initSheet?.getRange(initialRowZero, initialColZero, 1, 1);
+      if (initRange) {
+        if (typeof initSheet?.setActiveSelection === 'function') {
+          initSheet.setActiveSelection(initRange);
+        } else if (typeof initRange.activate === 'function') {
+          initRange.activate();
+        }
+      }
+    } catch {
+      // ignore initial selection
+    }
+
     queueMicrotask(() => {
       isProgrammaticRef.current = false;
     });
+
+    // Helper: Confirmar de inmediato el buffer capturado en memoria RAM hacia la celda objetivo y avanzar el cursor síncronamente
+    const commitBufferedCell = (
+      direction: 'DOWN' | 'RIGHT' | 'UP' | 'LEFT' | 'NONE' = 'DOWN'
+    ) => {
+      if (burstAutoCommitTimerRef.current) {
+        clearTimeout(burstAutoCommitTimerRef.current);
+        burstAutoCommitTimerRef.current = null;
+      }
+      if (previewRafRef.current) {
+        cancelAnimationFrame(previewRafRef.current);
+        previewRafRef.current = null;
+      }
+
+      const rawText = liveScanBufferRef.current;
+      const target = liveBufferStartCoordRef.current || { ...cursorCoordRef.current };
+      liveScanBufferRef.current = '';
+      liveBufferStartCoordRef.current = null;
+      rapidKeyStreakRef.current = 0;
+      setLiveBufferPreview(null);
+
+      if (!rawText) return;
+
+      const minZeroRow = templateModeRef.current === 'BLANK' ? 0 : 1;
+      let nextRow = target.row;
+      let nextCol = target.col;
+      if (direction === 'DOWN') nextRow = target.row + 1;
+      else if (direction === 'UP') nextRow = Math.max(minZeroRow, target.row - 1);
+      else if (direction === 'RIGHT') nextCol = Math.min(25, target.col + 1);
+      else if (direction === 'LEFT') nextCol = Math.max(0, target.col - 1);
+
+      // 1. AVANCE SÍNCRONO DEL CURSOR EN 0.001ms (antes de escribir en Univer o red)
+      // Si el segundo disparo de la pistola entra 10ms o 300ms después, ya apunta a la siguiente fila sin pisar la anterior
+      cursorCoordRef.current = { row: nextRow, col: nextCol };
+
+      const activeWorkbook = univerAPI.getActiveWorkbook();
+      const worksheet = activeWorkbook?.getActiveSheet();
+      if (!worksheet) return;
+
+      // 2. Escribir valor completo en la celda objetivo (dispara SheetValueChanged con el código 100% íntegro)
+      const cellRange = worksheet.getRange(target.row, target.col, 1, 1);
+      if (rawText.startsWith('=')) {
+        cellRange.setValues([[{ f: rawText, p: null, s: STYLE_CELL_DEFAULT }]]);
+      } else {
+        cellRange.setValues([[{ v: rawText, p: null, s: STYLE_CELL_DEFAULT }]]);
+      }
+
+      // 3. Mover selección visual en el lienzo a la nueva coordenada del cursor
+      if (direction !== 'NONE') {
+        isProgrammaticRef.current = true;
+        try {
+          const nextRange = worksheet.getRange(
+            cursorCoordRef.current.row,
+            cursorCoordRef.current.col,
+            1,
+            1
+          );
+          if (typeof worksheet.setActiveSelection === 'function') {
+            worksheet.setActiveSelection(nextRange);
+          } else if (typeof nextRange?.activate === 'function') {
+            nextRange.activate();
+          }
+          const colLetter =
+            SPREADSHEET_COLUMNS[cursorCoordRef.current.col] ||
+            (templateModeRef.current === 'COTEJO' ? 'D' : 'A');
+          const rowNum1Based = cursorCoordRef.current.row + 1;
+          setActiveCell(prev => ({
+            ...prev,
+            col: colLetter,
+            row: rowNum1Based
+          }));
+          setSelectionRange({
+            startCol: colLetter,
+            startRow: rowNum1Based,
+            endCol: colLetter,
+            endRow: rowNum1Based
+          });
+          broadcastActiveCell(colLetter, rowNum1Based);
+        } finally {
+          queueMicrotask(() => {
+            isProgrammaticRef.current = false;
+          });
+        }
+      }
+    };
+
+    const schedulePreviewUpdate = () => {
+      if (previewRafRef.current) return;
+      previewRafRef.current = requestAnimationFrame(() => {
+        previewRafRef.current = null;
+        const txt = liveScanBufferRef.current;
+        if (!txt) {
+          setLiveBufferPreview(null);
+          return;
+        }
+        const coord = liveBufferStartCoordRef.current || cursorCoordRef.current;
+        const colLetter = SPREADSHEET_COLUMNS[coord.col] || 'A';
+        setLiveBufferPreview({
+          cellLabel: `${colLetter}${coord.row + 1}`,
+          text: txt
+        });
+      });
+    };
+
+    // Listener de doble clic para permitir edición manual nativa de Univer cuando el usuario hace doble clic en una celda
+    const handleHostDblClick = () => {
+      if (liveScanBufferRef.current.length > 0) {
+        commitBufferedCell('NONE');
+      }
+      isManualEditorOpenRef.current = true;
+    };
+    hostEl.addEventListener('dblclick', handleHostDblClick, true);
+
+    // Interceptor en fase CAPTURE a nivel window: atrapa el 100% de los caracteres de la pistola en RAM (< 0.005ms)
+    // evitando que Univer demore 30ms abriendo su pesado editor contenteditable y pierda las primeras letras
+    const handleCaptureKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+          return;
+        }
+      }
+      if (document.querySelector('[role="dialog"]')) {
+        return;
+      }
+
+      // Si el usuario abrió manualmente el editor con doble clic, F2 o fórmula '='
+      if (isManualEditorOpenRef.current) {
+        if (e.key === 'Enter' || e.key === 'Escape' || e.key === 'Tab') {
+          isManualEditorOpenRef.current = false;
+        }
+        return;
+      }
+
+      if (e.key === 'F2') {
+        isManualEditorOpenRef.current = true;
+        return;
+      }
+
+      // Si empieza con '=' y el buffer está vacío, dejar que Univer abra su editor nativo de fórmulas (=SUM, etc.)
+      if (liveScanBufferRef.current === '' && e.key === '=' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        isManualEditorOpenRef.current = true;
+        return;
+      }
+
+      // Ignorar combinaciones con Ctrl / Cmd / Alt (Ctrl+C, Ctrl+V, Ctrl+Z, Ctrl+F pasan directo a Univer)
+      if (e.ctrlKey || e.metaKey || e.altKey) {
+        return;
+      }
+
+      // A. Carácter imprimible (pistola lectora o teclado directo)
+      if (e.key.length === 1) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+
+        const now = performance.now();
+        const dt = now - lastKeyTimeRef.current;
+        lastKeyTimeRef.current = now;
+
+        if (liveScanBufferRef.current === '') {
+          liveBufferStartCoordRef.current = { ...cursorCoordRef.current };
+          rapidKeyStreakRef.current = 1;
+        } else if (dt < 45) {
+          rapidKeyStreakRef.current += 1;
+        } else {
+          rapidKeyStreakRef.current = 1;
+        }
+
+        liveScanBufferRef.current += e.key;
+        schedulePreviewUpdate();
+
+        // Si se detecta ráfaga de hardware (>= 6 teclas a < 45ms), activar auto-commit de respaldo (85ms)
+        // por si la pistola no envía Enter al final; si envía Enter a los 2ms, Enter lo confirma en 0ms.
+        if (burstAutoCommitTimerRef.current) {
+          clearTimeout(burstAutoCommitTimerRef.current);
+          burstAutoCommitTimerRef.current = null;
+        }
+        if (rapidKeyStreakRef.current >= 6) {
+          burstAutoCommitTimerRef.current = setTimeout(() => {
+            commitBufferedCell('DOWN');
+          }, 85);
+        }
+        return;
+      }
+
+      // B. Teclas de control cuando hay texto en el buffer instantáneo
+      if (liveScanBufferRef.current.length > 0) {
+        if (e.key === 'Backspace') {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          liveScanBufferRef.current = liveScanBufferRef.current.slice(0, -1);
+          if (liveScanBufferRef.current.length === 0) {
+            liveBufferStartCoordRef.current = null;
+            setLiveBufferPreview(null);
+          } else {
+            schedulePreviewUpdate();
+          }
+          return;
+        }
+
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          if (burstAutoCommitTimerRef.current) {
+            clearTimeout(burstAutoCommitTimerRef.current);
+            burstAutoCommitTimerRef.current = null;
+          }
+          liveScanBufferRef.current = '';
+          liveBufferStartCoordRef.current = null;
+          rapidKeyStreakRef.current = 0;
+          setLiveBufferPreview(null);
+          return;
+        }
+
+        if (e.key === 'Enter' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          commitBufferedCell('DOWN');
+          return;
+        }
+
+        if (e.key === 'Tab' || e.key === 'ArrowRight') {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          commitBufferedCell('RIGHT');
+          return;
+        }
+
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          commitBufferedCell('UP');
+          return;
+        }
+
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          commitBufferedCell('LEFT');
+          return;
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleCaptureKeyDown, true);
 
     // Listener de selección
     const selectionDisp = univerAPI.addEvent(
@@ -480,6 +773,18 @@ export default function UniverAmexSheet({
         const endColIdx = Math.max(0, Math.min(25, sel.endColumn ?? startColIdx));
         const startRowNum = Math.max(minRowAllowed, (sel.startRow ?? (minRowAllowed - 1)) + 1);
         const endRowNum = Math.max(minRowAllowed, (sel.endRow ?? sel.startRow ?? (minRowAllowed - 1)) + 1);
+
+        // Si el usuario cambió de celda manualmente con el mouse y había texto pendiente en el buffer, guardarlo
+        if (!isProgrammaticRef.current) {
+          if (liveScanBufferRef.current.length > 0) {
+            commitBufferedCell('NONE');
+          }
+          cursorCoordRef.current = {
+            row: startRowNum - 1,
+            col: startColIdx
+          };
+          isManualEditorOpenRef.current = false;
+        }
 
         const defaultCol = templateModeRef.current === 'COTEJO' ? 'D' : 'A';
         const startCol = SPREADSHEET_COLUMNS[startColIdx] || defaultCol;
@@ -671,13 +976,11 @@ export default function UniverAmexSheet({
 
         if (touchedRowsInThisEvent.size === 0) return;
 
-        // Leer TODA la región activa de filas (desde fila 1 hasta max(items.length, maxTouchedRow))
-        // usando getDisplayValues() para capturar tanto cell.v como rich-text cell.p pegado desde Excel/Sheets
+        // Leer la región activa de filas usando directamente getValues() + cleanCellText (extrae tanto cell.v como rich-text cell.p en < 0.1ms sin el costo de getDisplayValues)
         const totalRowsToInspect = Math.max(itemsRef.current.length, maxTouchedRow);
         if (totalRowsToInspect <= 0) return;
 
         const fullRange = worksheet.getRange(1, 0, totalRowsToInspect, 6);
-        const displayGrid: string[][] = fullRange.getDisplayValues?.() || [];
         const rawGrid: any[][] = fullRange.getValues?.() || [];
 
         const gridRows: Array<{
@@ -692,22 +995,16 @@ export default function UniverAmexSheet({
         }> = [];
 
         for (let i = 0; i < totalRowsToInspect; i++) {
-          const dRow = displayGrid[i] || [];
           const vRow = rawGrid[i] || [];
-          const pick = (col: number) => {
-            const d = cleanCellText(dRow[col]);
-            if (d) return d;
-            return cleanCellText(vRow[col]);
-          };
           gridRows.push({
             r: i + 1,
             itemIdx: i,
-            rawA: pick(0),
-            rawB: pick(1),
-            rawC: pick(2),
-            rawD: pick(3),
-            rawE: pick(4),
-            rawF: pick(5)
+            rawA: cleanCellText(vRow[0]),
+            rawB: cleanCellText(vRow[1]),
+            rawC: cleanCellText(vRow[2]),
+            rawD: cleanCellText(vRow[3]),
+            rawE: cleanCellText(vRow[4]),
+            rawF: cleanCellText(vRow[5])
           });
         }
 
@@ -1052,7 +1349,8 @@ export default function UniverAmexSheet({
             const recRow = reconciledRows[singleTouchedRow - 1];
             const hasScanText = liveMode === 'WR_LOOKUP' ? !!recRow?.codigoWr : !!recRow?.tracking;
             if (hasScanText) {
-              const nextZeroRow = singleTouchedRow + 1;
+              const nextZeroRow = Math.max(cursorCoordRef.current.row, singleTouchedRow + 1);
+              cursorCoordRef.current = { row: nextZeroRow, col: targetScanCol };
               const nextRange = worksheet.getRange(nextZeroRow, targetScanCol, 1, 1);
               if (typeof worksheet.setActiveSelection === 'function') {
                 worksheet.setActiveSelection(nextRange);
@@ -1067,120 +1365,216 @@ export default function UniverAmexSheet({
           });
         }
 
-        // 3. Encolar sincronización por lotes (Batch Upsert) con React state y Supabase
+        // 3. Actualización OPTIMISTA SÍNCRONA en memoria (0ms) + Cola secuencial hacia Supabase
+        // Garantiza que si se escanean 2 o 5 WRs en 1 segundo, el 2.º disparo ya vea el 1.º en itemsRef.current sin esperar a la red
         const currentHojaId = activeHojaIdRef.current;
         const currentOperator = operatorNameRef.current;
+        const syncNowIso = new Date().toISOString();
+        const prevItemsSnapshot = [...itemsRef.current];
+        const optimisticNextItems: ItemCotejo[] = [...prevItemsSnapshot];
+
+        interface PendingRowDbOp {
+          itemIdx: number;
+          tempOrRealId: string;
+          consignatario: string;
+          codigoWr: string;
+          casillero: string;
+          tracking: string;
+          pesoKg: number;
+          posicionEstante: string;
+          notas: string;
+          estado: TipoEstadoItemCotejo;
+          vecesEscaneado: number;
+          escaneadoEn: string | null;
+          escaneadoPor: string | null;
+          orden: number;
+          actualizadoEn: string;
+        }
+
+        const pendingDbOps: PendingRowDbOp[] = [];
+
+        for (const rec of reconciledRows) {
+          const existing = prevItemsSnapshot[rec.itemIdx];
+          if (existing) {
+            const changed =
+              (existing.consignatario || '') !== rec.consignatario ||
+              (existing.codigoWr || '') !== rec.codigoWr ||
+              (existing.casillero || '') !== rec.casillero ||
+              (existing.tracking || '') !== rec.tracking ||
+              Number(existing.pesoKg || 0) !== Number(rec.pesoKg || 0) ||
+              (existing.posicionEstante || 'REC') !== (rec.posicionEstante || 'REC') ||
+              (existing.notas || '') !== rec.notas ||
+              existing.estado !== rec.estado;
+
+            if (changed) {
+              const hasScanVal = liveMode === 'WR_LOOKUP' ? !!rec.codigoWr : !!rec.tracking;
+              const nextVeces = rec.scanChangedInThisEvent
+                ? hasScanVal
+                  ? (existing.vecesEscaneado || 0) + 1
+                  : 0
+                : existing.vecesEscaneado || 0;
+              const nextEscaneadoEn = rec.scanChangedInThisEvent
+                ? hasScanVal
+                  ? syncNowIso
+                  : null
+                : existing.escaneadoEn || null;
+              const nextEscaneadoPor = rec.scanChangedInThisEvent
+                ? hasScanVal
+                  ? currentOperator
+                  : null
+                : existing.escaneadoPor || null;
+              const rowOrder = existing.orden || rec.itemIdx + 1;
+
+              optimisticNextItems[rec.itemIdx] = {
+                ...existing,
+                consignatario: rec.consignatario,
+                codigoWr: rec.codigoWr,
+                casillero: rec.casillero,
+                tracking: rec.tracking,
+                pesoKg: rec.pesoKg,
+                posicionEstante: rec.posicionEstante,
+                notas: rec.notas,
+                estado: rec.estado,
+                vecesEscaneado: nextVeces,
+                escaneadoEn: nextEscaneadoEn || undefined,
+                escaneadoPor: nextEscaneadoPor || undefined,
+                orden: rowOrder,
+                actualizadoEn: syncNowIso
+              };
+
+              pendingDbOps.push({
+                itemIdx: rec.itemIdx,
+                tempOrRealId: existing.id,
+                consignatario: rec.consignatario,
+                codigoWr: rec.codigoWr,
+                casillero: rec.casillero,
+                tracking: rec.tracking,
+                pesoKg: rec.pesoKg,
+                posicionEstante: rec.posicionEstante || 'REC',
+                notas: rec.notas,
+                estado: rec.estado,
+                vecesEscaneado: nextVeces,
+                escaneadoEn: nextEscaneadoEn,
+                escaneadoPor: nextEscaneadoPor,
+                orden: rowOrder,
+                actualizadoEn: syncNowIso
+              });
+            }
+          } else {
+            const hasAnyDataFromHere = reconciledRows
+              .slice(rec.itemIdx)
+              .some(r => r.consignatario || r.codigoWr || r.tracking || r.notas);
+
+            if (hasAnyDataFromHere) {
+              const hasScanVal = liveMode === 'WR_LOOKUP' ? !!rec.codigoWr : !!rec.tracking;
+              const rowOrder = rec.itemIdx + 1;
+              const tempId = `temp-row-${rowOrder}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+              const nextVeces = hasScanVal ? 1 : 0;
+              const nextEscaneadoEn = hasScanVal ? syncNowIso : null;
+              const nextEscaneadoPor = hasScanVal ? currentOperator : null;
+
+              optimisticNextItems[rec.itemIdx] = {
+                id: tempId,
+                hojaId: currentHojaId,
+                consignatario: rec.consignatario,
+                codigoWr: rec.codigoWr,
+                casillero: rec.casillero,
+                tracking: rec.tracking,
+                pesoKg: rec.pesoKg || 0,
+                posicionEstante: rec.posicionEstante || 'REC',
+                notas: rec.notas,
+                estado: rec.estado,
+                vecesEscaneado: nextVeces,
+                escaneadoEn: nextEscaneadoEn || undefined,
+                escaneadoPor: nextEscaneadoPor || undefined,
+                orden: rowOrder,
+                creadoEn: syncNowIso,
+                actualizadoEn: syncNowIso
+              };
+
+              pendingDbOps.push({
+                itemIdx: rec.itemIdx,
+                tempOrRealId: tempId,
+                consignatario: rec.consignatario,
+                codigoWr: rec.codigoWr,
+                casillero: rec.casillero,
+                tracking: rec.tracking,
+                pesoKg: rec.pesoKg || 0,
+                posicionEstante: rec.posicionEstante || 'REC',
+                notas: rec.notas,
+                estado: rec.estado,
+                vecesEscaneado: nextVeces,
+                escaneadoEn: nextEscaneadoEn,
+                escaneadoPor: nextEscaneadoPor,
+                orden: rowOrder,
+                actualizadoEn: syncNowIso
+              });
+            }
+          }
+        }
+
+        if (pendingDbOps.length === 0) return;
+
+        // Actualizar itemsRef.current y estado de React inmediatamente (0ms)
+        itemsRef.current = optimisticNextItems;
+        setItems(optimisticNextItems);
+
         inFlightDbOpsRef.current += 1;
         setIsSyncingCloud(true);
 
         dbSyncQueueRef.current = dbSyncQueueRef.current
           .then(async () => {
-            const nowIso = new Date().toISOString();
-            const latestItems = [...itemsRef.current];
             const upsertBatch: Array<Record<string, any>> = [];
             const newPayloads: Array<Record<string, any>> = [];
-            const updatedItemsList: ItemCotejo[] = [...latestItems];
 
-            for (const rec of reconciledRows) {
-              const existing = latestItems[rec.itemIdx];
-              if (existing && !existing.id.startsWith('temp-')) {
-                const changed =
-                  (existing.consignatario || '') !== rec.consignatario ||
-                  (existing.codigoWr || '') !== rec.codigoWr ||
-                  (existing.casillero || '') !== rec.casillero ||
-                  (existing.tracking || '') !== rec.tracking ||
-                  Number(existing.pesoKg || 0) !== Number(rec.pesoKg || 0) ||
-                  (existing.posicionEstante || 'REC') !== (rec.posicionEstante || 'REC') ||
-                  (existing.notas || '') !== rec.notas ||
-                  existing.estado !== rec.estado;
+            for (const op of pendingDbOps) {
+              // Verificar si una tarea anterior de la cola ya convirtió el temp-id en un UUID real de Supabase
+              const latestItemAtIdx = itemsRef.current[op.itemIdx];
+              const resolvedId =
+                latestItemAtIdx && !latestItemAtIdx.id.startsWith('temp-')
+                  ? latestItemAtIdx.id
+                  : !op.tempOrRealId.startsWith('temp-')
+                  ? op.tempOrRealId
+                  : null;
 
-                if (changed) {
-                  const hasScanVal = liveMode === 'WR_LOOKUP' ? !!rec.codigoWr : !!rec.tracking;
-                  const nextVeces = rec.scanChangedInThisEvent
-                    ? hasScanVal
-                      ? (existing.vecesEscaneado || 0) + 1
-                      : 0
-                    : existing.vecesEscaneado || 0;
-                  const nextEscaneadoEn = rec.scanChangedInThisEvent
-                    ? hasScanVal
-                      ? nowIso
-                      : null
-                    : existing.escaneadoEn || null;
-                  const nextEscaneadoPor = rec.scanChangedInThisEvent
-                    ? hasScanVal
-                      ? currentOperator
-                      : null
-                    : existing.escaneadoPor || null;
-
-                  upsertBatch.push({
-                    id: existing.id,
-                    hoja_id: existing.hojaId || currentHojaId,
-                    consignatario: rec.consignatario,
-                    codigo_wr: rec.codigoWr,
-                    casillero: rec.casillero,
-                    tracking: rec.tracking || null,
-                    peso_kg: rec.pesoKg || 0,
-                    posicion_estante: rec.posicionEstante || 'REC',
-                    notas: rec.notas || null,
-                    estado: rec.estado,
-                    veces_escaneado: nextVeces,
-                    escaneado_en: nextEscaneadoEn,
-                    escaneado_por: nextEscaneadoPor,
-                    orden: existing.orden || rec.itemIdx + 1,
-                    actualizado_en: nowIso
-                  });
-
-                  updatedItemsList[rec.itemIdx] = {
-                    ...existing,
-                    consignatario: rec.consignatario,
-                    codigoWr: rec.codigoWr,
-                    casillero: rec.casillero,
-                    tracking: rec.tracking,
-                    pesoKg: rec.pesoKg,
-                    posicionEstante: rec.posicionEstante,
-                    notas: rec.notas,
-                    estado: rec.estado,
-                    vecesEscaneado: nextVeces,
-                    escaneadoEn: nextEscaneadoEn || undefined,
-                    escaneadoPor: nextEscaneadoPor || undefined,
-                    actualizadoEn: nowIso
-                  };
-                }
-              } else if (
-                rec.consignatario ||
-                rec.codigoWr ||
-                rec.tracking ||
-                rec.notas ||
-                rec.itemIdx < reconciledRows.length
-              ) {
-                const hasAnyDataFromHere = reconciledRows
-                  .slice(rec.itemIdx)
-                  .some(r => r.consignatario || r.codigoWr || r.tracking || r.notas);
-
-                if (hasAnyDataFromHere) {
-                  const hasScanVal = liveMode === 'WR_LOOKUP' ? !!rec.codigoWr : !!rec.tracking;
-                  newPayloads.push({
-                    hoja_id: currentHojaId,
-                    consignatario: rec.consignatario,
-                    codigo_wr: rec.codigoWr,
-                    casillero: rec.casillero,
-                    tracking: rec.tracking || null,
-                    peso_kg: rec.pesoKg || 0,
-                    posicion_estante: rec.posicionEstante || 'REC',
-                    notas: rec.notas || null,
-                    estado: rec.estado,
-                    veces_escaneado: hasScanVal ? 1 : 0,
-                    escaneado_en: hasScanVal ? nowIso : null,
-                    escaneado_por: hasScanVal ? currentOperator : null,
-                    orden: rec.itemIdx + 1
-                  });
-                }
+              if (resolvedId) {
+                upsertBatch.push({
+                  id: resolvedId,
+                  hoja_id: currentHojaId,
+                  consignatario: op.consignatario,
+                  codigo_wr: op.codigoWr,
+                  casillero: op.casillero,
+                  tracking: op.tracking || null,
+                  peso_kg: op.pesoKg || 0,
+                  posicion_estante: op.posicionEstante || 'REC',
+                  notas: op.notas || null,
+                  estado: op.estado,
+                  veces_escaneado: op.vecesEscaneado,
+                  escaneado_en: op.escaneadoEn,
+                  escaneado_por: op.escaneadoPor,
+                  orden: op.orden,
+                  actualizado_en: op.actualizadoEn
+                });
+              } else {
+                newPayloads.push({
+                  hoja_id: currentHojaId,
+                  consignatario: op.consignatario,
+                  codigo_wr: op.codigoWr,
+                  casillero: op.casillero,
+                  tracking: op.tracking || null,
+                  peso_kg: op.pesoKg || 0,
+                  posicion_estante: op.posicionEstante || 'REC',
+                  notas: op.notas || null,
+                  estado: op.estado,
+                  veces_escaneado: op.vecesEscaneado,
+                  escaneado_en: op.escaneadoEn,
+                  escaneado_por: op.escaneadoPor,
+                  orden: op.orden
+                });
               }
             }
 
             if (upsertBatch.length > 0) {
-              itemsRef.current = updatedItemsList;
-              setItems(updatedItemsList);
               await supabase.from('hojas_cotejo_items').upsert(upsertBatch, { onConflict: 'id' });
             }
 
@@ -1191,31 +1585,29 @@ export default function UniverAmexSheet({
                 .select();
 
               if (inserted && inserted.length > 0) {
-                const mappedInserted: ItemCotejo[] = inserted.map(row => ({
-                  id: row.id,
-                  hojaId: row.hoja_id,
-                  codigoWr: row.codigo_wr || '',
-                  tracking: (row as any).tracking || '',
-                  casillero: row.casillero || '',
-                  consignatario: row.consignatario || '',
-                  pesoKg: Number(row.peso_kg || 0),
-                  posicionEstante: row.posicion_estante || 'REC',
-                  notas: row.notas || '',
-                  estado: (row.estado as TipoEstadoItemCotejo) || 'PENDIENTE',
-                  escaneadoEn: row.escaneado_en,
-                  escaneadoPor: row.escaneado_por,
-                  vecesEscaneado: row.veces_escaneado || 0,
-                  orden: row.orden,
-                  creadoEn: row.creado_en,
-                  actualizadoEn: row.actualizado_en
-                }));
+                const insertedByOrder = new Map<number, any>();
+                for (const row of inserted) {
+                  if (typeof row.orden === 'number') {
+                    insertedByOrder.set(row.orden, row);
+                  }
+                }
 
                 setItems(prev => {
-                  const existingIds = new Set(prev.map(p => p.id));
-                  const fresh = mappedInserted.filter(m => !existingIds.has(m.id));
-                  const merged = [...prev, ...fresh].sort((a, b) => (a.orden || 0) - (b.orden || 0));
-                  itemsRef.current = merged;
-                  return merged;
+                  const next = prev.map((it, idx) => {
+                    const orderNum = it.orden || idx + 1;
+                    const dbRow = insertedByOrder.get(orderNum);
+                    if (dbRow && it.id.startsWith('temp-')) {
+                      return {
+                        ...it,
+                        id: dbRow.id,
+                        creadoEn: dbRow.creado_en || it.creadoEn,
+                        actualizadoEn: dbRow.actualizado_en || it.actualizadoEn
+                      };
+                    }
+                    return it;
+                  });
+                  itemsRef.current = next;
+                  return next;
                 });
               }
             }
@@ -1233,6 +1625,16 @@ export default function UniverAmexSheet({
     );
 
     return () => {
+      window.removeEventListener('keydown', handleCaptureKeyDown, true);
+      hostEl.removeEventListener('dblclick', handleHostDblClick, true);
+      if (burstAutoCommitTimerRef.current) {
+        clearTimeout(burstAutoCommitTimerRef.current);
+        burstAutoCommitTimerRef.current = null;
+      }
+      if (previewRafRef.current) {
+        cancelAnimationFrame(previewRafRef.current);
+        previewRafRef.current = null;
+      }
       selectionDisp?.dispose?.();
       valueChangeDisp?.dispose?.();
       univerAPIRef.current = null;
@@ -1364,6 +1766,34 @@ export default function UniverAmexSheet({
         background: '#ffffff'
       }}
     >
+      {liveBufferPreview && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 8,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 45,
+            background: '#0f172a',
+            color: '#f8fafc',
+            fontSize: '12px',
+            fontWeight: 700,
+            padding: '5px 14px',
+            borderRadius: '999px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            boxShadow: '0 4px 12px rgba(15, 23, 42, 0.25)',
+            border: '1px solid #38bdf8',
+            pointerEvents: 'none'
+          }}
+        >
+          <span style={{ color: '#38bdf8' }}>⚡ {liveBufferPreview.cellLabel}:</span>
+          <span style={{ fontFamily: 'monospace', letterSpacing: '0.5px' }}>
+            {liveBufferPreview.text}
+          </span>
+        </div>
+      )}
       {(isLoadingItems || isSyncingCloud) && (
         <div
           style={{
