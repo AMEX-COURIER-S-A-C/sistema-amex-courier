@@ -71,6 +71,8 @@ export default function TransferModal({
             const isLevelLess =
               transferData.targetAnaquel === 'DSP-Z1' ||
               transferData.targetAnaquel === 'DSP-Z2' ||
+              transferData.targetAnaquel === 'PAS-Z1' ||
+              transferData.targetAnaquel === 'PAS-Z2' ||
               transferData.targetAnaquel === 'OFI' ||
               transferData.targetAnaquel === 'TRANSITO';
 
@@ -87,14 +89,14 @@ export default function TransferModal({
               set.add('DSP-Z2');
               set.add('PAS-Z1');
               set.add('PAS-Z2');
-              set.add('PAS-Z1');
-              set.add('PAS-Z2');
               return Array.from(set);
             })();
 
             const getShelfDisplayName = (key: string) => {
               if (key === 'DSP-Z1') return '📦 Despacho Zona 1 (DSP-Z1)';
               if (key === 'DSP-Z2') return '📦 Despacho Zona 2 (DSP-Z2)';
+              if (key === 'PAS-Z1') return '🚪 Pasadizo Zona 1 (PAS-Z1)';
+              if (key === 'PAS-Z2') return '🚪 Pasadizo Zona 2 (PAS-Z2)';
               if (key === 'OFI') return '🏢 Oficina (OFI)';
               if (key.startsWith('DSP')) return `📦 Despacho (${key})`;
               return `🗄️ Anaquel ${key}`;
@@ -108,6 +110,8 @@ export default function TransferModal({
               const noLevel =
                 newAnaquel === 'DSP-Z1' ||
                 newAnaquel === 'DSP-Z2' ||
+                newAnaquel === 'PAS-Z1' ||
+                newAnaquel === 'PAS-Z2' ||
                 newAnaquel === 'OFI' ||
                 newAnaquel === 'TRANSITO';
 

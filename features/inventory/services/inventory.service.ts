@@ -93,6 +93,8 @@ export const inventoryService = {
     const rawPos =
       transferData.targetAnaquel === 'DSP-Z1' ||
       transferData.targetAnaquel === 'DSP-Z2' ||
+      transferData.targetAnaquel === 'PAS-Z1' ||
+      transferData.targetAnaquel === 'PAS-Z2' ||
       transferData.targetAnaquel === 'OFI' ||
       transferData.targetAnaquel === 'TRANSITO' ||
       transferData.targetAnaquel === 'DSP' ||

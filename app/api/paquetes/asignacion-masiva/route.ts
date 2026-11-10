@@ -200,8 +200,6 @@ export async function POST(req: NextRequest) {
       targetAnaquel === 'DSP-Z2' ||
       targetAnaquel === 'PAS-Z1' ||
       targetAnaquel === 'PAS-Z2' ||
-      targetAnaquel === 'PAS-Z1' ||
-      targetAnaquel === 'PAS-Z2' ||
       targetAnaquel === 'TRANSITO' ||
       targetAnaquel === 'DSP' ||
       targetAnaquel?.includes('DESPACHO')
