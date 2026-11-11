@@ -158,3 +158,233 @@
   opacity: 0.85;
 }
 
+/* ==========================================================================
+   MODAL DE EVIDENCIA Y FICHA TÉCNICA TIB (RESPONSIVE MÓVIL Y DESKTOP)
+   ========================================================================== */
+.tib-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background-color: rgba(15, 23, 42, 0.78);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.tib-modal-dialog {
+  max-width: 1240px;
+  width: 96vw;
+  height: 88vh;
+  max-height: 860px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 18px;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+}
+
+.tib-modal-header {
+  padding: 12px 20px;
+  border-bottom: 1px solid #e2e8f0;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  gap: 10px;
+}
+
+.tib-mobile-tabs-bar {
+  display: none;
+}
+
+.tib-mobile-tab-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  font-weight: 700;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.06);
+  color: #94a3b8;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.tib-mobile-tab-btn.active {
+  background: #2563eb;
+  border-color: #3b82f6;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
+  font-weight: 800;
+}
+
+.tib-modal-body {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+  background: #f8fafc;
+  min-height: 0;
+}
+
+.tib-modal-details-col {
+  width: 390px;
+  flex-shrink: 0;
+  background: #ffffff;
+  border-right: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 18px 20px;
+  gap: 14px;
+}
+
+.tib-modal-image-col {
+  flex: 1;
+  position: relative;
+  background: #090d16;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Adaptación para pantallas móviles y tablets (<= 900px) */
+@media (max-width: 900px) {
+  .tib-modal-backdrop {
+    padding: 6px;
+  }
+
+  .tib-modal-dialog {
+    width: 100vw;
+    max-width: 100%;
+    height: 98dvh;
+    max-height: 98dvh;
+    border-radius: 14px;
+  }
+
+  .tib-modal-header {
+    padding: 10px 14px;
+  }
+
+  .tib-mobile-tabs-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: #0b1120;
+    border-bottom: 1px solid #1e293b;
+    flex-shrink: 0;
+  }
+
+  .tib-modal-body {
+    flex-direction: column;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tib-modal-details-col {
+    width: 100%;
+    border-right: none;
+    border-top: 1px solid #e2e8f0;
+    padding: 14px 14px;
+    gap: 12px;
+    flex-shrink: 0;
+    overflow-y: visible;
+  }
+
+  .tib-modal-image-col {
+    order: -1;
+    flex: none;
+    width: 100%;
+    height: 320px;
+    min-height: 250px;
+    max-height: 45vh;
+    border-bottom: 1px solid #1e293b;
+  }
+
+  /* Modo 'Solo Foto': imagen ocupa el 100% de la altura */
+  .tib-modal-body.tab-photo .tib-modal-image-col {
+    flex: 1;
+    height: 100%;
+    min-height: 0;
+    max-height: none;
+    border-bottom: none;
+  }
+
+  .tib-modal-body.tab-photo .tib-modal-details-col {
+    display: none;
+  }
+
+  /* Modo 'Solo Datos': ficha técnica ocupa el 100% de la altura */
+  .tib-modal-body.tab-data .tib-modal-image-col {
+    display: none;
+  }
+
+  .tib-modal-body.tab-data .tib-modal-details-col {
+    flex: 1;
+    height: 100%;
+    overflow-y: auto;
+    border-top: none;
+  }
+
+  .tib-image-toolbar {
+    top: 8px;
+    right: 8px;
+    padding: 3px 6px;
+    gap: 2px;
+  }
+
+  .tib-image-zoom-badge {
+    bottom: 8px;
+    right: 8px;
+    font-size: 10px;
+    padding: 2px 8px;
+  }
+}
+
+.tib-image-toolbar {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 4px 8px;
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+}
+
+.tib-image-zoom-badge {
+  position: absolute;
+  bottom: 14px;
+  right: 14px;
+  background: rgba(15, 23, 42, 0.85);
+  color: #cbd5e1;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  pointer-events: none;
+  z-index: 10;
+}
+
+

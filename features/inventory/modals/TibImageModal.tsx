@@ -21,8 +21,10 @@ import {
   Copy,
   Check,
   Tag,
+  Layers,
 } from 'lucide-react';
 import { Paquete } from '@/types';
+import '../styles/inventory.css';
 
 export interface TibImageModalProps {
   isOpen: boolean;
@@ -59,6 +61,7 @@ export default function TibImageModal({
   const [rotation, setRotation] = useState<number>(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [copiedTracking, setCopiedTracking] = useState(false);
+  const [mobileTab, setMobileTab] = useState<'both' | 'photo' | 'data'>('both');
 
   const onImageLoadedRef = useRef(onImageLoaded);
   useEffect(() => {
@@ -201,53 +204,20 @@ export default function TibImageModal({
 
   return (
     <div
-      className="modal-backdrop"
+      className="tib-modal-backdrop"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
         }
       }}
-      style={{
-        zIndex: 9999,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '16px',
-        backgroundColor: 'rgba(15, 23, 42, 0.75)',
-        backdropFilter: 'blur(6px)',
-      }}
     >
       <div
-        className="modal-dialog"
+        className="tib-modal-dialog"
         onClick={(e) => e.stopPropagation()}
-        style={{
-          maxWidth: '1240px',
-          width: '96vw',
-          height: '88vh',
-          maxHeight: '860px',
-          display: 'flex',
-          flexDirection: 'column',
-          borderRadius: '18px',
-          boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.4)',
-          overflow: 'hidden',
-          background: '#ffffff',
-          border: '1px solid #e2e8f0',
-        }}
       >
         {/* HEADER COMPACTO */}
-        <div
-          style={{
-            padding: '14px 22px',
-            borderBottom: '1px solid #e2e8f0',
-            background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-            color: '#ffffff',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexShrink: 0,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div className="tib-modal-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
             <div
               style={{
                 width: '36px',
@@ -259,25 +229,28 @@ export default function TibImageModal({
                 alignItems: 'center',
                 justifyContent: 'center',
                 color: '#60a5fa',
+                flexShrink: 0,
               }}
             >
               <Camera className="w-5 h-5" />
             </div>
-            <div>
-              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 900, color: '#ffffff' }}>
-                Ficha y Evidencia Fotográfica TIB
+            <div style={{ minWidth: 0, overflow: 'hidden' }}>
+              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 900, color: '#ffffff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                Ficha y Evidencia TIB
               </h3>
-              <div style={{ fontSize: '12px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '8px', marginTop: '2px' }}>
+              <div style={{ fontSize: '11.5px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', flexWrap: 'wrap' }}>
                 <span style={{ fontFamily: 'monospace', fontWeight: 800, color: '#60a5fa' }}>
                   {paquete.numeroReciboBodega}
                 </span>
                 <span>•</span>
-                <span>Tracking: {trackingNumber}</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '140px' }}>
+                  {trackingNumber}
+                </span>
               </div>
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
             <button
               type="button"
               title="Refrescar imagen desde TIB"
@@ -288,17 +261,17 @@ export default function TibImageModal({
                 border: '1px solid rgba(255, 255, 255, 0.2)',
                 color: '#f8fafc',
                 borderRadius: '8px',
-                padding: '6px 10px',
-                fontSize: '12px',
+                padding: '6px 9px',
+                fontSize: '11.5px',
                 fontWeight: 700,
                 cursor: loading ? 'not-allowed' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
+                gap: '5px',
               }}
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-              <span>{loading ? 'Consultando...' : 'Refrescar'}</span>
+              <span className="hidden sm:inline">{loading ? '...' : 'Refrescar'}</span>
             </button>
             <button
               type="button"
@@ -320,32 +293,40 @@ export default function TibImageModal({
           </div>
         </div>
 
-        {/* CONTENIDO PRINCIPAL: DOS COLUMNAS (IZQUIERDA: DATOS | DERECHA: IMAGEN) */}
-        <div
-          style={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'row',
-            overflow: 'hidden',
-            background: '#f8fafc',
-          }}
-        >
+        {/* SELECTOR DE VISTA PARA MÓVILES (FOTO / DATOS / TODO) */}
+        <div className="tib-mobile-tabs-bar">
+          <button
+            type="button"
+            className={`tib-mobile-tab-btn ${mobileTab === 'both' ? 'active' : ''}`}
+            onClick={() => setMobileTab('both')}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>Todo</span>
+          </button>
+          <button
+            type="button"
+            className={`tib-mobile-tab-btn ${mobileTab === 'photo' ? 'active' : ''}`}
+            onClick={() => setMobileTab('photo')}
+          >
+            <Camera className="w-3.5 h-3.5" />
+            <span>Foto WR</span>
+          </button>
+          <button
+            type="button"
+            className={`tib-mobile-tab-btn ${mobileTab === 'data' ? 'active' : ''}`}
+            onClick={() => setMobileTab('data')}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>Ficha Datos</span>
+          </button>
+        </div>
+
+        {/* CONTENIDO PRINCIPAL: DOS COLUMNAS (DESKTOP) / APILADO Y ORDENADO (MÓVIL) */}
+        <div className={`tib-modal-body tab-${mobileTab}`}>
           {/* =========================================================================
               COLUMNA IZQUIERDA: FICHA TÉCNICA Y DATOS LOGÍSTICOS
              ========================================================================= */}
-          <div
-            style={{
-              width: '390px',
-              flexShrink: 0,
-              background: '#ffffff',
-              borderRight: '1px solid #e2e8f0',
-              display: 'flex',
-              flexDirection: 'column',
-              overflowY: 'auto',
-              padding: '18px 20px',
-              gap: '14px',
-            }}
-          >
+          <div className="tib-modal-details-col">
             {/* 1. Cliente / Consignatario */}
             <div
               style={{
@@ -649,17 +630,7 @@ export default function TibImageModal({
           {/* =========================================================================
               COLUMNA DERECHA: SOLO LA IMAGEN CON HERRAMIENTAS FLOTANTES
              ========================================================================= */}
-          <div
-            style={{
-              flex: 1,
-              position: 'relative',
-              background: '#090d16',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              overflow: 'hidden',
-            }}
-          >
+          <div className="tib-modal-image-col">
             {loading && !imageUrl ? (
               <div
                 style={{
@@ -724,23 +695,7 @@ export default function TibImageModal({
                 </div>
 
                 {/* Barra de Herramientas Superior Derecha */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: '16px',
-                    right: '16px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    background: 'rgba(15, 23, 42, 0.85)',
-                    backdropFilter: 'blur(8px)',
-                    border: '1px solid rgba(255, 255, 255, 0.2)',
-                    padding: '4px 8px',
-                    borderRadius: '10px',
-                    boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
-                    zIndex: 10,
-                  }}
-                >
+                <div className="tib-image-toolbar">
                   <button
                     type="button"
                     title="Acercar (Zoom In)"
@@ -834,20 +789,7 @@ export default function TibImageModal({
 
                 {/* Badge Inferior Derecho de Zoom */}
                 {zoomLevel > 1 && (
-                  <span
-                    style={{
-                      position: 'absolute',
-                      bottom: '16px',
-                      right: '16px',
-                      background: 'rgba(15, 23, 42, 0.85)',
-                      color: '#cbd5e1',
-                      padding: '3px 10px',
-                      borderRadius: '6px',
-                      fontSize: '11px',
-                      fontWeight: 800,
-                      pointerEvents: 'none',
-                    }}
-                  >
+                  <span className="tib-image-zoom-badge">
                     Zoom: {Math.round(zoomLevel * 100)}%
                   </span>
                 )}
@@ -925,29 +867,31 @@ export default function TibImageModal({
               alignItems: 'center',
               justifyContent: 'space-between',
               color: '#ffffff',
-              padding: '10px 18px',
+              padding: '8px 14px',
               background: 'rgba(255, 255, 255, 0.08)',
               borderRadius: '12px',
               backdropFilter: 'blur(12px)',
               border: '1px solid rgba(255, 255, 255, 0.15)',
+              gap: '8px',
+              flexWrap: 'wrap',
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-              <span style={{ fontWeight: 800, fontSize: '15px', color: '#60a5fa', fontFamily: 'monospace' }}>
+            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px', minWidth: 0 }}>
+              <span style={{ fontWeight: 800, fontSize: '14px', color: '#60a5fa', fontFamily: 'monospace' }}>
                 {paquete.numeroReciboBodega}
               </span>
               <span style={{ color: '#64748b' }}>•</span>
-              <span style={{ fontSize: '13px', color: '#e2e8f0' }}>
+              <span style={{ fontSize: '12px', color: '#e2e8f0', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {clienteNombre}
               </span>
-              <span style={{ color: '#64748b' }}>•</span>
-              <span style={{ fontSize: '12px', color: '#38bdf8', fontWeight: 700, background: 'rgba(56, 189, 248, 0.15)', padding: '2px 8px', borderRadius: '4px' }}>
-                Resolución Original TIB
+              <span style={{ color: '#64748b' }} className="hidden sm:inline">•</span>
+              <span style={{ fontSize: '11px', color: '#38bdf8', fontWeight: 700, background: 'rgba(56, 189, 248, 0.15)', padding: '2px 6px', borderRadius: '4px' }} className="hidden sm:inline">
+                TIB HD
               </span>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
               <button
                 type="button"
                 onClick={() => setZoomLevel((prev) => Math.min(prev + 0.3, 3.5))}
@@ -955,7 +899,7 @@ export default function TibImageModal({
                   background: 'rgba(255, 255, 255, 0.12)',
                   border: '1px solid rgba(255, 255, 255, 0.25)',
                   color: '#ffffff',
-                  padding: '6px 12px',
+                  padding: '6px 10px',
                   borderRadius: '6px',
                   cursor: 'pointer',
                   display: 'flex',
@@ -964,8 +908,9 @@ export default function TibImageModal({
                   fontSize: '12px',
                   fontWeight: 700,
                 }}
+                title="Acercar (Zoom +)"
               >
-                <ZoomIn className="w-4 h-4" /> Zoom +
+                <ZoomIn className="w-4 h-4" /> <span className="hidden sm:inline">Zoom +</span>
               </button>
               <button
                 type="button"
@@ -974,7 +919,7 @@ export default function TibImageModal({
                   background: 'rgba(255, 255, 255, 0.12)',
                   border: '1px solid rgba(255, 255, 255, 0.25)',
                   color: '#ffffff',
-                  padding: '6px 12px',
+                  padding: '6px 10px',
                   borderRadius: '6px',
                   cursor: 'pointer',
                   display: 'flex',
@@ -983,8 +928,9 @@ export default function TibImageModal({
                   fontSize: '12px',
                   fontWeight: 700,
                 }}
+                title="Alejar (Zoom -)"
               >
-                <ZoomOut className="w-4 h-4" /> Zoom -
+                <ZoomOut className="w-4 h-4" /> <span className="hidden sm:inline">Zoom -</span>
               </button>
               <button
                 type="button"
@@ -993,7 +939,7 @@ export default function TibImageModal({
                   background: 'rgba(255, 255, 255, 0.12)',
                   border: '1px solid rgba(255, 255, 255, 0.25)',
                   color: '#ffffff',
-                  padding: '6px 12px',
+                  padding: '6px 10px',
                   borderRadius: '6px',
                   cursor: 'pointer',
                   display: 'flex',
@@ -1002,8 +948,9 @@ export default function TibImageModal({
                   fontSize: '12px',
                   fontWeight: 700,
                 }}
+                title="Rotar 90°"
               >
-                <RotateCw className="w-4 h-4" /> Rotar
+                <RotateCw className="w-4 h-4" /> <span className="hidden sm:inline">Rotar</span>
               </button>
               <button
                 type="button"
@@ -1012,17 +959,18 @@ export default function TibImageModal({
                   background: '#dc2626',
                   border: 'none',
                   color: '#ffffff',
-                  padding: '7px 16px',
+                  padding: '6px 12px',
                   borderRadius: '6px',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '6px',
+                  gap: '5px',
                   fontSize: '12px',
                   fontWeight: 800,
                 }}
+                title="Salir de Pantalla Completa"
               >
-                <Minimize2 className="w-4 h-4" /> Salir de Pantalla Completa
+                <Minimize2 className="w-4 h-4" /> <span>Salir</span>
               </button>
             </div>
           </div>
