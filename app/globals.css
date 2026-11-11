@@ -412,6 +412,16 @@ input[type="number"],
   box-sizing: border-box;
 }
 
+/* Soporte táctil universal para tablas y elementos con desplazamiento horizontal */
+.overflow-x-auto,
+.table-responsive,
+[data-lenis-prevent-horizontal] {
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-x pan-y !important;
+  overscroll-behavior-x: contain !important;
+  overscroll-behavior-y: auto !important;
+}
+
 /* Modo Cobros: Ancho completo 100% fluido e independiente */
 .main-content.cobros-mode {
   padding: 0 !important;
@@ -1056,8 +1066,11 @@ tr:hover { background: #f8fafc !important; }
   .kpi-info .kpi-value {
     font-size: 18px;
   }
-  .table-responsive {
-    -webkit-overflow-scrolling: touch;
+  .table-responsive,
+  .overflow-x-auto,
+  [data-lenis-prevent-horizontal] {
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-x pan-y !important;
   }
   .sidebar-mobile-header {
     display: flex !important;

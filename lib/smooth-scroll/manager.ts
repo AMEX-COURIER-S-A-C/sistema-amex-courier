@@ -288,7 +288,10 @@ class SmoothScrollManager {
         '.overflow-x-auto, .shalom-table-wrap, .acta-document-container, .sheet-tabs-list, [style*="overflowX"], [style*="overflow-x"]'
       );
       horizontalElements.forEach((el) => {
-        if (!el.hasAttribute('data-lenis-prevent-horizontal') && !el.hasAttribute('data-lenis-prevent')) {
+        if (!el.hasAttribute('data-lenis-prevent')) {
+          el.setAttribute('data-lenis-prevent', '');
+        }
+        if (!el.hasAttribute('data-lenis-prevent-horizontal')) {
           el.setAttribute('data-lenis-prevent-horizontal', '');
         }
       });

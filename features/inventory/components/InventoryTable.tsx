@@ -11,6 +11,7 @@ import { Paquete } from '@/types';
 import { formatFechaModificadoParts } from '@/lib/excelExport';
 import { confirmDialog } from '@/lib/dialog';
 import RowActionsDropdown from './RowActionsDropdown';
+import '../styles/inventory.css';
 
 export interface InventoryTableProps {
   filteredPaquetes: Paquete[];
@@ -146,8 +147,12 @@ export default function InventoryTable({
       {/* Paginación Superior */}
       {renderPagination('top')}
 
-      <div className="overflow-x-auto" data-lenis-prevent-horizontal>
-        <table className="w-full border-collapse text-xs text-left">
+      <div
+        className="inv-table-scroll-container overflow-x-auto"
+        data-lenis-prevent=""
+        data-lenis-prevent-horizontal=""
+      >
+        <table className="w-full min-w-[960px] border-collapse text-xs text-left">
           <thead className="sticky top-0 bg-slate-50 z-10 shadow-xs">
             <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold">
               <th className="py-2.5 px-3.5 w-10">

@@ -387,4 +387,64 @@
   z-index: 10;
 }
 
+/* ==========================================================================
+   CONTENEDOR PRINCIPAL Y TABLA DE INVENTARIO (TOUCH SCROLLING FLUIDO)
+   ========================================================================== */
+.inventory-main-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 100%;
+  padding: 16px 20px;
+  box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+  .inventory-main-wrapper {
+    padding: 12px 8px;
+    gap: 12px;
+  }
+}
+
+.inv-table-scroll-container {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto !important;
+  overflow-y: visible !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-x pan-y !important;
+  overscroll-behavior-x: contain !important;
+  overscroll-behavior-y: auto !important;
+  position: relative;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f8fafc;
+}
+
+.inv-table-scroll-container::-webkit-scrollbar {
+  height: 6px;
+}
+
+.inv-table-scroll-container::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+.inv-table-scroll-container::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.inv-table-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+@media (max-width: 900px) {
+  .inv-table-scroll-container {
+    touch-action: pan-x pan-y !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+}
+
+
 

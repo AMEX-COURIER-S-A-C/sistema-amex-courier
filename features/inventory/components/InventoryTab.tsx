@@ -257,7 +257,7 @@ export default function InventoryTab({
   const [isSyncTibModalOpen, setIsSyncTibModalOpen] = useState(false);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%', maxWidth: '100%', padding: '16px 20px', boxSizing: 'border-box' }}>
+    <div className="inventory-main-wrapper">
       {/* Barra de herramientas, subpestañas y filtros */}
       <InventoryToolbar
         paquetes={paquetes}
