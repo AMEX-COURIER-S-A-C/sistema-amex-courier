@@ -26,7 +26,7 @@ export const LENIS_CONFIG = {
 export const SCROLL_ATTRIBUTE = 'data-lenis-scroll';
 export const PREVENT_ATTRIBUTE = 'data-lenis-prevent';
 export const SCROLL_SELECTOR = `[${SCROLL_ATTRIBUTE}], .modal-body, .pkg-body`;
-export const MODAL_BACKDROP_SELECTOR = '.modal-backdrop, .acta-modal-backdrop';
+export const MODAL_BACKDROP_SELECTOR = '.modal-backdrop, .acta-modal-backdrop, .tib-modal-backdrop';
 
 interface ManagedScroller {
   element: HTMLElement;

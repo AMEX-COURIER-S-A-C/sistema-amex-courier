@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Camera,
   Download,
@@ -51,6 +52,11 @@ export default function TibImageModal({
   paquete,
   onImageLoaded,
 }: TibImageModalProps) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const [loading, setLoading] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [ticketUrl, setTicketUrl] = useState<string | null>(null);
@@ -62,6 +68,27 @@ export default function TibImageModal({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [copiedTracking, setCopiedTracking] = useState(false);
   const [mobileTab, setMobileTab] = useState<'both' | 'photo' | 'data'>('both');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isOpen, onClose]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setMobileTab('both');
+    }
+  }, [isOpen, paquete?.id]);
 
   const onImageLoadedRef = useRef(onImageLoaded);
   useEffect(() => {
@@ -189,7 +216,7 @@ export default function TibImageModal({
     setTimeout(() => setCopiedTracking(false), 2000);
   };
 
-  if (!isOpen || !paquete) return null;
+  if (!isOpen || !paquete || !mounted || typeof document === 'undefined') return null;
 
   const clienteNombre = paquete.nombreConsignatario || tibData?.cliente || '—';
   const trackingNumber = paquete.tracking || tibData?.tracking || '—';
@@ -202,9 +229,10 @@ export default function TibImageModal({
     (paquete.anaquel && paquete.piso ? `${paquete.anaquel}-${paquete.piso}` : 'REC-P1');
   const almacenAmex = paquete.ubicacionActual || 'Almacén Central Lince';
 
-  return (
+  const modalContent = (
     <div
       className="tib-modal-backdrop"
+      data-lenis-prevent=""
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
@@ -213,6 +241,7 @@ export default function TibImageModal({
     >
       <div
         className="tib-modal-dialog"
+        data-lenis-prevent=""
         onClick={(e) => e.stopPropagation()}
       >
         {/* HEADER COMPACTO */}
@@ -276,19 +305,11 @@ export default function TibImageModal({
             <button
               type="button"
               onClick={onClose}
-              style={{
-                background: 'rgba(255, 255, 255, 0.1)',
-                border: 'none',
-                cursor: 'pointer',
-                color: '#94a3b8',
-                padding: '6px',
-                borderRadius: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                transition: 'background 0.15s ease',
-              }}
+              className="tib-modal-close-btn"
+              title="Cerrar modal (Esc)"
+              aria-label="Cerrar ventana"
             >
-              <X className="w-5 h-5 text-slate-300 hover:text-white" />
+              <X className="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -322,11 +343,11 @@ export default function TibImageModal({
         </div>
 
         {/* CONTENIDO PRINCIPAL: DOS COLUMNAS (DESKTOP) / APILADO Y ORDENADO (MÓVIL) */}
-        <div className={`tib-modal-body tab-${mobileTab}`}>
+        <div className={`tib-modal-body tab-${mobileTab}`} data-lenis-prevent="">
           {/* =========================================================================
               COLUMNA IZQUIERDA: FICHA TÉCNICA Y DATOS LOGÍSTICOS
              ========================================================================= */}
-          <div className="tib-modal-details-col">
+          <div className="tib-modal-details-col" data-lenis-prevent="">
             {/* 1. Cliente / Consignatario */}
             <div
               style={{
@@ -624,13 +645,24 @@ export default function TibImageModal({
                   </a>
                 </div>
               )}
+
+              {/* Botón de cierre para móviles */}
+              <button
+                type="button"
+                onClick={onClose}
+                className="tib-mobile-close-footer-btn"
+                title="Cerrar modal"
+              >
+                <X className="w-4 h-4 text-rose-500" />
+                <span>Cerrar Ficha de Paquete</span>
+              </button>
             </div>
           </div>
 
           {/* =========================================================================
               COLUMNA DERECHA: SOLO LA IMAGEN CON HERRAMIENTAS FLOTANTES
              ========================================================================= */}
-          <div className="tib-modal-image-col">
+          <div className="tib-modal-image-col" data-lenis-prevent="">
             {loading && !imageUrl ? (
               <div
                 style={{
@@ -1013,4 +1045,6 @@ export default function TibImageModal({
       )}
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }

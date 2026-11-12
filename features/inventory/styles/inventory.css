@@ -164,14 +164,16 @@
 .tib-modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 9999;
+  z-index: 999999 !important;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background-color: rgba(15, 23, 42, 0.78);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background-color: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  touch-action: pan-y;
+  overscroll-behavior: contain;
 }
 
 .tib-modal-dialog {
@@ -182,7 +184,7 @@
   display: flex;
   flex-direction: column;
   border-radius: 18px;
-  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.55);
   overflow: hidden;
   background: #ffffff;
   border: 1px solid #e2e8f0;
@@ -198,6 +200,35 @@
   justify-content: space-between;
   flex-shrink: 0;
   gap: 10px;
+}
+
+.tib-modal-close-btn {
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  color: #fca5a5;
+  cursor: pointer;
+  padding: 8px;
+  min-width: 38px;
+  min-height: 38px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tib-modal-close-btn:hover,
+.tib-modal-close-btn:active {
+  background: #dc2626;
+  border-color: #ef4444;
+  color: #ffffff;
+  transform: scale(0.94);
+}
+
+.tib-mobile-close-footer-btn {
+  display: none;
 }
 
 .tib-mobile-tabs-bar {
@@ -220,6 +251,7 @@
   color: #94a3b8;
   transition: all 0.15s ease;
   user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .tib-mobile-tab-btn.active {
@@ -237,6 +269,7 @@
   overflow: hidden;
   background: #f8fafc;
   min-height: 0;
+  touch-action: pan-y;
 }
 
 .tib-modal-details-col {
@@ -247,6 +280,8 @@
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
   padding: 18px 20px;
   gap: 14px;
 }
@@ -262,97 +297,164 @@
   min-height: 0;
 }
 
-/* Adaptación para pantallas móviles y tablets (<= 900px) */
+/* Adaptación para pantallas móviles y tablets iOS/Android (<= 900px) */
 @media (max-width: 900px) {
   .tib-modal-backdrop {
-    padding: 6px;
+    padding: 0 !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    z-index: 999999 !important;
+    position: fixed !important;
+    inset: 0 !important;
+    background-color: rgba(15, 23, 42, 0.94) !important;
   }
 
   .tib-modal-dialog {
-    width: 100vw;
-    max-width: 100%;
-    height: 98dvh;
-    max-height: 98dvh;
-    border-radius: 14px;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100% !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    border-radius: 0 !important;
+    border: none !important;
+    padding-top: env(safe-area-inset-top, 0px) !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+    box-sizing: border-box !important;
+    background: #0f172a !important;
+    box-shadow: none !important;
   }
 
   .tib-modal-header {
-    padding: 10px 14px;
+    padding: 12px 14px !important;
+    background: #0f172a !important;
+    border-bottom: 1px solid #1e293b !important;
+    flex-shrink: 0 !important;
+    z-index: 20 !important;
+    gap: 8px !important;
+  }
+
+  .tib-modal-close-btn {
+    min-width: 42px !important;
+    min-height: 42px !important;
+    padding: 9px !important;
+    border-radius: 10px !important;
   }
 
   .tib-mobile-tabs-bar {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 10px;
-    background: #0b1120;
-    border-bottom: 1px solid #1e293b;
-    flex-shrink: 0;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    padding: 8px 12px !important;
+    background: #090e1a !important;
+    border-bottom: 1px solid #1e293b !important;
+    flex-shrink: 0 !important;
+    z-index: 20 !important;
   }
 
   .tib-modal-body {
-    flex-direction: column;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-y !important;
+    overscroll-behavior-y: contain !important;
+    min-height: 0 !important;
+    background: #f8fafc !important;
   }
 
   .tib-modal-details-col {
-    width: 100%;
-    border-right: none;
-    border-top: 1px solid #e2e8f0;
-    padding: 14px 14px;
-    gap: 12px;
-    flex-shrink: 0;
-    overflow-y: visible;
+    width: 100% !important;
+    border-right: none !important;
+    border-top: 1px solid #e2e8f0 !important;
+    padding: 16px 14px calc(24px + env(safe-area-inset-bottom, 0px)) 14px !important;
+    gap: 12px !important;
+    flex-shrink: 0 !important;
+    overflow-y: visible !important;
+    height: auto !important;
+    min-height: auto !important;
+    background: #ffffff !important;
   }
 
   .tib-modal-image-col {
-    order: -1;
-    flex: none;
-    width: 100%;
-    height: 320px;
-    min-height: 250px;
-    max-height: 45vh;
-    border-bottom: 1px solid #1e293b;
+    order: -1 !important;
+    flex: none !important;
+    width: 100% !important;
+    height: 300px !important;
+    min-height: 220px !important;
+    max-height: 42vh !important;
+    border-bottom: 1px solid #1e293b !important;
+    touch-action: pan-y !important;
+    background: #090d16 !important;
   }
 
-  /* Modo 'Solo Foto': imagen ocupa el 100% de la altura */
+  /* Modo 'Solo Foto': imagen ocupa el 100% de la altura sin scroll */
+  .tib-modal-body.tab-photo {
+    overflow-y: hidden !important;
+  }
+
   .tib-modal-body.tab-photo .tib-modal-image-col {
-    flex: 1;
-    height: 100%;
-    min-height: 0;
-    max-height: none;
-    border-bottom: none;
+    flex: 1 !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    border-bottom: none !important;
   }
 
   .tib-modal-body.tab-photo .tib-modal-details-col {
-    display: none;
+    display: none !important;
   }
 
-  /* Modo 'Solo Datos': ficha técnica ocupa el 100% de la altura */
+  /* Modo 'Solo Datos': ficha técnica ocupa el 100% con scroll en body */
   .tib-modal-body.tab-data .tib-modal-image-col {
-    display: none;
+    display: none !important;
   }
 
   .tib-modal-body.tab-data .tib-modal-details-col {
-    flex: 1;
-    height: 100%;
-    overflow-y: auto;
-    border-top: none;
+    display: flex !important;
+    border-top: none !important;
+    overflow-y: visible !important;
   }
 
   .tib-image-toolbar {
-    top: 8px;
-    right: 8px;
-    padding: 3px 6px;
-    gap: 2px;
+    top: 8px !important;
+    right: 8px !important;
+    padding: 3px 6px !important;
+    gap: 2px !important;
   }
 
   .tib-image-zoom-badge {
-    bottom: 8px;
-    right: 8px;
-    font-size: 10px;
-    padding: 2px 8px;
+    bottom: 8px !important;
+    right: 8px !important;
+    font-size: 10px !important;
+    padding: 2px 8px !important;
+  }
+
+  .tib-mobile-close-footer-btn {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    width: 100% !important;
+    padding: 12px !important;
+    border-radius: 10px !important;
+    background: #f1f5f9 !important;
+    border: 1.5px solid #cbd5e1 !important;
+    color: #334155 !important;
+    font-weight: 800 !important;
+    font-size: 13px !important;
+    cursor: pointer !important;
+    margin-top: 8px !important;
+    transition: all 0.15s ease !important;
+    user-select: none !important;
+    -webkit-tap-highlight-color: transparent !important;
+  }
+
+  .tib-mobile-close-footer-btn:active {
+    background: #e2e8f0 !important;
+    color: #0f172a !important;
+    transform: scale(0.98) !important;
   }
 }
 
