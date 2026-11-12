@@ -6,7 +6,20 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        source: '/((?!_next/static|_next/image|images|favicon.ico).*)',
+        source: '/wasm/:path*',
+        headers: [
+          {
+            key: 'Content-Type',
+            value: 'application/wasm',
+          },
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+      {
+        source: '/((?!_next/static|_next/image|images|wasm|favicon.ico).*)',
         headers: [
           {
             key: 'Cache-Control',

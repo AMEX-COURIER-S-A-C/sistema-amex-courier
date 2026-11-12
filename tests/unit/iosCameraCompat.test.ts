@@ -1,8 +1,12 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
+  DESIRED_BARCODE_FORMATS,
   isIOSPlatform,
   hasWarehouse1DSupport,
+  hasWarehouse2DSupport,
   shouldUseNativeDetector,
+  filterSupportedBarcodeFormats,
+  locateLocalZXingWasm,
   applyInlineVideoAttributes,
   computeAspectFittedVideoStyles,
   syncVideoCoverDimensions,
@@ -80,13 +84,13 @@ describe('iosCameraCompat helpers', () => {
     });
   });
 
-  describe('shouldUseNativeDetector & hasWarehouse1DSupport', () => {
-    it('forces Html5Qrcode fallback on iOS even if BarcodeDetector exists', () => {
+  describe('shouldUseNativeDetector & warehouse format support', () => {
+    it('upgrades iOS away from native BarcodeDetector so C++ zxing-wasm is used', () => {
       expect(
         shouldUseNativeDetector({
           hasBarcodeDetector: true,
           isIOS: true,
-          supportedFormats: ['code_128', 'qr_code'],
+          supportedFormats: ['code_128', 'qr_code', 'data_matrix', 'pdf417'],
         })
       ).toBe(false);
     });
@@ -97,7 +101,20 @@ describe('iosCameraCompat helpers', () => {
         shouldUseNativeDetector({
           hasBarcodeDetector: true,
           isIOS: false,
-          supportedFormats: ['qr_code'],
+          supportedFormats: ['qr_code', 'data_matrix', 'pdf417'],
+        })
+      ).toBe(false);
+    });
+
+    it('rejects partial native implementations missing 2D DataMatrix/PDF417 so they upgrade to WASM', () => {
+      expect(hasWarehouse2DSupport(['qr_code'])).toBe(false);
+      expect(hasWarehouse2DSupport(['qr_code', 'data_matrix'])).toBe(true);
+      expect(hasWarehouse2DSupport(['QR_CODE', 'PDF417'])).toBe(true);
+      expect(
+        shouldUseNativeDetector({
+          hasBarcodeDetector: true,
+          isIOS: false,
+          supportedFormats: ['qr_code', 'code_128', 'ean_13'],
         })
       ).toBe(false);
     });
@@ -108,20 +125,59 @@ describe('iosCameraCompat helpers', () => {
           hasBarcodeDetector: true,
           isIOS: false,
           forceFallback: true,
-          supportedFormats: ['code_128', 'qr_code'],
+          supportedFormats: ['code_128', 'qr_code', 'data_matrix', 'pdf417'],
         })
       ).toBe(false);
     });
 
-    it('enables native GPU detector on Android/Desktop when Code 128 is supported', () => {
+    it('enables native GPU detector on Android/Desktop when full 1D and 2D warehouse formats are supported', () => {
       expect(hasWarehouse1DSupport(['qr_code', 'CODE_128'])).toBe(true);
       expect(
         shouldUseNativeDetector({
           hasBarcodeDetector: true,
           isIOS: false,
-          supportedFormats: ['qr_code', 'code_128', 'ean_13'],
+          supportedFormats: ['qr_code', 'data_matrix', 'pdf417', 'code_128', 'ean_13'],
         })
       ).toBe(true);
+    });
+  });
+
+  describe('filterSupportedBarcodeFormats & DESIRED_BARCODE_FORMATS', () => {
+    it('includes all key 1D warehouse and 2D courier barcode formats', () => {
+      expect(DESIRED_BARCODE_FORMATS).toContain('code_128');
+      expect(DESIRED_BARCODE_FORMATS).toContain('code_39');
+      expect(DESIRED_BARCODE_FORMATS).toContain('qr_code');
+      expect(DESIRED_BARCODE_FORMATS).toContain('data_matrix');
+      expect(DESIRED_BARCODE_FORMATS).toContain('pdf417');
+      expect(DESIRED_BARCODE_FORMATS).toContain('aztec');
+    });
+
+    it('filters desired formats case-insensitively against supported formats', () => {
+      expect(
+        filterSupportedBarcodeFormats(['code_128', 'data_matrix', 'pdf417', 'aztec'], ['CODE_128', 'pdf417'])
+      ).toEqual(['code_128', 'pdf417']);
+    });
+
+    it('falls back to a copy of desired formats when supported list is empty, missing, or disjoint', () => {
+      expect(filterSupportedBarcodeFormats(['code_128', 'qr_code'], undefined)).toEqual(['code_128', 'qr_code']);
+      expect(filterSupportedBarcodeFormats(['code_128', 'qr_code'], [])).toEqual(['code_128', 'qr_code']);
+      expect(filterSupportedBarcodeFormats(['code_128', 'qr_code'], ['unknown_fmt'])).toEqual([
+        'code_128',
+        'qr_code',
+      ]);
+    });
+  });
+
+  describe('locateLocalZXingWasm', () => {
+    it('routes .wasm files to the self-hosted /wasm/ public path instead of an external CDN', () => {
+      expect(
+        locateLocalZXingWasm('zxing_reader.wasm', 'https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.6/dist/reader/')
+      ).toBe('/wasm/zxing_reader.wasm');
+      expect(locateLocalZXingWasm('nested/dir/zxing_reader.wasm', '/cdn/')).toBe('/wasm/zxing_reader.wasm');
+    });
+
+    it('preserves prefix for non-wasm files', () => {
+      expect(locateLocalZXingWasm('helper.js', '/static/')).toBe('/static/helper.js');
     });
   });
 

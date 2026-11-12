@@ -1,3 +1,21 @@
+export const DESIRED_BARCODE_FORMATS = [
+  'code_128',
+  'code_39',
+  'code_93',
+  'itf',
+  'codabar',
+  'qr_code',
+  'data_matrix',
+  'pdf417',
+  'aztec',
+  'ean_13',
+  'ean_8',
+  'upc_a',
+  'upc_e',
+] as const;
+
+export type DesiredBarcodeFormat = (typeof DESIRED_BARCODE_FORMATS)[number];
+
 export interface NativeDetectorCheckParams {
   hasBarcodeDetector: boolean;
   isIOS: boolean;
@@ -26,7 +44,35 @@ export function hasWarehouse1DSupport(supportedFormats: readonly string[]): bool
   return normalized.includes('code_128') || normalized.includes('code_39');
 }
 
-/** Decide si se debe usar BarcodeDetector nativo GPU o caer directamente a Html5Qrcode (ZXing). */
+/** Verifica si los formatos reportados incluyen simbologías 2D de paquetería (QR junto a PDF417 o DataMatrix). */
+export function hasWarehouse2DSupport(supportedFormats: readonly string[]): boolean {
+  const normalized = supportedFormats.map(f => f.toLowerCase());
+  return normalized.includes('qr_code') && (normalized.includes('pdf417') || normalized.includes('data_matrix'));
+}
+
+/** Filtra los formatos deseados contra los soportados por el detector activo sin devolver un arreglo vacío. */
+export function filterSupportedBarcodeFormats<T extends string>(
+  desired: readonly T[],
+  available?: readonly string[]
+): T[] {
+  if (!available || available.length === 0) {
+    return [...desired];
+  }
+  const availableSet = new Set(available.map(f => f.toLowerCase()));
+  const filtered = desired.filter(f => availableSet.has(f.toLowerCase()));
+  return filtered.length > 0 ? filtered : [...desired];
+}
+
+/** Resuelve el binario zxing_reader.wasm auto-hospedado en /public/wasm/. */
+export function locateLocalZXingWasm(fileName: string, prefix: string): string {
+  if (fileName.endsWith('.wasm')) {
+    const baseName = fileName.split('/').pop() || fileName;
+    return `/wasm/${baseName}`;
+  }
+  return `${prefix}${fileName}`;
+}
+
+/** Decide si se debe usar BarcodeDetector nativo GPU o promover a WASM C++ / Html5Qrcode. */
 export function shouldUseNativeDetector({
   hasBarcodeDetector,
   isIOS,
@@ -36,7 +82,7 @@ export function shouldUseNativeDetector({
   if (!hasBarcodeDetector || isIOS || forceFallback) {
     return false;
   }
-  if (supportedFormats && !hasWarehouse1DSupport(supportedFormats)) {
+  if (supportedFormats && (!hasWarehouse1DSupport(supportedFormats) || !hasWarehouse2DSupport(supportedFormats))) {
     return false;
   }
   return true;

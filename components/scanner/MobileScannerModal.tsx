@@ -27,12 +27,54 @@ import { supabase } from '@/lib/supabase/client';
 import { soundEffects } from '@/lib/audio/soundEffects';
 import { alertDialog } from '@/lib/dialog';
 import {
+  DESIRED_BARCODE_FORMATS,
   isIOSPlatform,
   shouldUseNativeDetector,
+  filterSupportedBarcodeFormats,
+  locateLocalZXingWasm,
   applyInlineVideoAttributes,
   syncVideoCoverDimensions,
   waitForVideoMetadata,
 } from '@/lib/scanner/iosCameraCompat';
+
+type ScannerEngineType = 'native_gpu' | 'wasm_cpp' | 'html5_qrcode';
+
+interface BarcodeDetectorLike {
+  detect: (image: ImageBitmapSource) => Promise<Array<{ rawValue: string; format: string; boundingBox?: DOMRectReadOnly }>>;
+}
+
+const ZXING_WASM_OVERRIDES = { locateFile: locateLocalZXingWasm };
+
+const HTML5_QRCODE_FORMATS = [
+  Html5QrcodeSupportedFormats.CODE_128,
+  Html5QrcodeSupportedFormats.CODE_39,
+  Html5QrcodeSupportedFormats.CODE_93,
+  Html5QrcodeSupportedFormats.ITF,
+  Html5QrcodeSupportedFormats.CODABAR,
+  Html5QrcodeSupportedFormats.QR_CODE,
+  Html5QrcodeSupportedFormats.DATA_MATRIX,
+  Html5QrcodeSupportedFormats.PDF_417,
+  Html5QrcodeSupportedFormats.AZTEC,
+  Html5QrcodeSupportedFormats.EAN_13,
+  Html5QrcodeSupportedFormats.EAN_8,
+  Html5QrcodeSupportedFormats.UPC_A,
+  Html5QrcodeSupportedFormats.UPC_E,
+];
+
+async function createWasmBarcodeDetector(): Promise<BarcodeDetectorLike> {
+  const { BarcodeDetector: WasmBarcodeDetector, prepareZXingModule } = await import('barcode-detector/ponyfill');
+  await prepareZXingModule({
+    overrides: ZXING_WASM_OVERRIDES,
+    equalityFn: Object.is,
+    fireImmediately: true,
+  });
+  const supported =
+    typeof WasmBarcodeDetector.getSupportedFormats === 'function'
+      ? await WasmBarcodeDetector.getSupportedFormats()
+      : undefined;
+  const formats = filterSupportedBarcodeFormats(DESIRED_BARCODE_FORMATS, supported);
+  return new WasmBarcodeDetector({ formats }) as unknown as BarcodeDetectorLike;
+}
 
 interface BarcodeBoundingBox {
   x: number;
@@ -162,9 +204,17 @@ export default function MobileScannerModal({
   const [imageError, setImageError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Motor detector activo (html5_qrcode predeterminado para asegurar visibilidad inicial y compatibilidad iOS WebKit)
-  const [activeEngine, setActiveEngine] = useState<'native_gpu' | 'html5_qrcode'>('html5_qrcode');
+  // Motor detector activo (wasm_cpp C++ / native_gpu usan <video> HD; html5_qrcode actúa como fallback de emergencia)
+  const [activeEngine, setActiveEngine] = useState<ScannerEngineType>('wasm_cpp');
+  const activeEngineRef = useRef<ScannerEngineType>('wasm_cpp');
   const [fpsCounter, setFpsCounter] = useState<number>(30);
+
+  const setScannerEngine = useCallback((engine: ScannerEngineType) => {
+    activeEngineRef.current = engine;
+    if (isMountedRef.current) {
+      setActiveEngine(engine);
+    }
+  }, []);
 
   // Refs de hardware y bucle
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -425,13 +475,14 @@ export default function MobileScannerModal({
   const handleBarcodeFoundRef = useRef(handleBarcodeFound);
   handleBarcodeFoundRef.current = handleBarcodeFound;
 
-  // Inspeccionar capacidades de la cámara
+  // Inspeccionar capacidades de la cámara y solicitar enfoque continuo no fatal
   const inspectTrackCapabilities = (track: MediaStreamTrack) => {
     try {
       trackRef.current = track;
       const caps = (track.getCapabilities ? track.getCapabilities() : {}) as {
         torch?: boolean;
         zoom?: { min: number; max: number; step: number };
+        focusMode?: string[];
       };
 
       setHasTorch(Boolean(caps.torch));
@@ -440,6 +491,16 @@ export default function MobileScannerModal({
         setCurrentZoom(1);
       } else {
         setZoomCapabilities(null);
+      }
+
+      if (
+        Array.isArray(caps.focusMode) &&
+        caps.focusMode.includes('continuous') &&
+        typeof track.applyConstraints === 'function'
+      ) {
+        void (track as MediaStreamTrack & { applyConstraints: (c: unknown) => Promise<void> })
+          .applyConstraints({ advanced: [{ focusMode: 'continuous' }] })
+          .catch(() => {});
       }
     } catch {
       setHasTorch(false);
@@ -494,13 +555,25 @@ export default function MobileScannerModal({
         let displayLabel = dev.label || `Cámara ${index + 1}`;
         let isPrimary = false;
 
-        if (lbl.includes('0') || lbl.includes('main') || lbl.includes('wide') || lbl.includes('principal') || index === 0) {
+        if (lbl.includes('ultra') || lbl.includes('0.5x') || lbl.includes('macro')) {
+          displayLabel = `🔍 Macro / Gran Angular (${dev.label})`;
+        } else if (lbl.includes('tele') || lbl.includes('2x') || lbl.includes('3x') || lbl.includes('5x')) {
+          displayLabel = `🔭 Teleobjetivo Zoom (${dev.label})`;
+        } else if (lbl.includes('triple') || lbl.includes('dual') || lbl.includes('doble')) {
+          isPrimary = true;
+          displayLabel = `⭐ Principal Auto-Macro (${dev.label})`;
+        } else if (
+          lbl.includes('main') ||
+          lbl.includes('wide') ||
+          lbl.includes('principal') ||
+          lbl.includes('gran angular') ||
+          lbl.includes('camera2 0') ||
+          lbl.includes('facing back') ||
+          /\b0\b/.test(lbl) ||
+          index === 0
+        ) {
           isPrimary = true;
           displayLabel = `⭐ Principal (${dev.label || `Lente ${index + 1}`})`;
-        } else if (lbl.includes('macro')) {
-          displayLabel = `🔍 Macro (${dev.label})`;
-        } else if (lbl.includes('ultra') || lbl.includes('0.5x')) {
-          displayLabel = `🌐 Gran Angular (${dev.label})`;
         } else {
           displayLabel = `📷 Cámara ${index + 1}`;
         }
@@ -520,7 +593,7 @@ export default function MobileScannerModal({
     }
   };
 
-  // Bucle de escaneo nativo GPU (Llama a handleBarcodeFoundRef.current para garantizar datos en vivo)
+  // Bucle de escaneo en vivo para motores GPU nativo (~30 FPS) y WASM C++ (~13-14 FPS sin saturar iOS)
   const startNativeDetectionLoop = useCallback(() => {
     if (!scanLoopActiveRef.current) return;
 
@@ -535,9 +608,7 @@ export default function MobileScannerModal({
     }
 
     const video = videoRef.current;
-    const detector = nativeDetectorRef.current as {
-      detect: (image: ImageBitmapSource) => Promise<Array<{ rawValue: string; format: string; boundingBox?: DOMRectReadOnly }>>;
-    } | null;
+    const detector = nativeDetectorRef.current as BarcodeDetectorLike | null;
 
     if (!video || !detector || video.readyState < 2) {
       if (scanLoopActiveRef.current) {
@@ -550,6 +621,8 @@ export default function MobileScannerModal({
       clearTimeout(nativeStallWatchdogRef.current);
       nativeStallWatchdogRef.current = null;
     }
+
+    const delayMs = activeEngineRef.current === 'wasm_cpp' ? 75 : 33;
 
     detector
       .detect(video)
@@ -576,7 +649,7 @@ export default function MobileScannerModal({
             if (scanLoopActiveRef.current) {
               requestAnimationFrame(startNativeDetectionLoop);
             }
-          }, 33);
+          }, delayMs);
         }
       });
   }, []);
@@ -671,15 +744,18 @@ export default function MobileScannerModal({
 
       const onIOS = isIOSPlatform();
       const isNativeSupported = typeof window !== 'undefined' && 'BarcodeDetector' in window;
-      let nativeDetectorInstance: unknown = null;
+      let activeDetectorInstance: unknown = null;
+      let selectedDetectorEngine: ScannerEngineType = 'html5_qrcode';
 
-      // En iOS WebKit (Safari y Chrome para iOS), BarcodeDetector nativo carece de soporte 1D (Code128/39)
-      // y suele quedarse en fotograma negro sin atributos inline; usamos Html5Qrcode (ZXing) directamente.
+      // Cascada de detección en 3 niveles:
+      // 1) BarcodeDetector GPU nativo (Android/Desktop con soporte completo 1D + 2D)
+      // 2) zxing-wasm C++ auto-hospedado directo sobre <video> HD (iOS Safari/Chrome y navegadores sin API completa)
+      // 3) Html5Qrcode JS (fallback de emergencia si falla WebAssembly o la vista nativa)
       if (shouldUseNativeDetector({ hasBarcodeDetector: isNativeSupported, isIOS: onIOS, forceFallback: forceFallbackEngine })) {
         try {
           const BarcodeDetectorClass = (window as unknown as {
             BarcodeDetector: {
-              new (opts?: { formats: string[] }): unknown;
+              new (opts?: { formats: string[] }): BarcodeDetectorLike;
               getSupportedFormats?: () => Promise<string[]>;
             };
           }).BarcodeDetector;
@@ -689,34 +765,74 @@ export default function MobileScannerModal({
               ? await BarcodeDetectorClass.getSupportedFormats()
               : undefined;
 
+          if (!isMountedRef.current) return;
+
           if (shouldUseNativeDetector({ hasBarcodeDetector: true, isIOS: onIOS, forceFallback: forceFallbackEngine, supportedFormats })) {
-            nativeDetectorInstance = new BarcodeDetectorClass({
-              formats: ['code_128', 'code_39', 'qr_code', 'ean_13', 'ean_8', 'upc_a', 'pdf417']
+            activeDetectorInstance = new BarcodeDetectorClass({
+              formats: filterSupportedBarcodeFormats(DESIRED_BARCODE_FORMATS, supportedFormats)
             });
-            nativeDetectorRef.current = nativeDetectorInstance;
-            setActiveEngine('native_gpu');
-          } else {
-            nativeDetectorRef.current = null;
-            setActiveEngine('html5_qrcode');
+            selectedDetectorEngine = 'native_gpu';
           }
         } catch {
-          nativeDetectorRef.current = null;
-          setActiveEngine('html5_qrcode');
+          activeDetectorInstance = null;
         }
-      } else {
-        nativeDetectorRef.current = null;
-        setActiveEngine('html5_qrcode');
       }
 
-      if (nativeDetectorInstance) {
-        const constraints: MediaStreamConstraints = {
+      if (!activeDetectorInstance && !forceFallbackEngine) {
+        try {
+          activeDetectorInstance = await createWasmBarcodeDetector();
+          if (!isMountedRef.current) return;
+          selectedDetectorEngine = 'wasm_cpp';
+        } catch (wasmErr) {
+          console.warn('[Scanner] No se pudo inicializar zxing-wasm, degradando a Html5Qrcode:', wasmErr);
+          activeDetectorInstance = null;
+          selectedDetectorEngine = 'html5_qrcode';
+        }
+      }
+
+      if (activeDetectorInstance) {
+        nativeDetectorRef.current = activeDetectorInstance;
+        setScannerEngine(selectedDetectorEngine);
+
+        const primaryConstraints: MediaStreamConstraints = {
           audio: false,
           video: cameraId
-            ? { deviceId: { exact: cameraId }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }
-            : { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }
+            ? { deviceId: { exact: cameraId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }
+            : { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }
         };
 
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        let stream: MediaStream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(primaryConstraints);
+        } catch (constraintErr: unknown) {
+          const errName = constraintErr instanceof Error ? constraintErr.name : '';
+          const errMsg = constraintErr instanceof Error ? constraintErr.message : String(constraintErr);
+          const isPermissionOrMissing =
+            errName === 'NotAllowedError' ||
+            errName === 'NotFoundError' ||
+            errMsg.includes('Permission') ||
+            errMsg.includes('NotAllowedError') ||
+            errMsg.includes('NotFound');
+          if (isPermissionOrMissing) {
+            throw constraintErr;
+          }
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: { facingMode: { ideal: 'environment' } }
+          });
+        }
+
+        if (!isMountedRef.current || !videoRef.current) {
+          stream.getTracks().forEach(t => {
+            try {
+              t.stop();
+            } catch {
+              // Silent
+            }
+          });
+          return;
+        }
+
         streamRef.current = stream;
 
         const videoTrack = stream.getVideoTracks()[0];
@@ -724,45 +840,48 @@ export default function MobileScannerModal({
           inspectTrackCapabilities(videoTrack);
         }
 
-        if (videoRef.current && isMountedRef.current) {
-          const video = videoRef.current;
-          applyInlineVideoAttributes(video);
-          video.srcObject = stream;
+        const video = videoRef.current;
+        applyInlineVideoAttributes(video);
+        video.srcObject = stream;
 
-          await waitForVideoMetadata(video, 450);
-
-          try {
-            await video.play();
-          } catch (playErr: unknown) {
-            if (playErr instanceof Error && playErr.name === 'AbortError') {
-              isStartingRef.current = false;
-              return;
-            }
-            if (playErr instanceof Error && playErr.name === 'NotAllowedError') {
-              setCameraError('Auto-reproducción pausada (revisa Modo Bajo Consumo o permisos). Toca "Encender Cámara" para continuar.');
-              await stopCameraStream();
-              isStartingRef.current = false;
-              return;
-            }
-            throw playErr;
-          }
-
-          setIsScanning(true);
-          scanLoopActiveRef.current = true;
-          setFpsCounter(30);
-
-          // Watchdog de seguridad: si no entrega fotogramas tras 2.5s (width=0 / readyState<2), degradar a Html5Qrcode
-          nativeStallWatchdogRef.current = setTimeout(() => {
-            if (isMountedRef.current && scanLoopActiveRef.current && (!video.videoWidth || video.readyState < 2)) {
-              console.warn('[Scanner] Motor GPU nativo sin fotogramas; conmutando automáticamente a Html5Qrcode.');
-              startCameraRef.current(cameraId, true);
-            }
-          }, 2500);
-
-          requestAnimationFrame(startNativeDetectionLoop);
+        await waitForVideoMetadata(video, 450);
+        if (!isMountedRef.current) {
+          await stopCameraStream();
+          return;
         }
+
+        try {
+          await video.play();
+        } catch (playErr: unknown) {
+          if (playErr instanceof Error && playErr.name === 'AbortError') {
+            isStartingRef.current = false;
+            return;
+          }
+          if (playErr instanceof Error && playErr.name === 'NotAllowedError') {
+            setCameraError('Auto-reproducción pausada (revisa Modo Bajo Consumo o permisos). Toca "Encender Cámara" para continuar.');
+            await stopCameraStream();
+            isStartingRef.current = false;
+            return;
+          }
+          throw playErr;
+        }
+
+        setIsScanning(true);
+        scanLoopActiveRef.current = true;
+        setFpsCounter(selectedDetectorEngine === 'wasm_cpp' ? 14 : 30);
+
+        // Watchdog de seguridad: si no entrega fotogramas tras 2.5s (width=0 / readyState<2), degradar a Html5Qrcode
+        nativeStallWatchdogRef.current = setTimeout(() => {
+          if (isMountedRef.current && scanLoopActiveRef.current && (!video.videoWidth || video.readyState < 2)) {
+            console.warn(`[Scanner] Motor ${selectedDetectorEngine} sin fotogramas; conmutando automáticamente a Html5Qrcode.`);
+            startCameraRef.current(cameraId, true);
+          }
+        }, 2500);
+
+        requestAnimationFrame(startNativeDetectionLoop);
       } else {
-        setActiveEngine('html5_qrcode');
+        nativeDetectorRef.current = null;
+        setScannerEngine('html5_qrcode');
         // Ceder un frame de render para que React posicione el contenedor visible antes de medir clientWidth
         await new Promise(resolve => requestAnimationFrame(() => resolve(undefined)));
 
@@ -791,13 +910,7 @@ export default function MobileScannerModal({
         }
 
         const scanner = new Html5Qrcode('qr-reader-fallback-viewport', {
-          formatsToSupport: [
-            Html5QrcodeSupportedFormats.CODE_128,
-            Html5QrcodeSupportedFormats.CODE_39,
-            Html5QrcodeSupportedFormats.QR_CODE,
-            Html5QrcodeSupportedFormats.EAN_13,
-            Html5QrcodeSupportedFormats.PDF_417
-          ],
+          formatsToSupport: HTML5_QRCODE_FORMATS,
           useBarCodeDetectorIfSupported: false,
           verbose: false
         });
@@ -917,7 +1030,7 @@ export default function MobileScannerModal({
       }
       isStartingRef.current = false;
     }
-  }, [discoverCameras, startNativeDetectionLoop, stopCameraStream]);
+  }, [discoverCameras, setScannerEngine, startNativeDetectionLoop, stopCameraStream]);
 
   const startCameraRef = useRef(startCameraStream);
   startCameraRef.current = startCameraStream;
@@ -938,7 +1051,7 @@ export default function MobileScannerModal({
     }
   }, [isOpen]);
 
-  // Subida de foto
+  // Subida de foto (prioriza zxing-wasm C++ en alta resolución y cae a Html5Qrcode / GPU nativo)
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -946,29 +1059,73 @@ export default function MobileScannerModal({
     setIsProcessingImage(true);
 
     try {
-      const tempScanner = new Html5Qrcode('qr-reader-temp-file', false);
-      const decodedResult = await tempScanner.scanFile(file, true);
-      await tempScanner.clear();
-
-      if (decodedResult) {
-        handleBarcodeFoundRef.current(decodedResult, 'IMAGE_SCAN');
-      }
-    } catch {
       try {
-        if ('BarcodeDetector' in window) {
-          const BarcodeDetectorClass = (window as unknown as { BarcodeDetector: new (opts?: { formats: string[] }) => { detect: (bitmap: ImageBitmap) => Promise<Array<{ rawValue: string; format: string }>> } }).BarcodeDetector;
-          const detector = new BarcodeDetectorClass();
-          const bitmap = await createImageBitmap(file);
-          const barcodes = await detector.detect(bitmap);
+        const wasmDetector = await createWasmBarcodeDetector();
+        const bitmap = await createImageBitmap(file);
+        try {
+          const barcodes = await wasmDetector.detect(bitmap);
           if (barcodes && barcodes.length > 0) {
             handleBarcodeFoundRef.current(barcodes[0].rawValue, barcodes[0].format.toUpperCase());
-            setIsProcessingImage(false);
             return;
+          }
+        } finally {
+          bitmap.close?.();
+        }
+      } catch {
+        // Continúa hacia fallback Html5Qrcode / Detector nativo
+      }
+
+      try {
+        const tempScanner = new Html5Qrcode('qr-reader-temp-file', {
+          formatsToSupport: HTML5_QRCODE_FORMATS,
+          useBarCodeDetectorIfSupported: false,
+          verbose: false,
+        });
+        try {
+          const decodedResult = await tempScanner.scanFile(file, true);
+          if (decodedResult) {
+            handleBarcodeFoundRef.current(decodedResult, 'IMAGE_SCAN');
+            return;
+          }
+        } finally {
+          try {
+            await tempScanner.clear();
+          } catch {
+            // Silent
           }
         }
       } catch {
-        // Silent
+        // Continúa hacia detector nativo si existe
       }
+
+      if ('BarcodeDetector' in window) {
+        const BarcodeDetectorClass = (window as unknown as {
+          BarcodeDetector: {
+            new (opts?: { formats: string[] }): BarcodeDetectorLike;
+            getSupportedFormats?: () => Promise<string[]>;
+          };
+        }).BarcodeDetector;
+        const supported =
+          typeof BarcodeDetectorClass.getSupportedFormats === 'function'
+            ? await BarcodeDetectorClass.getSupportedFormats()
+            : undefined;
+        const detector = new BarcodeDetectorClass({
+          formats: filterSupportedBarcodeFormats(DESIRED_BARCODE_FORMATS, supported),
+        });
+        const bitmap = await createImageBitmap(file);
+        try {
+          const barcodes = await detector.detect(bitmap);
+          if (barcodes && barcodes.length > 0) {
+            handleBarcodeFoundRef.current(barcodes[0].rawValue, barcodes[0].format.toUpperCase());
+            return;
+          }
+        } finally {
+          bitmap.close?.();
+        }
+      }
+
+      setImageError('No se detectó código de barras en la foto. Intenta con mejor iluminación o ingresa el código abajo.');
+    } catch {
       setImageError('No se detectó código de barras en la foto. Intenta con mejor iluminación o ingresa el código abajo.');
     } finally {
       setIsProcessingImage(false);
@@ -1346,8 +1503,8 @@ export default function MobileScannerModal({
             height: '100%',
             objectFit: 'cover',
             transform: 'translate3d(0, 0, 0)',
-            zIndex: activeEngine === 'native_gpu' ? 2 : 1,
-            opacity: activeEngine === 'native_gpu' ? 1 : 0,
+            zIndex: activeEngine !== 'html5_qrcode' ? 2 : 1,
+            opacity: activeEngine !== 'html5_qrcode' ? 1 : 0,
             pointerEvents: 'none'
           }}
         />
