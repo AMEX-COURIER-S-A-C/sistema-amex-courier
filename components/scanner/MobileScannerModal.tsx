@@ -21,11 +21,18 @@ import {
   User,
   MapPin
 } from 'lucide-react';
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats, Html5QrcodeScannerState } from 'html5-qrcode';
 import { Paquete, Cliente, ScanConfirmExtra } from '@/types';
 import { supabase } from '@/lib/supabase/client';
 import { soundEffects } from '@/lib/audio/soundEffects';
 import { alertDialog } from '@/lib/dialog';
+import {
+  isIOSPlatform,
+  shouldUseNativeDetector,
+  applyInlineVideoAttributes,
+  syncVideoCoverDimensions,
+  waitForVideoMetadata,
+} from '@/lib/scanner/iosCameraCompat';
 
 interface BarcodeBoundingBox {
   x: number;
@@ -52,7 +59,6 @@ interface CameraDeviceOption {
   label: string;
   isPrimary?: boolean;
 }
-
 
 export default function MobileScannerModal({
   isOpen,
@@ -156,8 +162,8 @@ export default function MobileScannerModal({
   const [imageError, setImageError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Motor detector activo
-  const [activeEngine, setActiveEngine] = useState<'native_gpu' | 'html5_qrcode'>('native_gpu');
+  // Motor detector activo (html5_qrcode predeterminado para asegurar visibilidad inicial y compatibilidad iOS WebKit)
+  const [activeEngine, setActiveEngine] = useState<'native_gpu' | 'html5_qrcode'>('html5_qrcode');
   const [fpsCounter, setFpsCounter] = useState<number>(30);
 
   // Refs de hardware y bucle
@@ -168,6 +174,8 @@ export default function MobileScannerModal({
   const isStartingRef = useRef<boolean>(false);
   const nativeDetectorRef = useRef<unknown>(null);
   const html5QrFallbackRef = useRef<Html5Qrcode | null>(null);
+  const nativeStallWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fallbackObserverRef = useRef<MutationObserver | null>(null);
   const lastCodeTimeRef = useRef<{ code: string; timestamp: number }>({ code: '', timestamp: 0 });
   const isMountedRef = useRef(true);
 
@@ -538,6 +546,11 @@ export default function MobileScannerModal({
       return;
     }
 
+    if (video.videoWidth > 0 && nativeStallWatchdogRef.current) {
+      clearTimeout(nativeStallWatchdogRef.current);
+      nativeStallWatchdogRef.current = null;
+    }
+
     detector
       .detect(video)
       .then(barcodes => {
@@ -572,16 +585,46 @@ export default function MobileScannerModal({
   const stopCameraStream = useCallback(async () => {
     scanLoopActiveRef.current = false;
 
+    if (nativeStallWatchdogRef.current) {
+      clearTimeout(nativeStallWatchdogRef.current);
+      nativeStallWatchdogRef.current = null;
+    }
+
+    if (fallbackObserverRef.current) {
+      fallbackObserverRef.current.disconnect();
+      fallbackObserverRef.current = null;
+    }
+
     if (html5QrFallbackRef.current) {
-      try {
-        if (html5QrFallbackRef.current.isScanning) {
-          await html5QrFallbackRef.current.stop();
-        }
-        await html5QrFallbackRef.current.clear();
-      } catch {
-        // Silent
-      }
+      const scannerInstance = html5QrFallbackRef.current;
       html5QrFallbackRef.current = null;
+      try {
+        // Detener usando getState() en lugar de .isScanning para liberar el stream aunque aún no haya disparado 'playing'
+        if (scannerInstance.getState() !== Html5QrcodeScannerState.NOT_STARTED) {
+          await scannerInstance.stop();
+        }
+        scannerInstance.clear();
+      } catch {
+        // Silent fallback cleanup
+      }
+    }
+
+    // Limpieza defensiva de cualquier pista residual en iOS WebKit (solo permite 1 consumidor activo)
+    if (typeof document !== 'undefined') {
+      const residualVideos = document.querySelectorAll('#qr-reader-fallback-viewport video');
+      residualVideos.forEach(el => {
+        const vid = el as HTMLVideoElement;
+        if (vid.srcObject instanceof MediaStream) {
+          vid.srcObject.getTracks().forEach(t => {
+            try {
+              t.stop();
+            } catch {
+              // Silent
+            }
+          });
+          vid.srcObject = null;
+        }
+      });
     }
 
     if (streamRef.current) {
@@ -612,7 +655,7 @@ export default function MobileScannerModal({
   }, []);
 
   // Iniciar cámara principal
-  const startCameraStream = useCallback(async (cameraId?: string) => {
+  const startCameraStream = useCallback(async (cameraId?: string, forceFallbackEngine = false) => {
     if (isStartingRef.current) return;
     isStartingRef.current = true;
     setCameraError(null);
@@ -626,22 +669,42 @@ export default function MobileScannerModal({
         return;
       }
 
+      const onIOS = isIOSPlatform();
       const isNativeSupported = typeof window !== 'undefined' && 'BarcodeDetector' in window;
       let nativeDetectorInstance: unknown = null;
 
-      if (isNativeSupported) {
+      // En iOS WebKit (Safari y Chrome para iOS), BarcodeDetector nativo carece de soporte 1D (Code128/39)
+      // y suele quedarse en fotograma negro sin atributos inline; usamos Html5Qrcode (ZXing) directamente.
+      if (shouldUseNativeDetector({ hasBarcodeDetector: isNativeSupported, isIOS: onIOS, forceFallback: forceFallbackEngine })) {
         try {
-          const BarcodeDetectorClass = (window as unknown as { BarcodeDetector: new (opts?: { formats: string[] }) => unknown }).BarcodeDetector;
-          nativeDetectorInstance = new BarcodeDetectorClass({
-            formats: ['code_128', 'code_39', 'qr_code', 'ean_13', 'ean_8', 'upc_a', 'pdf417']
-          });
-          nativeDetectorRef.current = nativeDetectorInstance;
-          setActiveEngine('native_gpu');
+          const BarcodeDetectorClass = (window as unknown as {
+            BarcodeDetector: {
+              new (opts?: { formats: string[] }): unknown;
+              getSupportedFormats?: () => Promise<string[]>;
+            };
+          }).BarcodeDetector;
+
+          const supportedFormats =
+            typeof BarcodeDetectorClass.getSupportedFormats === 'function'
+              ? await BarcodeDetectorClass.getSupportedFormats()
+              : undefined;
+
+          if (shouldUseNativeDetector({ hasBarcodeDetector: true, isIOS: onIOS, forceFallback: forceFallbackEngine, supportedFormats })) {
+            nativeDetectorInstance = new BarcodeDetectorClass({
+              formats: ['code_128', 'code_39', 'qr_code', 'ean_13', 'ean_8', 'upc_a', 'pdf417']
+            });
+            nativeDetectorRef.current = nativeDetectorInstance;
+            setActiveEngine('native_gpu');
+          } else {
+            nativeDetectorRef.current = null;
+            setActiveEngine('html5_qrcode');
+          }
         } catch {
           nativeDetectorRef.current = null;
           setActiveEngine('html5_qrcode');
         }
       } else {
+        nativeDetectorRef.current = null;
         setActiveEngine('html5_qrcode');
       }
 
@@ -662,14 +725,22 @@ export default function MobileScannerModal({
         }
 
         if (videoRef.current && isMountedRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.setAttribute('playsinline', 'true');
-          videoRef.current.muted = true;
+          const video = videoRef.current;
+          applyInlineVideoAttributes(video);
+          video.srcObject = stream;
+
+          await waitForVideoMetadata(video, 450);
 
           try {
-            await videoRef.current.play();
+            await video.play();
           } catch (playErr: unknown) {
             if (playErr instanceof Error && playErr.name === 'AbortError') {
+              isStartingRef.current = false;
+              return;
+            }
+            if (playErr instanceof Error && playErr.name === 'NotAllowedError') {
+              setCameraError('Auto-reproducción pausada (revisa Modo Bajo Consumo o permisos). Toca "Encender Cámara" para continuar.');
+              await stopCameraStream();
               isStartingRef.current = false;
               return;
             }
@@ -679,13 +750,44 @@ export default function MobileScannerModal({
           setIsScanning(true);
           scanLoopActiveRef.current = true;
           setFpsCounter(30);
+
+          // Watchdog de seguridad: si no entrega fotogramas tras 2.5s (width=0 / readyState<2), degradar a Html5Qrcode
+          nativeStallWatchdogRef.current = setTimeout(() => {
+            if (isMountedRef.current && scanLoopActiveRef.current && (!video.videoWidth || video.readyState < 2)) {
+              console.warn('[Scanner] Motor GPU nativo sin fotogramas; conmutando automáticamente a Html5Qrcode.');
+              startCameraRef.current(cameraId, true);
+            }
+          }, 2500);
+
           requestAnimationFrame(startNativeDetectionLoop);
         }
       } else {
         setActiveEngine('html5_qrcode');
+        // Ceder un frame de render para que React posicione el contenedor visible antes de medir clientWidth
+        await new Promise(resolve => requestAnimationFrame(() => resolve(undefined)));
+
         const fallbackContainer = document.getElementById('qr-reader-fallback-viewport');
         if (fallbackContainer) {
           fallbackContainer.innerHTML = '';
+
+          // Inyecta atributos WebKit iOS y corrige relación de aspecto en el instante que Html5Qrcode crea el <video>
+          const observer = new MutationObserver(() => {
+            const vid = fallbackContainer.querySelector('video');
+            if (vid) {
+              applyInlineVideoAttributes(vid);
+              if (!vid.dataset.amexAspectBound) {
+                vid.dataset.amexAspectBound = '1';
+                vid.style.width = '100%';
+                vid.style.height = '100%';
+                vid.style.objectFit = 'cover';
+                const onMeta = () => syncVideoCoverDimensions(vid, fallbackContainer);
+                vid.addEventListener('loadedmetadata', onMeta);
+                if (vid.videoWidth > 0) onMeta();
+              }
+            }
+          });
+          observer.observe(fallbackContainer, { childList: true, subtree: true });
+          fallbackObserverRef.current = observer;
         }
 
         const scanner = new Html5Qrcode('qr-reader-fallback-viewport', {
@@ -696,6 +798,7 @@ export default function MobileScannerModal({
             Html5QrcodeSupportedFormats.EAN_13,
             Html5QrcodeSupportedFormats.PDF_417
           ],
+          useBarCodeDetectorIfSupported: false,
           verbose: false
         });
         html5QrFallbackRef.current = scanner;
@@ -704,23 +807,77 @@ export default function MobileScannerModal({
           ? { deviceId: { exact: cameraId } }
           : { facingMode: 'environment' };
 
-        await scanner.start(
-          cameraConfig,
-          {
-            fps: 20,
-            qrbox: (vfWidth: number, vfHeight: number) => ({
-              width: Math.max(80, Math.floor((vfWidth || 320) * 0.85)),
-              height: Math.max(60, Math.floor((vfHeight || 240) * 0.5))
-            }),
-            aspectRatio: 1.777778
-          },
-          (decodedText, result) => {
-            const formatName = result?.result?.format?.formatName || 'CODE_128';
-            // ⚡ Llamada dinámica al ref en tiempo real
-            handleBarcodeFoundRef.current(decodedText, formatName);
-          },
-          () => {}
-        );
+        const qrboxFn = (vfWidth: number, vfHeight: number) => {
+          const safeVfW = vfWidth || 320;
+          const safeVfH = vfHeight || 260;
+          const visibleW = fallbackContainer?.clientWidth || safeVfW;
+          const visibleH = fallbackContainer?.clientHeight || safeVfH;
+          return {
+            width: Math.min(safeVfW, Math.max(50, Math.floor(Math.min(safeVfW, visibleW) * 0.9))),
+            height: Math.min(safeVfH, Math.max(50, Math.floor(Math.min(safeVfH, visibleH) * 0.55)))
+          };
+        };
+
+        const onDecode = (decodedText: string, result: { result?: { format?: { formatName?: string } } }) => {
+          const formatName = result?.result?.format?.formatName || 'CODE_128';
+          // ⚡ Llamada dinámica al ref en tiempo real
+          handleBarcodeFoundRef.current(decodedText, formatName);
+        };
+
+        try {
+          // Evitamos pasar aspectRatio: 1.777778 porque applyConstraints({ aspectRatio }) suele congelar WebKit en iPhone
+          await scanner.start(
+            cameraConfig,
+            {
+              fps: 20,
+              disableFlip: true,
+              qrbox: qrboxFn,
+              videoConstraints: cameraId
+                ? { deviceId: { exact: cameraId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+                : { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+            },
+            onDecode,
+            () => {}
+          );
+        } catch (startErr: unknown) {
+          const msg = startErr instanceof Error ? startErr.message : String(startErr);
+          const isPermissionDenied = msg.includes('Permission') || msg.includes('NotAllowedError');
+          if (!isPermissionDenied) {
+            // Reintento mínimo ultra-compatible para WebKit iOS Chrome si falló alguna restricción de lente o resolución
+            await scanner.start(
+              { facingMode: 'environment' },
+              {
+                fps: 20,
+                disableFlip: true,
+                qrbox: qrboxFn
+              },
+              onDecode,
+              () => {}
+            );
+          } else {
+            throw startErr;
+          }
+        }
+
+        if (fallbackObserverRef.current) {
+          fallbackObserverRef.current.disconnect();
+          fallbackObserverRef.current = null;
+        }
+
+        const fallbackVideo = fallbackContainer?.querySelector('video') as HTMLVideoElement | null;
+        if (fallbackVideo) {
+          applyInlineVideoAttributes(fallbackVideo);
+          syncVideoCoverDimensions(fallbackVideo, fallbackContainer);
+          if (fallbackVideo.paused) {
+            fallbackVideo.play().catch(() => {});
+          }
+          if (fallbackVideo.srcObject instanceof MediaStream) {
+            const track = fallbackVideo.srcObject.getVideoTracks()[0];
+            if (track) {
+              inspectTrackCapabilities(track);
+            }
+          }
+        }
 
         if (isMountedRef.current) {
           setIsScanning(true);
@@ -744,7 +901,7 @@ export default function MobileScannerModal({
       console.warn('Aviso de cámara:', err);
       const errMsg = err instanceof Error ? err.message : String(err);
       if (errMsg.includes('Permission') || errMsg.includes('NotAllowedError')) {
-        setCameraError('Permiso de cámara denegado. Habilita el permiso en tu navegador.');
+        setCameraError('Permiso de cámara denegado. Habilita el permiso en Ajustes / tu navegador.');
       } else if (errMsg.includes('NotFound') || errMsg.includes('DevicesNotFoundError')) {
         setCameraError('No se encontró ninguna cámara.');
       } else {
@@ -754,6 +911,10 @@ export default function MobileScannerModal({
         setIsScanning(false);
       }
     } finally {
+      if (fallbackObserverRef.current) {
+        fallbackObserverRef.current.disconnect();
+        fallbackObserverRef.current = null;
+      }
       isStartingRef.current = false;
     }
   }, [discoverCameras, startNativeDetectionLoop, stopCameraStream]);
@@ -1151,6 +1312,7 @@ export default function MobileScannerModal({
           backgroundColor: '#020617',
           borderRadius: '14px',
           overflow: 'hidden',
+          height: pendingConfirmation || lookupResult ? '460px' : '300px',
           minHeight: pendingConfirmation || lookupResult ? '440px' : '260px',
           maxHeight: pendingConfirmation || lookupResult ? '74vh' : '48vh',
           display: 'flex',
@@ -1168,26 +1330,48 @@ export default function MobileScannerModal({
             : recentFlash
             ? '0 0 25px rgba(34,197,94,0.5)'
             : '0 6px 24px rgba(37, 99, 235, 0.18)',
-          transition: 'min-height 0.25s ease, max-height 0.25s ease, border-color 0.2s, box-shadow 0.2s'
+          transition: 'height 0.25s ease, min-height 0.25s ease, max-height 0.25s ease, border-color 0.2s, box-shadow 0.2s'
         }}
       >
         <video
           ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          webkit-playsinline="true"
           style={{
+            position: 'absolute',
+            inset: 0,
             width: '100%',
             height: '100%',
             objectFit: 'cover',
-            display: isScanning && activeEngine === 'native_gpu' ? 'block' : 'none'
+            transform: 'translate3d(0, 0, 0)',
+            zIndex: activeEngine === 'native_gpu' ? 2 : 1,
+            opacity: activeEngine === 'native_gpu' ? 1 : 0,
+            pointerEvents: 'none'
           }}
         />
 
         <div
-          id="qr-reader-fallback-viewport"
           style={{
+            position: 'absolute',
+            inset: 0,
             width: '100%',
-            display: isScanning && activeEngine === 'html5_qrcode' ? 'block' : 'none'
+            height: '100%',
+            zIndex: activeEngine === 'html5_qrcode' ? 2 : 1,
+            opacity: activeEngine === 'html5_qrcode' ? 1 : 0,
+            pointerEvents: isScanning && activeEngine === 'html5_qrcode' ? 'auto' : 'none'
           }}
-        />
+        >
+          <div
+            id="qr-reader-fallback-viewport"
+            style={{
+              position: 'relative',
+              width: '100%',
+              height: '100%'
+            }}
+          />
+        </div>
 
         <div id="qr-reader-temp-file" style={{ display: 'none' }} />
 
@@ -1197,6 +1381,7 @@ export default function MobileScannerModal({
             style={{
               position: 'absolute',
               inset: 0,
+              zIndex: 8,
               pointerEvents: 'none',
               display: 'flex',
               flexDirection: 'column',
@@ -1992,8 +2177,22 @@ export default function MobileScannerModal({
         )}
 
         {/* Estado cámara apagada */}
-        {!isScanning && !pendingConfirmation && (
-          <div style={{ textAlign: 'center', padding: '24px 16px', color: '#94a3b8' }}>
+        {!isScanning && !pendingConfirmation && !lookupResult && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              zIndex: 10,
+              backgroundColor: '#020617',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              textAlign: 'center',
+              padding: '24px 16px',
+              color: '#94a3b8'
+            }}
+          >
             {cameraError ? (
               <>
                 <VideoOff style={{ width: '36px', height: '36px', color: '#f87171', margin: '0 auto 8px auto' }} />

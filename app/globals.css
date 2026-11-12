@@ -1160,7 +1160,8 @@ tr:hover { background: #f8fafc !important; }
 }
 
 /* Fix Escáner Cámara Vídeo 100% Cobertura */
-#qr-reader-viewport {
+#qr-reader-viewport,
+#qr-reader-fallback-viewport {
   width: 100% !important;
   height: 100% !important;
   display: flex !important;
@@ -1175,6 +1176,19 @@ tr:hover { background: #f8fafc !important; }
   min-height: 320px !important;
   object-fit: cover !important;
   border-radius: 8px !important;
+}
+
+#qr-reader-fallback-viewport video {
+  max-width: none !important;
+  max-height: none !important;
+  flex-shrink: 0 !important;
+  border-radius: 8px !important;
+  transform: translate3d(0, 0, 0);
+}
+
+#qr-reader-fallback-viewport #qr-shaded-region {
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 
 /* ==========================================================================
