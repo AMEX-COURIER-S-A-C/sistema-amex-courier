@@ -1,36 +1,105 @@
 import jsPDF from 'jspdf';
 import { InvoiceData } from '../types';
+import {
+  INVOICE_COLUMN_WIDTHS,
+  formatInvoiceCurrency,
+  normalizeInvoiceText,
+  wrapTextLinesToWidth,
+} from '../utils/invoiceLayoutHelpers';
 
-function sanitizeText(text: string | undefined | null): string {
-  if (!text) return '';
-  return text
-    .replace(/[\u2018\u2019]/g, "'")
-    .replace(/[\u201C\u201D]/g, '"')
-    .replace(/[\u2013\u2014]/g, '-')
-    .replace(/[\u2022\u2023\u25E6\u2043\u2219]/g, '•')
-    .replace(/[^\x20-\x7E\xA0-\xFF\u2022]/g, '')
-    .trim();
+interface PdfTableGeometry {
+  marginX: number;
+  marginTop: number;
+  maxY: number;
+  contentWidth: number;
+  wItemNumber: number;
+  wItem: number;
+  wQty: number;
+  wPrice: number;
+  wTotal: number;
+  xItemNumber: number;
+  xItem: number;
+  xQty: number;
+  xPrice: number;
+  xTotal: number;
+  xRight: number;
+}
+
+const PDF_LINE_HEIGHT_MM = 4.0;
+const PDF_ROW_VERTICAL_PADDING_MM = 2.4;
+const PDF_FIRST_BASELINE_OFFSET_MM = 4.3;
+
+function drawPdfTableHeader(doc: jsPDF, geom: PdfTableGeometry, startY: number): number {
+  const headerHeight = 7.5;
+  doc.setFillColor(46, 91, 151); // #2E5B97
+  doc.rect(geom.marginX, startY, geom.contentWidth, headerHeight, 'F');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(255, 255, 255);
+  doc.text('Item #', geom.xItemNumber + geom.wItemNumber / 2, startY + 5.2, { align: 'center' });
+  doc.text('Item Name', geom.xItem + 3, startY + 5.2);
+  doc.text('Quantity', geom.xQty + geom.wQty / 2, startY + 5.2, { align: 'center' });
+  doc.text('Unit Price', geom.xPrice + geom.wPrice - 3, startY + 5.2, { align: 'right' });
+  doc.text('Total', geom.xTotal + geom.wTotal - 3, startY + 5.2, { align: 'right' });
+
+  return startY + headerHeight;
+}
+
+function drawPdfTableGridBorders(doc: jsPDF, geom: PdfTableGeometry, startY: number, endY: number): void {
+  doc.setDrawColor(153, 153, 153);
+  doc.setLineWidth(0.2);
+
+  // Bordes exteriores e inferiores
+  doc.line(geom.marginX, startY, geom.marginX, endY);
+  doc.line(geom.xRight, startY, geom.xRight, endY);
+  doc.line(geom.marginX, endY, geom.xRight, endY);
+
+  // Divisiones verticales internas de las 5 columnas
+  doc.line(geom.xItem, startY, geom.xItem, endY);
+  doc.line(geom.xQty, startY, geom.xQty, endY);
+  doc.line(geom.xPrice, startY, geom.xPrice, endY);
+  doc.line(geom.xTotal, startY, geom.xTotal, endY);
+}
+
+function drawPdfSubtleRowDivider(doc: jsPDF, geom: PdfTableGeometry, y: number): void {
+  doc.setDrawColor(226, 232, 240); // #E2E8F0 línea horizontal sutil entre ítems
+  doc.setLineWidth(0.15);
+  doc.line(geom.marginX, y, geom.xRight, y);
+}
+
+function setPdfBodyTextStyle(doc: jsPDF): void {
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(33, 33, 33);
 }
 
 /**
- * Genera y descarga un PDF de la factura con el formato de zxzxzxzx.docx
+ * Construye el documento jsPDF de la factura respetando estrictamente los límites
+ * horizontales de cada columna, bajando a nuevos renglones y paginando automáticamente.
  */
-export async function generateInvoicePdf(data: InvoiceData, filename?: string): Promise<void> {
+export function buildInvoicePdfDocument(data: InvoiceData): jsPDF {
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
-    format: 'letter' // 215.9 x 279.4 mm (idéntico a Word letter)
+    format: 'letter', // 215.9 x 279.4 mm
   });
 
   const marginX = 14;
+  const marginTop = 18;
   const pageWidth = 215.9;
-  const contentWidth = pageWidth - (marginX * 2);
-  let currentY = 18;
+  const pageHeight = 279.4;
+  const marginBottom = 16;
+  const maxY = pageHeight - marginBottom;
+  const contentWidth = pageWidth - marginX * 2;
+  let currentY = marginTop;
+
+  const measureTextWidth = (segment: string) => doc.getTextWidth(segment);
 
   // 1. Título "Invoice"
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(22);
-  doc.setTextColor(46, 91, 151); // #2E5B97
+  doc.setTextColor(46, 91, 151);
   doc.text('Invoice', marginX, currentY);
   currentY += 10;
 
@@ -39,66 +108,60 @@ export async function generateInvoicePdf(data: InvoiceData, filename?: string): 
   const rightLabelX = 140;
   const rightValueX = pageWidth - marginX;
 
-  // Columna Izquierda (Empresa)
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9.5);
-  doc.setTextColor(83, 83, 83); // #535353
-  doc.text(sanitizeText(data.companyName || 'ACCESSORIES SALES'), leftX, currentY);
+  doc.setTextColor(83, 83, 83);
+  doc.text(normalizeInvoiceText(data.companyName || 'ACCESSORIES SALES'), leftX, currentY);
 
-  // Columna Derecha (Invoice Number)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9.5);
   doc.setTextColor(60, 59, 59);
   doc.text('Invoice Number:', rightLabelX, currentY);
   doc.setFont('helvetica', 'normal');
-  doc.text(sanitizeText(String(data.invoiceNumber || '')), rightValueX, currentY, { align: 'right' });
+  doc.text(normalizeInvoiceText(String(data.invoiceNumber || '')), rightValueX, currentY, { align: 'right' });
 
   currentY += 5;
 
-  // Columna Izquierda (Address)
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(83, 83, 83);
-  doc.text(sanitizeText(data.companyAddress || '4771 NW 72nd Ave Miami'), leftX, currentY);
+  doc.text(normalizeInvoiceText(data.companyAddress || '4771 NW 72nd Ave Miami'), leftX, currentY);
 
-  // Columna Derecha (Invoice Date)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9.5);
   doc.setTextColor(60, 59, 59);
   doc.text('Invoice Date:', rightLabelX, currentY);
   doc.setFont('helvetica', 'normal');
-  doc.text(sanitizeText(data.invoiceDate || '30/07/2026'), rightValueX, currentY, { align: 'right' });
+  doc.text(normalizeInvoiceText(data.invoiceDate || '30/07/2026'), rightValueX, currentY, { align: 'right' });
 
   currentY += 5;
 
-  // Columna Derecha (Payment Terms)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9.5);
   doc.setTextColor(60, 59, 59);
   doc.text('Payment Terms:', rightLabelX, currentY);
   doc.setFont('helvetica', 'normal');
-  doc.text(sanitizeText(data.paymentTerms || 'Due On Receipt'), rightValueX, currentY, { align: 'right' });
+  doc.text(normalizeInvoiceText(data.paymentTerms || 'Due On Receipt'), rightValueX, currentY, { align: 'right' });
 
   currentY += 4;
 
-  // Columna Izquierda (Phone)
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(83, 83, 83);
-  doc.text(sanitizeText(data.companyCityPhone || 'FL 33166 Phone:702-5159055'), leftX, currentY);
+  doc.text(normalizeInvoiceText(data.companyCityPhone || 'FL 33166 Phone:702-5159055'), leftX, currentY);
 
-  // Columna Derecha (Invoice Due Date)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9.5);
   doc.setTextColor(60, 59, 59);
   doc.text('Invoice Due Date:', rightLabelX, currentY);
   doc.setFont('helvetica', 'normal');
-  doc.text(sanitizeText(data.invoiceDueDate || '30/07/2026'), rightValueX, currentY, { align: 'right' });
+  doc.text(normalizeInvoiceText(data.invoiceDueDate || '30/07/2026'), rightValueX, currentY, { align: 'right' });
 
   currentY += 6;
 
-  // Columna Derecha (Invoice Amount)
-  const formattedAmount = `$${typeof data.invoiceAmount === 'number' ? data.invoiceAmount.toFixed(2) : String(data.invoiceAmount || '0.00').replace('$', '')}`;
+  const formattedAmount =
+    formatInvoiceCurrency(data.invoiceAmount) ||
+    `$${String(data.invoiceAmount || '0.00').replace('$', '')}`;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(60, 59, 59);
@@ -108,20 +171,20 @@ export async function generateInvoicePdf(data: InvoiceData, filename?: string): 
 
   currentY += 5;
 
-  // Columna Derecha (Created By)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9.5);
   doc.setTextColor(60, 59, 59);
   doc.text('Created By:', rightLabelX, currentY);
   doc.setFont('helvetica', 'normal');
-  doc.text(sanitizeText(data.createdBy || 'ORDER Ronxana'), rightValueX, currentY, { align: 'right' });
+  doc.text(normalizeInvoiceText(data.createdBy || 'ORDER Ronxana'), rightValueX, currentY, { align: 'right' });
 
   currentY += 12;
 
-  // 3. Destinatarios: Bill To y Ship To
+  // 3. Destinatarios: Bill To y Ship To con ajuste automático por columna
   const colHalfWidth = contentWidth / 2;
   const billToX = marginX;
   const shipToX = marginX + colHalfWidth;
+  const recipientMaxWidth = colHalfWidth - 5;
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9.5);
@@ -134,18 +197,28 @@ export async function generateInvoicePdf(data: InvoiceData, filename?: string): 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9.5);
   doc.setTextColor(33, 33, 33);
-  doc.text(sanitizeText(data.billToName || ''), billToX, currentY);
-  doc.text(sanitizeText(data.shipToName || data.billToName || ''), shipToX, currentY);
+  const billToLines = wrapTextLinesToWidth(normalizeInvoiceText(data.billToName || ''), recipientMaxWidth, measureTextWidth);
+  const shipToLines = wrapTextLinesToWidth(
+    normalizeInvoiceText(data.shipToName || data.billToName || ''),
+    recipientMaxWidth,
+    measureTextWidth
+  );
+  const recipientLineCount = Math.max(billToLines.length, shipToLines.length);
 
-  currentY += 8;
+  for (let i = 0; i < recipientLineCount; i++) {
+    const lineY = currentY + i * 4.2;
+    if (billToLines[i]) doc.text(billToLines[i], billToX, lineY);
+    if (shipToLines[i]) doc.text(shipToLines[i], shipToX, lineY);
+  }
 
-  // 4. Tabla de Ítems
-  // Anchos de columnas en mm: Item # (7%), Item Name (45%), Qty (12%), Unit Price (18%), Total (18%)
-  const wItemNumber = contentWidth * 0.07;
-  const wItem = contentWidth * 0.45;
-  const wQty = contentWidth * 0.12;
-  const wPrice = contentWidth * 0.18;
-  const wTotal = contentWidth * 0.18;
+  currentY += recipientLineCount * 4.2 + 4;
+
+  // 4. Geometría de Tabla de Ítems (7% / 45% / 12% / 18% / 18%)
+  const wItemNumber = contentWidth * (INVOICE_COLUMN_WIDTHS.itemNumber / 100);
+  const wItem = contentWidth * (INVOICE_COLUMN_WIDTHS.itemName / 100);
+  const wQty = contentWidth * (INVOICE_COLUMN_WIDTHS.quantity / 100);
+  const wPrice = contentWidth * (INVOICE_COLUMN_WIDTHS.unitPrice / 100);
+  const wTotal = contentWidth * (INVOICE_COLUMN_WIDTHS.total / 100);
 
   const xItemNumber = marginX;
   const xItem = xItemNumber + wItemNumber;
@@ -153,58 +226,124 @@ export async function generateInvoicePdf(data: InvoiceData, filename?: string): 
   const xPrice = xQty + wQty;
   const xTotal = xPrice + wPrice;
 
-  // Encabezado con fondo azul #2E5B97
-  const headerHeight = 7.5;
-  doc.setFillColor(46, 91, 151); // #2E5B97
-  doc.rect(marginX, currentY, contentWidth, headerHeight, 'F');
+  const geom: PdfTableGeometry = {
+    marginX,
+    marginTop,
+    maxY,
+    contentWidth,
+    wItemNumber,
+    wItem,
+    wQty,
+    wPrice,
+    wTotal,
+    xItemNumber,
+    xItem,
+    xQty,
+    xPrice,
+    xTotal,
+    xRight: marginX + contentWidth,
+  };
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.setTextColor(255, 255, 255);
-  doc.text('Item #', xItemNumber + (wItemNumber / 2), currentY + 5.2, { align: 'center' });
-  doc.text('Item Name', xItem + 3, currentY + 5.2);
-  doc.text('Quantity', xQty + (wQty / 2), currentY + 5.2, { align: 'center' });
-  doc.text('Unit Price', xPrice + wPrice - 3, currentY + 5.2, { align: 'right' });
-  doc.text('Total', xTotal + wTotal - 3, currentY + 5.2, { align: 'right' });
+  let pageTableStartY = drawPdfTableHeader(doc, geom, currentY);
+  let cursorY = pageTableStartY;
+  setPdfBodyTextStyle(doc);
 
-  currentY += headerHeight;
+  const items = data.items || [];
+  const itemMaxTextWidth = geom.wItem - 6;
+  const qtyMaxTextWidth = geom.wQty - 2.5;
+  const priceMaxTextWidth = geom.wPrice - 5;
+  const totalMaxTextWidth = geom.wTotal - 5;
 
-  // Caja de items (altura mínima como en Word: ~110 mm)
-  const bodyStartY = currentY;
-  const bodyMinHeight = 110;
-  let bodyContentY = currentY + 5;
+  const advanceToNewPage = () => {
+    drawPdfTableGridBorders(doc, geom, pageTableStartY, cursorY);
+    doc.addPage();
+    pageTableStartY = drawPdfTableHeader(doc, geom, geom.marginTop);
+    cursorY = pageTableStartY;
+    setPdfBodyTextStyle(doc);
+  };
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.setTextColor(33, 33, 33);
+  items.forEach((item, index) => {
+    const cleanName = normalizeInvoiceText(item.name || '');
+    const nameLines = wrapTextLinesToWidth(cleanName, itemMaxTextWidth, measureTextWidth);
+    const qtyLines = wrapTextLinesToWidth(
+      normalizeInvoiceText(String(item.quantity ?? '1')),
+      qtyMaxTextWidth,
+      measureTextWidth
+    );
+    const priceLines = wrapTextLinesToWidth(formatInvoiceCurrency(item.unitPrice), priceMaxTextWidth, measureTextWidth);
+    const totalLines = wrapTextLinesToWidth(formatInvoiceCurrency(item.total), totalMaxTextWidth, measureTextWidth);
 
-  (data.items || []).forEach((item, index) => {
-    doc.text(String(index + 1), xItemNumber + (wItemNumber / 2), bodyContentY, { align: 'center' });
-    doc.text(sanitizeText(item.name || ''), xItem + 3, bodyContentY);
-    doc.text(String(item.quantity || ''), xQty + (wQty / 2), bodyContentY, { align: 'center' });
-    const pStr = item.unitPrice ? `$${Number(item.unitPrice).toFixed(2)}` : '';
-    const tStr = item.total ? `$${Number(item.total).toFixed(2)}` : '';
-    doc.text(pStr, xPrice + wPrice - 3, bodyContentY, { align: 'right' });
-    doc.text(tStr, xTotal + wTotal - 3, bodyContentY, { align: 'right' });
-    bodyContentY += 4.5;
+    const totalLinesInRow = Math.max(nameLines.length, qtyLines.length, priceLines.length, totalLines.length);
+    let lineOffset = 0;
+
+    while (lineOffset < totalLinesInRow) {
+      const remainingLines = totalLinesInRow - lineOffset;
+      const neededHeightForRemaining = PDF_ROW_VERTICAL_PADDING_MM + remainingLines * PDF_LINE_HEIGHT_MM;
+
+      // Si el ítem completo no entra en el resto de la página actual y no estamos al inicio de hoja, saltar antes de dibujar
+      if (cursorY > pageTableStartY && cursorY + neededHeightForRemaining > geom.maxY) {
+        const capacityOnFreshPage = Math.floor((geom.maxY - (geom.marginTop + 7.5) - PDF_ROW_VERTICAL_PADDING_MM) / PDF_LINE_HEIGHT_MM);
+        const fitsWholeOnNextPage = remainingLines <= capacityOnFreshPage;
+        const availableHere = Math.floor((geom.maxY - cursorY - PDF_ROW_VERTICAL_PADDING_MM) / PDF_LINE_HEIGHT_MM);
+        if (fitsWholeOnNextPage || availableHere < 1) {
+          advanceToNewPage();
+          continue;
+        }
+      }
+
+      const maxLinesOnThisPage = Math.max(
+        1,
+        Math.floor((geom.maxY - cursorY - PDF_ROW_VERTICAL_PADDING_MM) / PDF_LINE_HEIGHT_MM)
+      );
+      const chunkCount = Math.min(remainingLines, maxLinesOnThisPage);
+      const rowChunkHeight = PDF_ROW_VERTICAL_PADDING_MM + chunkCount * PDF_LINE_HEIGHT_MM;
+
+      for (let i = 0; i < chunkCount; i++) {
+        const lineIdx = lineOffset + i;
+        const baselineY = cursorY + PDF_FIRST_BASELINE_OFFSET_MM + i * PDF_LINE_HEIGHT_MM;
+
+        if (lineIdx === 0) {
+          doc.text(String(index + 1), geom.xItemNumber + geom.wItemNumber / 2, baselineY, { align: 'center' });
+        }
+        if (nameLines[lineIdx]) {
+          doc.text(nameLines[lineIdx], geom.xItem + 3, baselineY);
+        }
+        if (qtyLines[lineIdx]) {
+          doc.text(qtyLines[lineIdx], geom.xQty + geom.wQty / 2, baselineY, { align: 'center' });
+        }
+        if (priceLines[lineIdx]) {
+          doc.text(priceLines[lineIdx], geom.xPrice + geom.wPrice - 3, baselineY, { align: 'right' });
+        }
+        if (totalLines[lineIdx]) {
+          doc.text(totalLines[lineIdx], geom.xTotal + geom.wTotal - 3, baselineY, { align: 'right' });
+        }
+      }
+
+      cursorY += rowChunkHeight;
+      lineOffset += chunkCount;
+
+      if (lineOffset < totalLinesInRow) {
+        advanceToNewPage();
+      }
+    }
+
+    drawPdfSubtleRowDivider(doc, geom, cursorY);
   });
 
-  const actualBodyHeight = Math.max(bodyMinHeight, bodyContentY - bodyStartY + 5);
+  // Cerrar caja de la página final: en factura de 1 hoja conservar alto mínimo clásico (110mm)
+  const totalPages = doc.getNumberOfPages();
+  const bodyMinHeight = totalPages === 1 ? 110 : 12;
+  const finalBoxEndY = Math.min(geom.maxY, Math.max(pageTableStartY + bodyMinHeight, cursorY + 2));
+  drawPdfTableGridBorders(doc, geom, pageTableStartY, finalBoxEndY);
 
-  // Líneas divisorias de la tabla (gris suave #999999)
-  doc.setDrawColor(153, 153, 153);
-  doc.setLineWidth(0.2);
+  return doc;
+}
 
-  // Borde exterior del cuerpo (izq, der, fondo)
-  doc.line(marginX, bodyStartY, marginX, bodyStartY + actualBodyHeight); // Borde izq
-  doc.line(marginX + contentWidth, bodyStartY, marginX + contentWidth, bodyStartY + actualBodyHeight); // Borde der
-  doc.line(marginX, bodyStartY + actualBodyHeight, marginX + contentWidth, bodyStartY + actualBodyHeight); // Borde inferior
-
-  // Líneas verticales internas de columnas
-  doc.line(xItem, bodyStartY, xItem, bodyStartY + actualBodyHeight);
-  doc.line(xQty, bodyStartY, xQty, bodyStartY + actualBodyHeight);
-  doc.line(xPrice, bodyStartY, xPrice, bodyStartY + actualBodyHeight);
-  doc.line(xTotal, bodyStartY, xTotal, bodyStartY + actualBodyHeight);
+/**
+ * Genera y descarga un PDF de la factura con el formato de zxzxzxzx.docx
+ */
+export async function generateInvoicePdf(data: InvoiceData, filename?: string): Promise<void> {
+  const doc = buildInvoicePdfDocument(data);
 
   // Guardar archivo solo con el nombre de Bill To
   const cleanBillTo = (data.billToName || 'INVOICE').trim();

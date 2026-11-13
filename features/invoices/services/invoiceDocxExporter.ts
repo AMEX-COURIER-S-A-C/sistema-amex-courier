@@ -9,16 +9,23 @@ import {
   Packer,
   WidthType,
   BorderStyle,
-  HeightRule
+  HeightRule,
+  TableLayoutType
 } from 'docx';
 import saveAs from 'file-saver';
 import { InvoiceData } from '../types';
+import {
+  INVOICE_DOCX_COLUMN_DXA,
+  INVOICE_PRINTABLE_DXA,
+  computeDocxFillerDxa,
+  formatInvoiceCurrency,
+} from '../utils/invoiceLayoutHelpers';
 
 /**
- * Genera y descarga un documento de Word (.docx) editable
- * con el formato y diseño idéntico al documento original zxzxzxzx.docx.
+ * Construye el documento Word (.docx) de la factura con 5 columnas de ancho fijo,
+ * filas sincronizadas por ítem y línea divisoria sutil inferior.
  */
-export async function generateInvoiceDocx(data: InvoiceData, filename?: string): Promise<void> {
+export function buildInvoiceDocxDocument(data: InvoiceData): Document {
   const fontMain = 'Tahoma';
   const colorPrimary = '2E5B97'; // Azul corporativo exacto de zxzxzxzx.docx
   const colorTextDark = '3C3B3B';
@@ -243,9 +250,11 @@ export async function generateInvoiceDocx(data: InvoiceData, filename?: string):
   // Espaciador antes de Bill To / Ship To
   const middleSpacer = new Paragraph({ spacing: { after: 120 }, children: [] });
 
-  // Tabla de Destinatarios: Bill To (Izquierda) | Ship To (Derecha)
+  // Tabla de Destinatarios: Bill To (Izquierda) | Ship To (Derecha) con ancho fijo
   const recipientsTable = new Table({
-    width: { size: 100, type: WidthType.PERCENTAGE },
+    width: { size: INVOICE_PRINTABLE_DXA, type: WidthType.DXA },
+    columnWidths: [5620, 5620],
+    layout: TableLayoutType.FIXED,
     borders: {
       top: noBorder,
       bottom: noBorder,
@@ -342,246 +351,160 @@ export async function generateInvoiceDocx(data: InvoiceData, filename?: string):
 
   const preTableSpacer = new Paragraph({ spacing: { after: 100 }, children: [] });
 
-  // Preparar párrafos para el cuerpo de la tabla (Col 0: Items, Col 1: Qty, Col 2: Price, Col 3: Total)
-  const itemNameParagraphs = (data.items || []).map(item =>
-    new Paragraph({
-      spacing: { after: 40 },
-      children: [
-        new TextRun({
-          text: item.name || '',
-          font: fontMain,
-          size: 19,
-          color: colorValueDark
-        })
-      ]
-    })
-  );
+  const subtleDivider = {
+    style: BorderStyle.SINGLE,
+    size: 4,
+    color: 'E2E8F0'
+  };
 
-  const quantityParagraphs = (data.items || []).map(item =>
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { after: 40 },
-      children: [
-        new TextRun({
-          text: String(item.quantity || ''),
-          font: fontMain,
-          size: 19,
-          color: colorValueDark
-        })
-      ]
-    })
-  );
+  // Definición unificada de 5 columnas (7% / 45% / 12% / 18% / 18%) idéntica a Vista Previa y PDF
+  const columnDefs = [
+    { label: 'Item #', widthDxa: INVOICE_DOCX_COLUMN_DXA[0], align: AlignmentType.CENTER, padX: 60 },
+    { label: 'Item Name', widthDxa: INVOICE_DOCX_COLUMN_DXA[1], align: AlignmentType.LEFT, padX: 110 },
+    { label: 'Quantity', widthDxa: INVOICE_DOCX_COLUMN_DXA[2], align: AlignmentType.CENTER, padX: 70 },
+    { label: 'Unit Price', widthDxa: INVOICE_DOCX_COLUMN_DXA[3], align: AlignmentType.RIGHT, padX: 110 },
+    { label: 'Total', widthDxa: INVOICE_DOCX_COLUMN_DXA[4], align: AlignmentType.RIGHT, padX: 110 }
+  ];
 
-  const unitPriceParagraphs = (data.items || []).map(item =>
-    new Paragraph({
-      alignment: AlignmentType.RIGHT,
-      spacing: { after: 40 },
-      children: [
-        new TextRun({
-          text: item.unitPrice ? `$${Number(item.unitPrice).toFixed(2)}` : '',
-          font: fontMain,
-          size: 19,
-          color: colorValueDark
+  const headerRow = new TableRow({
+    tableHeader: true,
+    cantSplit: true,
+    height: { value: 650, rule: HeightRule.ATLEAST },
+    children: columnDefs.map(
+      col =>
+        new TableCell({
+          width: { size: col.widthDxa, type: WidthType.DXA },
+          shading: { fill: colorPrimary },
+          margins: { left: col.padX, right: col.padX, top: 110, bottom: 110 },
+          borders: {
+            top: noBorder,
+            bottom: noBorder,
+            left: noBorder,
+            right: noBorder
+          },
+          children: [
+            new Paragraph({
+              alignment: col.align,
+              children: [
+                new TextRun({
+                  text: col.label,
+                  font: fontMain,
+                  size: 18,
+                  bold: true,
+                  color: 'FFFFFF'
+                })
+              ]
+            })
+          ]
         })
-      ]
-    })
-  );
+    )
+  });
 
-  const totalParagraphs = (data.items || []).map(item =>
-    new Paragraph({
-      alignment: AlignmentType.RIGHT,
-      spacing: { after: 40 },
-      children: [
-        new TextRun({
-          text: item.total ? `$${Number(item.total).toFixed(2)}` : '',
-          font: fontMain,
-          size: 19,
-          color: colorValueDark
-        })
-      ]
-    })
-  );
+  const items = data.items || [];
+  const fillerDxa = computeDocxFillerDxa(items, 4155);
+  const hasFillerRow = fillerDxa > 0;
 
-  // Asegurar que si la tabla tiene pocos items, haya espacio en blanco para mantener la altura visual
-  if (itemNameParagraphs.length === 0) {
-    itemNameParagraphs.push(new Paragraph({ children: [new TextRun({ text: ' ', size: 19 })] }));
-    quantityParagraphs.push(new Paragraph({ children: [new TextRun({ text: ' ', size: 19 })] }));
-    unitPriceParagraphs.push(new Paragraph({ children: [new TextRun({ text: ' ', size: 19 })] }));
-    totalParagraphs.push(new Paragraph({ children: [new TextRun({ text: ' ', size: 19 })] }));
+  const createBodyCell = (
+    colIndex: number,
+    lines: string[],
+    bottomBorder: typeof thinBorder | typeof subtleDivider,
+    options?: { italic?: boolean; color?: string; verticalPad?: number }
+  ) => {
+    const col = columnDefs[colIndex];
+    const vPad = options?.verticalPad ?? 85;
+    return new TableCell({
+      width: { size: col.widthDxa, type: WidthType.DXA },
+      margins: { left: col.padX, right: col.padX, top: vPad, bottom: vPad },
+      borders: {
+        top: noBorder,
+        bottom: bottomBorder,
+        left: thinBorder,
+        right: thinBorder
+      },
+      children: (lines.length > 0 ? lines : ['']).map(
+        line =>
+          new Paragraph({
+            alignment: col.align,
+            spacing: { after: 20 },
+            children: [
+              new TextRun({
+                text: line,
+                font: fontMain,
+                size: 18,
+                italics: options?.italic,
+                color: options?.color || colorValueDark
+              })
+            ]
+          })
+      )
+    });
+  };
+
+  const itemRows: TableRow[] =
+    items.length === 0
+      ? [
+          new TableRow({
+            cantSplit: true,
+            children: [
+              createBodyCell(0, [''], hasFillerRow ? subtleDivider : thinBorder),
+              createBodyCell(1, ['No se han registrado ítems'], hasFillerRow ? subtleDivider : thinBorder, {
+                italic: true,
+                color: '94A3B8',
+                verticalPad: 180
+              }),
+              createBodyCell(2, [''], hasFillerRow ? subtleDivider : thinBorder),
+              createBodyCell(3, [''], hasFillerRow ? subtleDivider : thinBorder),
+              createBodyCell(4, [''], hasFillerRow ? subtleDivider : thinBorder)
+            ]
+          })
+        ]
+      : items.map((item, idx) => {
+          const isLastItem = idx === items.length - 1;
+          const bottomBorder = !hasFillerRow && isLastItem ? thinBorder : subtleDivider;
+          const itemLines = (item.name || '').replace(/\r\n/g, '\n').split('\n');
+          return new TableRow({
+            cantSplit: true,
+            children: [
+              createBodyCell(0, [String(idx + 1)], bottomBorder, { color: '475569' }),
+              createBodyCell(1, itemLines, bottomBorder),
+              createBodyCell(2, [String(item.quantity ?? '1')], bottomBorder),
+              createBodyCell(3, [formatInvoiceCurrency(item.unitPrice)], bottomBorder),
+              createBodyCell(4, [formatInvoiceCurrency(item.total)], bottomBorder)
+            ]
+          });
+        });
+
+  if (hasFillerRow) {
+    itemRows.push(
+      new TableRow({
+        height: { value: fillerDxa, rule: HeightRule.ATLEAST },
+        children: columnDefs.map(
+          col =>
+            new TableCell({
+              width: { size: col.widthDxa, type: WidthType.DXA },
+              margins: { left: col.padX, right: col.padX, top: 0, bottom: 0 },
+              borders: {
+                top: noBorder,
+                bottom: thinBorder,
+                left: thinBorder,
+                right: thinBorder
+              },
+              children: [new Paragraph({ children: [] })]
+            })
+        )
+      })
+    );
   }
 
-  // Tabla Principal con encabezado #2E5B97 y caja de items
-  // Anchos proporcionales a zxzxzxzx.docx: Item Name ~52%, Qty ~12%, Unit Price ~18%, Total ~18%
-  const colWidthItem = { size: 52, type: WidthType.PERCENTAGE };
-  const colWidthQty = { size: 12, type: WidthType.PERCENTAGE };
-  const colWidthPrice = { size: 18, type: WidthType.PERCENTAGE };
-  const colWidthTotal = { size: 18, type: WidthType.PERCENTAGE };
-
   const invoiceItemsTable = new Table({
-    width: { size: 100, type: WidthType.PERCENTAGE },
-    rows: [
-      // Fila 0: Encabezados con fondo azul corporativo (#2E5B97) y texto blanco
-      new TableRow({
-        height: { value: 650, rule: HeightRule.ATLEAST },
-        children: [
-          new TableCell({
-            width: colWidthItem,
-            shading: { fill: colorPrimary },
-            margins: { left: 120, right: 120, top: 120, bottom: 120 },
-            borders: {
-              top: noBorder,
-              bottom: noBorder,
-              left: noBorder,
-              right: noBorder
-            },
-            children: [
-              new Paragraph({
-                alignment: AlignmentType.LEFT,
-                children: [
-                  new TextRun({
-                    text: 'Item Name',
-                    font: fontMain,
-                    size: 19,
-                    bold: true,
-                    color: 'FFFFFF'
-                  })
-                ]
-              })
-            ]
-          }),
-          new TableCell({
-            width: colWidthQty,
-            shading: { fill: colorPrimary },
-            margins: { left: 120, right: 120, top: 120, bottom: 120 },
-            borders: {
-              top: noBorder,
-              bottom: noBorder,
-              left: noBorder,
-              right: noBorder
-            },
-            children: [
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
-                children: [
-                  new TextRun({
-                    text: 'Quantity',
-                    font: fontMain,
-                    size: 19,
-                    bold: true,
-                    color: 'FFFFFF'
-                  })
-                ]
-              })
-            ]
-          }),
-          new TableCell({
-            width: colWidthPrice,
-            shading: { fill: colorPrimary },
-            margins: { left: 120, right: 120, top: 120, bottom: 120 },
-            borders: {
-              top: noBorder,
-              bottom: noBorder,
-              left: noBorder,
-              right: noBorder
-            },
-            children: [
-              new Paragraph({
-                alignment: AlignmentType.RIGHT,
-                children: [
-                  new TextRun({
-                    text: 'Unit Price',
-                    font: fontMain,
-                    size: 19,
-                    bold: true,
-                    color: 'FFFFFF'
-                  })
-                ]
-              })
-            ]
-          }),
-          new TableCell({
-            width: colWidthTotal,
-            shading: { fill: colorPrimary },
-            margins: { left: 120, right: 120, top: 120, bottom: 120 },
-            borders: {
-              top: noBorder,
-              bottom: noBorder,
-              left: noBorder,
-              right: noBorder
-            },
-            children: [
-              new Paragraph({
-                alignment: AlignmentType.RIGHT,
-                children: [
-                  new TextRun({
-                    text: 'Total',
-                    font: fontMain,
-                    size: 19,
-                    bold: true,
-                    color: 'FFFFFF'
-                  })
-                ]
-              })
-            ]
-          })
-        ]
-      }),
-
-      // Fila 1: Cuerpo de la tabla (altura mínima 4155 dxa idéntica a zxzxzxzx.docx)
-      new TableRow({
-        height: { value: 4155, rule: HeightRule.ATLEAST },
-        children: [
-          new TableCell({
-            width: colWidthItem,
-            margins: { left: 120, right: 120, top: 120, bottom: 120 },
-            borders: {
-              top: noBorder,
-              bottom: thinBorder,
-              left: thinBorder,
-              right: thinBorder
-            },
-            children: itemNameParagraphs
-          }),
-          new TableCell({
-            width: colWidthQty,
-            margins: { left: 120, right: 120, top: 120, bottom: 120 },
-            borders: {
-              top: noBorder,
-              bottom: thinBorder,
-              left: thinBorder,
-              right: thinBorder
-            },
-            children: quantityParagraphs
-          }),
-          new TableCell({
-            width: colWidthPrice,
-            margins: { left: 120, right: 120, top: 120, bottom: 120 },
-            borders: {
-              top: noBorder,
-              bottom: thinBorder,
-              left: thinBorder,
-              right: thinBorder
-            },
-            children: unitPriceParagraphs
-          }),
-          new TableCell({
-            width: colWidthTotal,
-            margins: { left: 120, right: 120, top: 120, bottom: 120 },
-            borders: {
-              top: noBorder,
-              bottom: thinBorder,
-              left: thinBorder,
-              right: thinBorder
-            },
-            children: totalParagraphs
-          })
-        ]
-      })
-    ]
+    width: { size: INVOICE_PRINTABLE_DXA, type: WidthType.DXA },
+    columnWidths: [...INVOICE_DOCX_COLUMN_DXA],
+    layout: TableLayoutType.FIXED,
+    rows: [headerRow, ...itemRows]
   });
 
   // Ensamblar Documento DOCX con márgenes y tamaño de página exactos de zxzxzxzx.docx
-  const doc = new Document({
+  return new Document({
     sections: [
       {
         properties: {
@@ -609,7 +532,14 @@ export async function generateInvoiceDocx(data: InvoiceData, filename?: string):
       }
     ]
   });
+}
 
+/**
+ * Genera y descarga un documento de Word (.docx) editable
+ * con el formato y diseño idéntico al documento original zxzxzxzx.docx.
+ */
+export async function generateInvoiceDocx(data: InvoiceData, filename?: string): Promise<void> {
+  const doc = buildInvoiceDocxDocument(data);
   const blob = await Packer.toBlob(doc);
   const cleanBillTo = (data.billToName || 'INVOICE').trim();
   const safeBillTo = cleanBillTo.replace(/[/\\?%*:|"<>]/g, '').trim() || 'INVOICE';

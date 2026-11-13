@@ -2,6 +2,10 @@
 
 import React from 'react';
 import { InvoiceData } from '../types';
+import {
+  computePreviewFillerHeightPx,
+  formatInvoiceCurrency,
+} from '../utils/invoiceLayoutHelpers';
 
 interface InvoiceDocumentPreviewProps {
   data: InvoiceData;
@@ -11,6 +15,8 @@ export function InvoiceDocumentPreview({ data }: InvoiceDocumentPreviewProps) {
   const formattedAmount = typeof data.invoiceAmount === 'number'
     ? `$${data.invoiceAmount.toFixed(2)}`
     : `$${String(data.invoiceAmount || '0.00').replace('$', '')}`;
+  const items = data.items || [];
+  const fillerHeightPx = computePreviewFillerHeightPx(items);
 
   return (
     <div className="invoice-preview-container">
@@ -92,71 +98,39 @@ export function InvoiceDocumentPreview({ data }: InvoiceDocumentPreviewProps) {
               </tr>
             </thead>
             <tbody>
-              {/* Cuerpo de la tabla que contiene las listas y llena el espacio visual */}
-              <tr className="table-tall-body-row">
-              {/* Columna 1: Numeración de ítems */}
-                <td className="cell-item-number-column">
-                  <div className="column-inner-list text-center">
-                    {(data.items || []).map((item, idx) => (
-                      <div key={item.id || idx} className="item-number-line">
-                        {idx + 1}
-                      </div>
-                    ))}
-                  </div>
-                </td>
-                {/* Columna 2: Nombres de ítems */}
-                <td className="cell-items-column">
-                  <div className="column-inner-list">
-                    {(data.items || []).map((item, idx) => (
-                      <div key={item.id || idx} className="item-name-line">
-                        {item.name || <span className="opacity-40 italic">Sin descripción</span>}
-                      </div>
-                    ))}
-                    {(!data.items || data.items.length === 0) && (
-                      <div className="empty-items-notice">No se han registrado ítems</div>
-                    )}
-                  </div>
-                </td>
+              {items.length === 0 ? (
+                <tr className="invoice-item-row invoice-empty-row">
+                  <td className="cell-item-number">&nbsp;</td>
+                  <td className="cell-item-name">
+                    <span className="empty-items-notice">No se han registrado ítems</span>
+                  </td>
+                  <td className="cell-qty">&nbsp;</td>
+                  <td className="cell-price">&nbsp;</td>
+                  <td className="cell-total">&nbsp;</td>
+                </tr>
+              ) : (
+                items.map((item, idx) => (
+                  <tr key={item.id || idx} className="invoice-item-row">
+                    <td className="cell-item-number">{idx + 1}</td>
+                    <td className="cell-item-name">
+                      {item.name ? item.name : <span className="opacity-40 italic">Sin descripción</span>}
+                    </td>
+                    <td className="cell-qty">{item.quantity ?? '1'}</td>
+                    <td className="cell-price">{formatInvoiceCurrency(item.unitPrice)}</td>
+                    <td className="cell-total">{formatInvoiceCurrency(item.total)}</td>
+                  </tr>
+                ))
+              )}
 
-                {/* Columna 2: Cantidades */}
-                <td className="cell-qty-column">
-                  <div className="column-inner-list text-center">
-                    {(data.items || []).map((item, idx) => (
-                      <div key={item.id || idx} className="qty-line">
-                        {item.quantity ?? '1'}
-                      </div>
-                    ))}
-                  </div>
-                </td>
-
-                {/* Columna 3: Precios Unitarios */}
-                <td className="cell-price-column">
-                  <div className="column-inner-list text-right">
-                    {(data.items || []).map((item, idx) => {
-                      const p = item.unitPrice ? `$${Number(item.unitPrice).toFixed(2)}` : '';
-                      return (
-                        <div key={item.id || idx} className="price-line">
-                          {p}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </td>
-
-                {/* Columna 4: Totales de Fila */}
-                <td className="cell-total-column">
-                  <div className="column-inner-list text-right">
-                    {(data.items || []).map((item, idx) => {
-                      const t = item.total ? `$${Number(item.total).toFixed(2)}` : '';
-                      return (
-                        <div key={item.id || idx} className="total-line">
-                          {t}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </td>
-              </tr>
+              {fillerHeightPx > 0 && (
+                <tr className="invoice-filler-row" aria-hidden="true">
+                  <td style={{ height: `${fillerHeightPx}px` }} />
+                  <td style={{ height: `${fillerHeightPx}px` }} />
+                  <td style={{ height: `${fillerHeightPx}px` }} />
+                  <td style={{ height: `${fillerHeightPx}px` }} />
+                  <td style={{ height: `${fillerHeightPx}px` }} />
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
