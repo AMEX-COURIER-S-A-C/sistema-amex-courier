@@ -5,6 +5,7 @@ import JSZip from 'jszip';
 import { Packer } from 'docx';
 import { InvoiceData, INITIAL_INVOICE_DATA } from '@/features/invoices/types';
 import { InvoiceDocumentPreview } from '@/features/invoices/components/InvoiceDocumentPreview';
+import { InvoiceControlPanel } from '@/features/invoices/components/InvoiceControlPanel';
 import { buildInvoicePdfDocument } from '@/features/invoices/services/invoicePdfExporter';
 import { buildInvoiceDocxDocument } from '@/features/invoices/services/invoiceDocxExporter';
 import {
@@ -14,6 +15,8 @@ import {
   computeDocxFillerDxa,
   computePreviewFillerHeightPx,
   estimateItemLineCount,
+  filterHistorialEntries,
+  formatHistorialSavedAt,
   formatInvoiceCurrency,
   normalizeInvoiceText,
   wrapTextLinesToWidth,
@@ -213,6 +216,73 @@ describe('Módulo 11: Ajuste automático de renglones, Preview/Print, PDF y Word
       expect(documentXml).toContain('w:tblHeader');
       expect(documentXml).toContain('E2E8F0');
       expect(documentXml).toContain('COOKIES FOR SANTA FAMILY MATCHING ORGANIC COTTON SLEEP &amp; PLAY');
+    });
+  });
+
+  describe('Botón y Modal de Historial (UX & Portal Safety)', () => {
+    it('formatea timestamps ISO de la nube a fecha local DD/MM/YYYY HH:mm y preserva texto existente', () => {
+      const formattedIso = formatHistorialSavedAt('2026-11-13T19:33:52.029627+00:00');
+      expect(formattedIso).toMatch(/^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/);
+      expect(formatHistorialSavedAt('13/11/2026, 3:08 p. m.')).toBe('13/11/2026, 3:08 p. m.');
+      expect(formatHistorialSavedAt('')).toBe('Reciente');
+    });
+
+    it('filtra entradas por N° Invoice o cliente conservando originalIndex exacto para eliminar', () => {
+      const list = [
+        buildSampleInvoice({ invoiceNumber: 'I100', billToName: 'ROBERTO QUEIROLO' }),
+        buildSampleInvoice({ invoiceNumber: 'I200', billToName: 'EMILIANA GAMBOA' }),
+        buildSampleInvoice({ invoiceNumber: 'I300', billToName: 'KATY HIDALGO' }),
+      ];
+
+      const matches = filterHistorialEntries(list, 'emiliana');
+      expect(matches).toHaveLength(1);
+      expect(matches[0].originalIndex).toBe(1);
+      expect(matches[0].item.invoiceNumber).toBe('I200');
+    });
+
+    it('renderiza el botón Historial con contador sin envolver líneas ni fallar en SSR aunque esté abierto', () => {
+      const noop = () => {};
+      const html = renderToStaticMarkup(
+        React.createElement(InvoiceControlPanel, {
+          data: buildSampleInvoice(),
+          isExporting: false,
+          historial: [buildSampleInvoice()],
+          isHistorialOpen: true,
+          setIsHistorialOpen: noop,
+          isPasteModalOpen: false,
+          setIsPasteModalOpen: noop,
+          pasteRawText: '',
+          setPasteRawText: noop,
+          onUpdateInvoiceNumber: noop,
+          onGenerateRandomNumber: noop,
+          onUpdateInvoiceDate: noop,
+          onUpdateInvoiceDueDate: noop,
+          onSetTodayDates: noop,
+          onUpdateBillTo: noop,
+          onUpdateShipTo: noop,
+          onCopyBillToToShipTo: noop,
+          onSelectCliente: noop,
+          onAddItem: noop,
+          onRemoveItem: noop,
+          onUpdateItem: noop,
+          onUpdateInvoiceAmount: noop,
+          onProcessPasteText: noop,
+          onDirectPasteFromClipboard: noop,
+          onClearItems: noop,
+          onClearRecipients: noop,
+          onResetToDefault: noop,
+          onSaveToHistorial: noop,
+          onRestoreFromHistorial: noop,
+          onDeleteHistorialItem: noop,
+          onExportDocx: noop,
+          onExportPdf: noop,
+          onPrint: noop,
+        })
+      );
+
+      expect(html).toContain('aria-expanded="true"');
+      expect(html).toContain('Historial');
+      expect(html).not.toContain('role="dialog"'); // Portal solo se monta en document.body del navegador
     });
   });
 });

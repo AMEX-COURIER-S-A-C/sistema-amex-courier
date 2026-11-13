@@ -1,8 +1,14 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { InvoiceData, InvoiceItem } from '../types';
 import { Cliente } from '@/types';
+import {
+  filterHistorialEntries,
+  formatHistorialSavedAt,
+  formatInvoiceCurrency,
+} from '../utils/invoiceLayoutHelpers';
 
 interface InvoiceControlPanelProps {
   data: InvoiceData;
@@ -81,6 +87,31 @@ export function InvoiceControlPanel({
   const [showClientDropdownBill, setShowClientDropdownBill] = useState(false);
   const [clientSearchShip, setClientSearchShip] = useState('');
   const [showClientDropdownShip, setShowClientDropdownShip] = useState(false);
+  const [historialSearch, setHistorialSearch] = useState('');
+
+  const closeHistorialModal = () => {
+    setIsHistorialOpen(false);
+    setHistorialSearch('');
+  };
+
+  useEffect(() => {
+    if (!isHistorialOpen && !isPasteModalOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (isHistorialOpen) {
+          setIsHistorialOpen(false);
+          setHistorialSearch('');
+        }
+        if (isPasteModalOpen) {
+          setIsPasteModalOpen(false);
+        }
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isHistorialOpen, isPasteModalOpen, setIsHistorialOpen, setIsPasteModalOpen]);
+
+  const filteredHistorial = filterHistorialEntries(historial, historialSearch);
 
   // Filtrado de clientes para autocompletado
   const filteredClientsBill = clientes.filter(c => {
@@ -152,7 +183,10 @@ export function InvoiceControlPanel({
     };
   }, []);
 
+  const portalTarget = typeof document !== 'undefined' ? document.body : null;
+
   return (
+    <>
     <aside
       ref={panelRef}
       data-lenis-prevent=""
@@ -161,19 +195,19 @@ export function InvoiceControlPanel({
     >
       {/* Cabecera del Panel */}
       <div className="invoice-panel-header">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-400">
+        <div className="flex items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div className="w-10 h-10 shrink-0 rounded-lg bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-400">
               <i className="fa-solid fa-file-invoice-dollar text-xl"></i>
             </div>
-            <div>
-              <h2 className="text-base font-bold text-white tracking-wide flex items-center gap-2">
-                Facturas / Invoices USA
-                <span className="text-[10px] bg-blue-500/20 text-blue-300 font-semibold px-2 py-0.5 rounded border border-blue-500/30">
+            <div className="min-w-0">
+              <h2 className="text-base font-bold text-white tracking-wide flex flex-wrap items-center gap-2">
+                <span>Facturas / Invoices USA</span>
+                <span className="text-[10px] bg-blue-500/20 text-blue-300 font-semibold px-2 py-0.5 rounded border border-blue-500/30 whitespace-nowrap">
                   ACCESSORIES SALES
                 </span>
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-400 truncate">
                 Plantilla exacta Word (zxzxzxzx.docx) • Edición de campos restringidos
               </p>
             </div>
@@ -181,12 +215,21 @@ export function InvoiceControlPanel({
 
           <button
             type="button"
-            onClick={() => setIsHistorialOpen(!isHistorialOpen)}
-            className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600/60 flex items-center gap-1.5 transition-colors"
+            onClick={() => (isHistorialOpen ? closeHistorialModal() : setIsHistorialOpen(true))}
+            aria-expanded={isHistorialOpen}
+            aria-haspopup="dialog"
+            className={`shrink-0 whitespace-nowrap px-3 py-1.5 text-xs font-semibold rounded-lg border flex items-center gap-2 transition-all ${
+              isHistorialOpen
+                ? 'bg-amber-500/20 border-amber-400/70 text-amber-200 shadow-lg shadow-amber-900/20'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-600/60'
+            }`}
             title="Ver historial de facturas guardadas"
           >
             <i className="fa-solid fa-clock-rotate-left text-amber-400"></i>
-            <span>Historial ({historial.length})</span>
+            <span>Historial</span>
+            <span className="px-1.5 py-0.5 rounded-md bg-slate-950/80 text-amber-300 text-[11px] font-mono tabular-nums border border-amber-500/20">
+              {historial.length}
+            </span>
           </button>
         </div>
 
@@ -670,26 +713,37 @@ export function InvoiceControlPanel({
           </div>
         </div>
       </div>
+    </aside>
 
-      {/* MODAL: PEGADO RÁPIDO DE ÍTEMS DESDE EXCEL */}
-      {isPasteModalOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[99999] flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-lg w-full p-5 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <i className="fa-solid fa-paste text-sky-400"></i>
-                Pegado Rápido de Ítems desde Excel / Portapapeles
+      {/* MODAL PORTALIZADO: PEGADO RÁPIDO DE ÍTEMS DESDE EXCEL */}
+      {portalTarget && isPasteModalOpen && createPortal(
+        <div
+          data-lenis-prevent=""
+          role="dialog"
+          aria-modal="true"
+          aria-label="Pegado Rápido de Ítems desde Excel"
+          onClick={e => {
+            if (e.target === e.currentTarget) setIsPasteModalOpen(false);
+          }}
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[99999] flex items-center justify-center p-3 sm:p-6 no-print"
+        >
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3 shrink-0">
+              <h3 className="text-base font-bold text-white flex items-center gap-2 min-w-0">
+                <i className="fa-solid fa-paste text-sky-400 shrink-0"></i>
+                <span className="truncate">Pegado Rápido de Ítems desde Excel / Portapapeles</span>
               </h3>
               <button
                 type="button"
                 onClick={() => setIsPasteModalOpen(false)}
-                className="text-slate-400 hover:text-white"
+                aria-label="Cerrar pegado rápido"
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
               >
                 ✕
               </button>
             </div>
 
-            <p className="text-xs text-slate-300">
+            <p className="text-xs text-slate-300 shrink-0">
               Copia varias filas desde Excel o texto (columnas: <strong>Nombre | Cantidad | Precio Unitario</strong>) y pégalas aquí directamente:
             </p>
 
@@ -698,10 +752,10 @@ export function InvoiceControlPanel({
               value={pasteRawText}
               onChange={e => setPasteRawText(e.target.value)}
               placeholder="Ejemplo:&#10;ZAPATILLAS NIKE BLANCA&#9;1&#9;24.47&#10;ZAPATILLAS NIKE NEGRAS&#9;1&#9;24.47&#10;CONJUNO JUICY COUTURE&#9;2&#9;35.00"
-              className="w-full p-3 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-blue-500"
+              className="w-full p-3 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-blue-500 min-h-[160px]"
             />
 
-            <div className="flex items-center justify-between pt-2">
+            <div className="flex items-center justify-between pt-2 shrink-0">
               <button
                 type="button"
                 onClick={() => setPasteRawText('')}
@@ -731,80 +785,181 @@ export function InvoiceControlPanel({
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        portalTarget
       )}
 
-      {/* MODAL: HISTORIAL DE INVOICES */}
-      {isHistorialOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[99999] flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-xl w-full p-5 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <i className="fa-solid fa-clock-rotate-left text-amber-400"></i>
-                Historial de Invoices Guardados
-              </h3>
+      {/* MODAL PORTALIZADO: HISTORIAL DE INVOICES */}
+      {portalTarget && isHistorialOpen && createPortal(
+        <div
+          data-lenis-prevent=""
+          role="dialog"
+          aria-modal="true"
+          aria-label="Historial de Invoices Guardados"
+          onClick={e => {
+            if (e.target === e.currentTarget) closeHistorialModal();
+          }}
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[99999] flex items-center justify-center p-3 sm:p-6 no-print"
+        >
+          <div className="bg-slate-900 border border-slate-700/90 rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden p-4 sm:p-5 shadow-2xl space-y-3.5">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-800 pb-3 shrink-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="w-8 h-8 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                  <i className="fa-solid fa-clock-rotate-left text-sm"></i>
+                </span>
+                <div className="min-w-0">
+                  <h3 className="text-sm sm:text-base font-bold text-white truncate">
+                    Historial de Invoices Guardados
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    {historial.length} {historial.length === 1 ? 'factura registrada' : 'facturas registradas'}
+                  </p>
+                </div>
+              </div>
+
               <button
                 type="button"
-                onClick={() => setIsHistorialOpen(false)}
-                className="text-slate-400 hover:text-white"
+                onClick={closeHistorialModal}
+                aria-label="Cerrar historial"
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 border border-transparent hover:border-slate-700 transition-colors shrink-0"
               >
                 ✕
               </button>
             </div>
 
-            <div className="max-h-80 overflow-y-auto divide-y divide-slate-800">
-              {historial.map((item, idx) => (
-                <div key={idx} className="py-2.5 px-3 flex items-center justify-between hover:bg-slate-800/40 rounded-lg">
-                  <div>
-                    <div className="text-xs font-bold text-white flex items-center gap-2">
-                      <span className="font-mono text-sky-400">{item.invoiceNumber}</span>
-                      <span>•</span>
-                      <span>{item.billToName || 'Sin cliente'}</span>
-                    </div>
-                    <div className="text-[11px] text-slate-400">
-                      Monto: <strong className="text-emerald-400">${item.invoiceAmount}</strong> • {item.items?.length || 0} ítems • {item.savedAt || 'Reciente'}
-                    </div>
-                  </div>
+            {historial.length > 0 && (
+              <div className="relative shrink-0">
+                <i className="fa-solid fa-magnifying-glass text-xs text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                <input
+                  type="text"
+                  value={historialSearch}
+                  onChange={e => setHistorialSearch(e.target.value)}
+                  placeholder="Buscar por N° Invoice o nombre de cliente..."
+                  className="w-full pl-8 pr-8 py-2 bg-slate-950/90 border border-slate-700/80 rounded-lg text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-400/70 transition-colors"
+                />
+                {historialSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setHistorialSearch('')}
+                    aria-label="Limpiar búsqueda"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs px-1"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            )}
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onRestoreFromHistorial(item)}
-                      className="px-2.5 py-1 text-xs font-semibold rounded bg-blue-600/30 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/40 transition-colors"
-                    >
-                      Cargar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onDeleteHistorialItem(idx)}
-                      className="text-slate-500 hover:text-rose-400 p-1"
-                      title="Eliminar del historial"
-                    >
-                      <i className="fa-solid fa-trash-can text-xs"></i>
-                    </button>
+            <div
+              data-lenis-prevent=""
+              className="flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 space-y-2"
+            >
+              {filteredHistorial.map(({ item, originalIndex }) => {
+                const isCurrent = Boolean(item.invoiceNumber && item.invoiceNumber === data.invoiceNumber);
+                const amountText =
+                  formatInvoiceCurrency(item.invoiceAmount) ||
+                  `$${String(item.invoiceAmount || '0.00').replace('$', '')}`;
+                const itemsCount = item.items?.length || 0;
+
+                return (
+                  <div
+                    key={item.id || `${item.invoiceNumber}-${originalIndex}`}
+                    className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 transition-colors ${
+                      isCurrent
+                        ? 'bg-sky-950/30 border-sky-500/40'
+                        : 'bg-slate-950/60 border-slate-800/80 hover:border-slate-700 hover:bg-slate-800/40'
+                    }`}
+                  >
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="text-xs font-bold text-white flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                        <span className="font-mono text-sky-400 shrink-0">{item.invoiceNumber || 'S/N'}</span>
+                        <span className="text-slate-600">•</span>
+                        <span className="break-words">{item.billToName || 'Sin cliente'}</span>
+                        {isCurrent && (
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                            En vista
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-slate-400 flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
+                        <span>
+                          Monto: <strong className="text-emerald-400 font-mono">{amountText}</strong>
+                        </span>
+                        <span className="text-slate-600">•</span>
+                        <span>
+                          {itemsCount} {itemsCount === 1 ? 'ítem' : 'ítems'}
+                        </span>
+                        <span className="text-slate-600">•</span>
+                        <span className="text-slate-400 font-mono">
+                          {formatHistorialSavedAt(item.savedAt)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onRestoreFromHistorial(item);
+                          setHistorialSearch('');
+                        }}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600/25 hover:bg-blue-600 text-blue-200 hover:text-white border border-blue-500/40 transition-colors flex items-center gap-1.5"
+                      >
+                        <i className="fa-solid fa-folder-open text-[11px]"></i>
+                        <span>Cargar</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDeleteHistorialItem(originalIndex)}
+                        className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-400 hover:bg-rose-950/50 border border-transparent hover:border-rose-800/50 transition-colors"
+                        title="Eliminar del historial"
+                        aria-label={`Eliminar factura ${item.invoiceNumber || ''} del historial`}
+                      >
+                        <i className="fa-solid fa-trash-can text-xs"></i>
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
               {historial.length === 0 && (
-                <div className="p-6 text-center text-xs text-slate-500 italic">
+                <div className="p-8 text-center text-xs text-slate-500 italic">
                   No hay facturas guardadas en el historial todavía.
+                </div>
+              )}
+
+              {historial.length > 0 && filteredHistorial.length === 0 && (
+                <div className="p-6 text-center space-y-2">
+                  <p className="text-xs text-slate-400">
+                    No se encontraron facturas para &ldquo;{historialSearch}&rdquo;.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setHistorialSearch('')}
+                    className="px-3 py-1 text-[11px] font-semibold text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-lg transition-colors"
+                  >
+                    Limpiar búsqueda
+                  </button>
                 </div>
               )}
             </div>
 
-            <div className="flex justify-end pt-2">
+            <div className="flex items-center justify-between gap-3 pt-2 border-t border-slate-800 shrink-0">
+              <span className="hidden sm:block text-[11px] text-slate-500">
+                Haz clic en Cargar para editar o reimprimir cualquier factura
+              </span>
               <button
                 type="button"
-                onClick={() => setIsHistorialOpen(false)}
-                className="px-4 py-1.5 text-xs text-slate-300 hover:bg-slate-800 rounded-lg"
+                onClick={closeHistorialModal}
+                className="ml-auto px-4 py-1.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors"
               >
                 Cerrar
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        portalTarget
       )}
-    </aside>
+    </>
   );
 }

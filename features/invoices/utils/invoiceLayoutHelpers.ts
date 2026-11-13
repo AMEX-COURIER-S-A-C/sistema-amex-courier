@@ -1,4 +1,4 @@
-import { InvoiceItem } from '../types';
+import { InvoiceData, InvoiceItem } from '../types';
 
 export const INVOICE_COLUMN_WIDTHS = {
   itemNumber: 7,
@@ -168,4 +168,51 @@ export function computeDocxFillerDxa(
   }, 0);
 
   return Math.max(0, minBodyHeightDxa - consumedDxa);
+}
+
+/**
+ * Formatea marcas de tiempo ISO (ej. Supabase timestamptz) a fecha/hora local legible DD/MM/YYYY HH:mm.
+ */
+export function formatHistorialSavedAt(savedAt: string | undefined | null): string {
+  const trimmed = (savedAt || '').trim();
+  if (!trimmed) return 'Reciente';
+
+  if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(trimmed)) {
+    const parsed = new Date(trimmed);
+    if (!Number.isNaN(parsed.getTime())) {
+      const dd = String(parsed.getDate()).padStart(2, '0');
+      const mm = String(parsed.getMonth() + 1).padStart(2, '0');
+      const yyyy = parsed.getFullYear();
+      const hh = String(parsed.getHours()).padStart(2, '0');
+      const min = String(parsed.getMinutes()).padStart(2, '0');
+      return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
+    }
+  }
+
+  return trimmed;
+}
+
+/**
+ * Filtra entradas del historial por número de factura, cliente o fecha preservando el índice original
+ * para evitar borrar un registro equivocado cuando hay filtro activo.
+ */
+export function filterHistorialEntries(
+  historial: readonly InvoiceData[],
+  query: string
+): Array<{ item: InvoiceData; originalIndex: number }> {
+  const normalizedQuery = query.trim().toLowerCase();
+  const indexed = historial.map((item, originalIndex) => ({ item, originalIndex }));
+  if (!normalizedQuery) return indexed;
+
+  return indexed.filter(({ item }) => {
+    const haystack = [
+      item.invoiceNumber || '',
+      item.billToName || '',
+      item.shipToName || '',
+      item.invoiceDate || '',
+    ]
+      .join(' ')
+      .toLowerCase();
+    return haystack.includes(normalizedQuery);
+  });
 }
