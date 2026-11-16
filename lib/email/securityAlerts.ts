@@ -1,4 +1,5 @@
 import { sendEmail } from './resend';
+import { getAppBaseUrl } from '@/lib/auth/appUrl';
 
 export type SecurityAlertType =
   | 'anti_chancado_entregado'
@@ -33,7 +34,7 @@ export const SECURITY_ALERT_RECIPIENTS = [
 
 export async function sendSecurityAlert(payload: SecurityAlertPayload) {
   const { type, operador, ip, detalles } = payload;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://sistemaamexcourier.online';
+  const appUrl = getAppBaseUrl();
 
   const horaLima = new Date().toLocaleString('es-PE', {
     timeZone: 'America/Lima',

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAppBaseUrl } from '@/lib/auth/appUrl';
 import { sendEmail } from '@/lib/email/resend';
 import * as XLSX from 'xlsx';
 
@@ -212,7 +213,7 @@ export async function POST(req: NextRequest) {
               <table role="presentation" cellspacing="0" cellpadding="0" style="margin: 0 auto 15px auto;">
                 <tr>
                   <td align="center" style="border-radius: 8px; background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
-                    <a href="https://sistemaamexcourier.online/manifiestos-tib" target="_blank" style="display: inline-block; padding: 13px 30px; font-size: 13.5px; font-weight: 800; color: #ffffff; text-decoration: none; border-radius: 8px;">
+                    <a href="${getAppBaseUrl(req)}/manifiestos-tib" target="_blank" style="display: inline-block; padding: 13px 30px; font-size: 13.5px; font-weight: 800; color: #ffffff; text-decoration: none; border-radius: 8px;">
                       📡 Abrir Submódulo 17.2 en Sistema AMEX →
                     </a>
                   </td>

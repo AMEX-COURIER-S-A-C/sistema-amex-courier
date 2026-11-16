@@ -1,11 +1,45 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { authorizeAdmin } from '@/lib/auth/guards';
+import { getAppBaseUrl } from '@/lib/auth/appUrl';
 import { sendUserWelcomeEmail } from '@/lib/email/welcomeUser';
 
 async function requireAdmin() {
   const auth = await authorizeAdmin();
   return auth.ok ? null : NextResponse.json({ error: auth.error }, { status: auth.status });
+}
+
+async function sendCollaboratorActivationEmail(params: {
+  supabase: ReturnType<typeof getSupabaseAdmin>;
+  request: Request;
+  email: string;
+  nombreCompleto: string;
+  rolNombre: string;
+}) {
+  const { supabase, request, email, nombreCompleto, rolNombre } = params;
+  const appUrl = getAppBaseUrl(request);
+  const redirectTo = `${appUrl}/login?recovered=true`;
+
+  const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+    type: 'recovery',
+    email,
+    options: {
+      redirectTo,
+    },
+  });
+
+  if (linkError) throw linkError;
+  const activationLink = linkData?.properties?.action_link;
+  if (!activationLink) {
+    throw new Error('No se pudo generar el enlace de activación.');
+  }
+
+  return sendUserWelcomeEmail({
+    email,
+    nombreCompleto,
+    rolNombre,
+    activationLink,
+  });
 }
 
 // GET: Listar usuarios, perfiles y roles del sistema
@@ -167,23 +201,14 @@ export async function POST(request: Request) {
       });
 
       // Enviar correo formal de bienvenida con enlace seguro para definir contraseña
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://sistemaamexcourier.online';
       let welcomeSent = false;
       try {
-        const { data: linkData } = await supabase.auth.admin.generateLink({
-          type: 'recovery',
-          email: email.trim().toLowerCase(),
-          options: {
-            redirectTo: `${appUrl}/login?recovered=true`,
-          },
-        });
-
-        const activationLink = linkData?.properties?.action_link || `${appUrl}/login`;
-        const emailRes = await sendUserWelcomeEmail({
+        const emailRes = await sendCollaboratorActivationEmail({
+          supabase,
+          request,
           email: email.trim().toLowerCase(),
           nombreCompleto: nombre_completo.trim(),
           rolNombre,
-          activationLink,
         });
         welcomeSent = Boolean(emailRes.success);
       } catch (emailErr) {
@@ -201,23 +226,12 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'El correo del colaborador es requerido' }, { status: 400 });
       }
 
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://sistemaamexcourier.online';
-      const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
-        type: 'recovery',
-        email: cleanEmail,
-        options: {
-          redirectTo: `${appUrl}/login?recovered=true`,
-        },
-      });
-
-      if (linkError) throw linkError;
-      const activationLink = linkData?.properties?.action_link || `${appUrl}/login`;
-
-      const emailRes = await sendUserWelcomeEmail({
+      const emailRes = await sendCollaboratorActivationEmail({
+        supabase,
+        request,
         email: cleanEmail,
         nombreCompleto: nombre_completo || cleanEmail.split('@')[0],
         rolNombre: rol_nombre || 'Colaborador AMEX',
-        activationLink,
       });
 
       if (!emailRes.success) {

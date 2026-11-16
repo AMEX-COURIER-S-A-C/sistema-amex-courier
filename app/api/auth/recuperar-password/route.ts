@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { getAppBaseUrl } from '@/lib/auth/appUrl';
 import { sendEmail } from '@/lib/email/resend';
 
 export const dynamic = 'force-dynamic';
@@ -55,15 +56,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Determinar la URL canónica de redirección
-    const hostHeader = req.headers.get('x-forwarded-host') || req.headers.get('host');
-    const protoHeader = req.headers.get('x-forwarded-proto') || 'https';
-    let siteUrl = `${protoHeader}://${hostHeader}`;
-
-    if (!hostHeader || hostHeader.includes('localhost')) {
-      siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-    }
-
+    // Determinar la URL canónica de redirección (rechaza dominios obsoletos y unifica a www.sistemaamexcourier.online)
+    const siteUrl = getAppBaseUrl(req, { allowLocalhostInDev: true });
     const redirectTo = `${siteUrl.replace(/\/$/, '')}/login?recovered=true`;
 
     const supabaseAdmin = getSupabaseAdmin();
