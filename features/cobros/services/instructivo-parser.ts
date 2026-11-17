@@ -1,5 +1,5 @@
 import readXlsxFile, { type SheetData } from 'read-excel-file/browser';
-import { extractAndNormalizeWrsFromCell } from './wr-matching';
+import { extractAndNormalizeWrsFromCell, type NormalizedWrDetail } from './wr-matching';
 
 export interface InstructivoFila {
   filaOriginal: number;
@@ -7,6 +7,10 @@ export interface InstructivoFila {
   rawWr: string;
   /** Los códigos WR individuales extraídos de la celda */
   wrs: string[];
+  /** Texto literal original de la celda del instructivo cuando fue normalizado (ej: "453115") */
+  wrOriginal?: string;
+  /** Detalle de tokens normalizados en esta fila */
+  wrsNormalizados?: NormalizedWrDetail[];
   /** Delimitador detectado entre WRs (' - ' o ' / ') */
   delimiter: string;
   /** True si contiene 2, 3, 4 o más WRs */
@@ -133,7 +137,7 @@ export async function parseInstructivo(buffer: ArrayBuffer, fileName: string): P
     }
 
     // Extraer códigos WR válidos (con prefijo "WR" o numéricos de 6 a 9 dígitos autocompletados a WR000...)
-    const { wrs: normalizedWrs, hadBareNumber } = extractAndNormalizeWrsFromCell(celdaWr);
+    const { wrs: normalizedWrs, wasNormalized, normalizedItems } = extractAndNormalizeWrsFromCell(celdaWr);
     if (normalizedWrs.length === 0) continue;
 
     const delimiter = detectarDelimitador(celdaWr);
@@ -142,12 +146,13 @@ export async function parseInstructivo(buffer: ArrayBuffer, fileName: string): P
     totalWrsIndividuales += normalizedWrs.length;
 
     normalizedWrs.forEach((w) => wrsUnicosSet.add(w));
-    const rawWrFinal = hadBareNumber ? normalizedWrs.join(delimiter) : celdaWr;
+    const rawWrFinal = wasNormalized ? normalizedWrs.join(delimiter) : celdaWr;
 
     filas.push({
       filaOriginal: r + 1,
       rawWr: rawWrFinal,
       wrs: normalizedWrs,
+      ...(wasNormalized ? { wrOriginal: celdaWr, wrsNormalizados: normalizedItems } : {}),
       delimiter,
       esMultiWr: esMulti,
       consignatario: consigCol >= 0 ? aTexto(row[consigCol]) : '',

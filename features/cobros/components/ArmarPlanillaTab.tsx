@@ -150,10 +150,23 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
 
       if (res.error) throw new Error(res.error);
 
-      const ordenadas: FilaResultadoCobro[] = (res.filas || []).sort(
-        (a: FilaResultadoCobro, b: FilaResultadoCobro) =>
-          (a.cliente || 'ZZZ').localeCompare(b.cliente || 'ZZZ', 'es') || a.wr.localeCompare(b.wr)
-      );
+      const instructivoByRow = new Map(instructivo.filas.map((f) => [f.filaOriginal, f]));
+      const ordenadas: FilaResultadoCobro[] = (res.filas || [])
+        .map((row: FilaResultadoCobro) => {
+          const orig = instructivoByRow.get(row.filaOriginal);
+          if (!orig || (row.wrsNormalizados && row.wrsNormalizados.length > 0)) {
+            return row;
+          }
+          return {
+            ...row,
+            ...(orig.wrOriginal && !row.wrOriginal ? { wrOriginal: orig.wrOriginal } : {}),
+            ...(orig.wrsNormalizados ? { wrsNormalizados: orig.wrsNormalizados } : {}),
+          };
+        })
+        .sort(
+          (a: FilaResultadoCobro, b: FilaResultadoCobro) =>
+            (a.cliente || 'ZZZ').localeCompare(b.cliente || 'ZZZ', 'es') || a.wr.localeCompare(b.wr)
+        );
 
       setFilas(ordenadas);
       setSinMatch(res.sin_match || []);

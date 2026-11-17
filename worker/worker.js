@@ -438,9 +438,15 @@ function extractWrsFromCell(rawWr) {
   const s = String(rawWr).trim().toUpperCase();
   const matches = s.match(/(?:WR\d{5,12}|\b\d{6,9}\b)/gi);
   if (matches && matches.length > 0) {
-    const normalized = matches.map((w) =>
-      w.startsWith('WR') ? w : `WR${w.padStart(9, '0')}`
-    );
+    const normalized = matches.map((w) => {
+      if (w.startsWith('WR')) {
+        const digits = w.slice(2);
+        return digits.length >= 6 && digits.length <= 9
+          ? `WR${digits.padStart(9, '0')}`
+          : w;
+      }
+      return `WR${w.padStart(9, '0')}`;
+    });
     return Array.from(new Set(normalized));
   }
   return s

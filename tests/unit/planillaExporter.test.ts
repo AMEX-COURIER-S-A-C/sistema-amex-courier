@@ -208,18 +208,33 @@ describe('Módulo 4: Cobros — Exportación de Planilla Excel (Sin Merge & Cent
     expect(sheet3Xml).toContain('<f>SUM(C2:C6)</f>');
   });
 
-  it('autocompleta códigos WR numéricos de 6 a 9 dígitos en parseInstructivo y extractAndNormalizeWrsFromCell', async () => {
+  it('autocompleta códigos WR numéricos de 6 a 9 dígitos y WR cortos en parseInstructivo y extractAndNormalizeWrsFromCell', async () => {
     expect(extractAndNormalizeWrsFromCell('546987')).toEqual({
       wrs: ['WR000546987'],
       hadBareNumber: true,
+      wasNormalized: true,
+      normalizedItems: [{ original: '546987', normalizado: 'WR000546987', motivo: 'sin-prefijo' }],
+    });
+    expect(extractAndNormalizeWrsFromCell('WR453115')).toEqual({
+      wrs: ['WR000453115'],
+      hadBareNumber: false,
+      wasNormalized: true,
+      normalizedItems: [{ original: 'WR453115', normalizado: 'WR000453115', motivo: 'ceros-completados' }],
     });
     expect(extractAndNormalizeWrsFromCell('453115-453113')).toEqual({
       wrs: ['WR000453115', 'WR000453113'],
       hadBareNumber: true,
+      wasNormalized: true,
+      normalizedItems: [
+        { original: '453115', normalizado: 'WR000453115', motivo: 'sin-prefijo' },
+        { original: '453113', normalizado: 'WR000453113', motivo: 'sin-prefijo' },
+      ],
     });
     expect(extractAndNormalizeWrsFromCell('WR000455412-WR000450716')).toEqual({
       wrs: ['WR000455412', 'WR000450716'],
       hadBareNumber: false,
+      wasNormalized: false,
+      normalizedItems: [],
     });
 
     const XLSX = (await import('xlsx')).default;
@@ -230,20 +245,34 @@ describe('Módulo 4: Cobros — Exportación de Planilla Excel (Sin Merge & Cent
       [2, 'ALVARO ESPINOZA', 546987, ''],
       [3, 'GRUPO SIN PREFIJO', '453115-453113', ''],
       [4, 'CON PREFIJO', 'WR000455412', ''],
+      [5, 'PREFIJO CORTO', 'WR453115', ''],
     ]);
     XLSX.utils.book_append_sheet(wb, ws, 'Hoja1');
     const arrayBuffer = XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer;
 
     const parsed = await parseInstructivo(arrayBuffer, 'INSTRUCTIVO PRUEBA.xlsx');
-    expect(parsed.totalFilas).toBe(4);
+    expect(parsed.totalFilas).toBe(5);
     expect(parsed.filas[0].wrs).toEqual(['WR000453115']);
     expect(parsed.filas[0].rawWr).toBe('WR000453115');
+    expect(parsed.filas[0].wrOriginal).toBe('453115');
+    expect(parsed.filas[0].wrsNormalizados).toEqual([
+      { original: '453115', normalizado: 'WR000453115', motivo: 'sin-prefijo' },
+    ]);
     expect(parsed.filas[1].wrs).toEqual(['WR000546987']);
     expect(parsed.filas[1].rawWr).toBe('WR000546987');
+    expect(parsed.filas[1].wrOriginal).toBe('546987');
     expect(parsed.filas[2].esMultiWr).toBe(true);
     expect(parsed.filas[2].wrs).toEqual(['WR000453115', 'WR000453113']);
     expect(parsed.filas[2].rawWr).toBe('WR000453115 - WR000453113');
+    expect(parsed.filas[2].wrOriginal).toBe('453115-453113');
     expect(parsed.filas[3].rawWr).toBe('WR000455412');
+    expect(parsed.filas[3].wrOriginal).toBeUndefined();
+    expect(parsed.filas[3].wrsNormalizados).toBeUndefined();
+    expect(parsed.filas[4].rawWr).toBe('WR000453115');
+    expect(parsed.filas[4].wrOriginal).toBe('WR453115');
+    expect(parsed.filas[4].wrsNormalizados).toEqual([
+      { original: 'WR453115', normalizado: 'WR000453115', motivo: 'ceros-completados' },
+    ]);
   });
 
   it('promueve grupos homogéneos coincidentes en 1 celda combinada, extrae coincidentes parciales en grupos mixtos y colorea estados en Cruce Planilla', async () => {
@@ -448,6 +477,133 @@ describe('Módulo 4: Cobros — Exportación de Planilla Excel (Sin Merge & Cent
     );
     expect((bannerLiss?.[0] as CellObject).backgroundColor).toBe('#DCFCE7'); // Verde completo
 
+    const { default: writeXlsxFileNode } = await import('write-excel-file/node');
+    const buffer = await writeXlsxFileNode(sheets).toBuffer();
+    expect(buffer.byteLength).toBeGreaterThan(1000);
+  });
+
+  it('muestra banner superior, filas en celeste y tabla resumen final de WRs normalizados solo en Cruce Planilla', async () => {
+    const simpleSinPrefijo: FilaResultadoCobro = {
+      filaOriginal: 6,
+      wr: 'WR000453115',
+      wrs: ['WR000453115'],
+      wrOriginal: '453115',
+      wrsNormalizados: [{ original: '453115', normalizado: 'WR000453115', motivo: 'sin-prefijo' }],
+      esMultiWr: false,
+      delimiter: '',
+      cliente: 'AMEX OSCAR HURTADO',
+      pesoTotal: 3.5,
+      pesoFormateado: '3.50',
+      tracking: 'TRK-OSC-1',
+      tipo: 'CAJA',
+      observaciones: '',
+      descripcion: '',
+      dni: '',
+      encontrado: true,
+      matchParcial: false,
+      wrsEncontrados: 1,
+      totalWrsFila: 1,
+      detalles: [
+        { wr: 'WR000453115', tracking: 'TRK-OSC-1', cliente: 'AMEX OSCAR HURTADO', tipo: 'CAJA', peso: 3.5, encontrado: true },
+      ],
+    };
+
+    const simpleExacto: FilaResultadoCobro = {
+      filaOriginal: 7,
+      wr: 'WR000452000',
+      wrs: ['WR000452000'],
+      esMultiWr: false,
+      delimiter: '',
+      cliente: 'AMEX OSCAR HURTADO',
+      pesoTotal: 1.2,
+      pesoFormateado: '1.20',
+      tracking: 'TRK-OSC-2',
+      tipo: 'BOLSA',
+      observaciones: 'Normal',
+      descripcion: '',
+      dni: '',
+      encontrado: true,
+      matchParcial: false,
+      wrsEncontrados: 1,
+      totalWrsFila: 1,
+      detalles: [
+        { wr: 'WR000452000', tracking: 'TRK-OSC-2', cliente: 'AMEX OSCAR HURTADO', tipo: 'BOLSA', peso: 1.2, encontrado: true },
+      ],
+    };
+
+    const grupoConUnoNormalizado: FilaResultadoCobro = {
+      filaOriginal: 12,
+      wr: 'WR000453118 / WR000452005',
+      wrs: ['WR000453118', 'WR000452005'],
+      wrOriginal: 'WR453118 / WR000452005',
+      wrsNormalizados: [{ original: 'WR453118', normalizado: 'WR000453118', motivo: 'ceros-completados' }],
+      esMultiWr: true,
+      delimiter: ' / ',
+      cliente: 'AMEX OSCAR HURTADO / AMEX OSCAR HURTADO',
+      pesoTotal: 4.0,
+      pesoFormateado: '2.00 / 2.00',
+      tracking: 'TRK-G1 / TRK-G2',
+      tipo: 'CAJA',
+      observaciones: '',
+      descripcion: '',
+      dni: '',
+      encontrado: true,
+      matchParcial: false,
+      wrsEncontrados: 2,
+      totalWrsFila: 2,
+      detalles: [
+        { wr: 'WR000453118', tracking: 'TRK-G1', cliente: 'AMEX OSCAR HURTADO', tipo: 'CAJA', peso: 2.0, encontrado: true },
+        { wr: 'WR000452005', tracking: 'TRK-G2', cliente: 'AMEX OSCAR HURTADO', tipo: 'CAJA', peso: 2.0, encontrado: true },
+      ],
+    };
+
+    const { sheets, dataCruce, dataCobros, dataCobroConsolidado } = generarHojasPlanillaCobros(
+      [simpleSinPrefijo, simpleExacto, grupoConUnoNormalizado],
+      'PLANILLA COBROS 16.11.xlsx'
+    );
+
+    // 1. Banner superior en Cruce Planilla (fila índice 1)
+    const topBanner = dataCruce[1] as CellObject[];
+    expect(String(topBanner[0].value)).toContain('AVISO DE NORMALIZACIÓN: 2 códigos WR (2 filas del instructivo)');
+    expect(topBanner[0].backgroundColor).toBe('#E0F2FE');
+
+    // 2. Fila simple normalizada marcada en celeste y con nota en OBSERVACIONES
+    const rowOscNorm = dataCruce.find((r) => (r[2] as CellObject | null)?.value === 'WR000453115') as CellObject[];
+    expect(rowOscNorm[2].backgroundColor).toBe('#E0F2FE');
+    expect(rowOscNorm[2].textColor).toBe('#0369A1');
+    expect(String(rowOscNorm[5].value)).toBe('WR original: 453115 → WR000453115');
+
+    // Fila simple exacta no debe marcarse en celeste
+    const rowExacta = dataCruce.find((r) => (r[2] as CellObject | null)?.value === 'WR000452000') as CellObject[];
+    expect(rowExacta[2].backgroundColor).toBeUndefined();
+    expect(String(rowExacta[5].value)).toBe('Normal');
+
+    // 3. En grupo, la fila hija normalizada mantiene verde de grupo y nota WR original en OBSERVACIONES
+    const rowChildNorm = dataCruce.find((r) => (r[2] as CellObject | null)?.value === 'WR000453118') as CellObject[];
+    expect(rowChildNorm[0].backgroundColor).toBe('#F0FDF4');
+    expect(String(rowChildNorm[5].value)).toContain('WR original: WR453118 → WR000453118');
+
+    // 4. Tabla resumen al final de Cruce Planilla
+    const auditBannerIdx = dataCruce.findIndex(
+      (r) => typeof (r[0] as CellObject | null)?.value === 'string' && String((r[0] as CellObject).value).includes('AVISO DE WRS NORMALIZADOS DESDE EL INSTRUCTIVO')
+    );
+    expect(auditBannerIdx).toBeGreaterThan(0);
+    const auditRow1 = dataCruce[auditBannerIdx + 2] as CellObject[];
+    const auditRow2 = dataCruce[auditBannerIdx + 3] as CellObject[];
+    expect(auditRow1[0].value).toBe(6);
+    expect(auditRow1[1].value).toBe('453115');
+    expect(auditRow1[2].value).toBe('WR000453115');
+    expect(String(auditRow1[5].value)).toContain('Sin prefijo "WR"');
+    expect(auditRow2[0].value).toBe(12);
+    expect(auditRow2[1].value).toBe('WR453118');
+    expect(auditRow2[2].value).toBe('WR000453118');
+    expect(String(auditRow2[5].value)).toContain('Ceros completados');
+
+    // 5. Hojas de COBRO libres de avisos
+    expect(JSON.stringify(dataCobros)).not.toContain('AVISO DE');
+    expect(JSON.stringify(dataCobroConsolidado)).not.toContain('AVISO DE');
+
+    // 6. Excel válido en write-excel-file/node
     const { default: writeXlsxFileNode } = await import('write-excel-file/node');
     const buffer = await writeXlsxFileNode(sheets).toBuffer();
     expect(buffer.byteLength).toBeGreaterThan(1000);

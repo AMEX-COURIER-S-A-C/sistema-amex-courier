@@ -4,10 +4,150 @@ import {
   buildSimpleClientKeySet,
   classifyMultiWrGroup,
   cleanTrackingValue,
+  formatWrNormalizationNote,
+  getRowNormalizedWrs,
   isGroupedWrRow,
   normalizeClientNameKey,
+  normalizeInstructivoWrToken,
   type MultiWrGroupClassification,
+  type WrNormalizationReason,
 } from './wr-matching';
+
+interface NormalizationAuditEntry {
+  filaOriginal: number | string;
+  original: string;
+  normalizado: string;
+  motivo: WrNormalizationReason;
+  cliente: string;
+  ubicacion: string;
+  encontrado: boolean;
+}
+
+function appendNormalizationAuditSection(
+  dataCruce: SheetData,
+  auditRows: NormalizationAuditEntry[],
+  totalNormRows: number
+): void {
+  if (auditRows.length === 0) return;
+
+  const ordenadas = [...auditRows].sort((a, b) => {
+    const fa = typeof a.filaOriginal === 'number' ? a.filaOriginal : Number.MAX_SAFE_INTEGER;
+    const fb = typeof b.filaOriginal === 'number' ? b.filaOriginal : Number.MAX_SAFE_INTEGER;
+    if (fa !== fb) return fa - fb;
+    return a.normalizado.localeCompare(b.normalizado);
+  });
+
+  dataCruce.push([]);
+  dataCruce.push([]);
+  dataCruce.push([]);
+
+  dataCruce.push([
+    {
+      value: `AVISO DE WRS NORMALIZADOS DESDE EL INSTRUCTIVO (${ordenadas.length} CÓDIGOS EN ${totalNormRows} FILAS)`,
+      columnSpan: 6,
+      fontWeight: 'bold' as const,
+      fontSize: 10.5,
+      textColor: '#0C4A6E',
+      backgroundColor: '#BAE6FD',
+      align: 'left' as const,
+      alignVertical: 'center' as const,
+      height: 22,
+      borderColor: '#0284C7',
+      borderStyle: 'thin' as const,
+      topBorderStyle: 'medium' as const,
+      leftBorderStyle: 'medium' as const,
+      rightBorderStyle: 'medium' as const,
+    },
+    null,
+    null,
+    null,
+    null,
+    null,
+  ]);
+
+  const auditHeaderStyle = {
+    fontWeight: 'bold' as const,
+    fontSize: 9.5,
+    backgroundColor: '#0284C7',
+    textColor: '#FFFFFF',
+    align: 'center' as const,
+    alignVertical: 'center' as const,
+    borderColor: '#0369A1',
+    borderStyle: 'thin' as const,
+    height: 20,
+  };
+
+  dataCruce.push([
+    { ...auditHeaderStyle, value: 'FILA INSTRUCTIVO', type: String, leftBorderStyle: 'medium' as const },
+    { ...auditHeaderStyle, value: 'VALOR ORIGINAL', type: String },
+    { ...auditHeaderStyle, value: 'WR NORMALIZADO', type: String },
+    { ...auditHeaderStyle, value: 'CLIENTE TIB', type: String },
+    { ...auditHeaderStyle, value: 'UBICACIÓN EN CRUCE', type: String },
+    { ...auditHeaderStyle, value: 'MOTIVO / ESTADO', type: String, rightBorderStyle: 'medium' as const },
+  ]);
+
+  for (let i = 0; i < ordenadas.length; i++) {
+    const row = ordenadas[i];
+    const isLast = i === ordenadas.length - 1;
+    const bg = i % 2 === 0 ? '#F0F9FF' : '#FFFFFF';
+    const motivoLabel = row.motivo === 'sin-prefijo' ? 'Sin prefijo "WR"' : 'Ceros completados';
+    const estadoLabel = row.encontrado ? '✓ Encontrado en TIB' : '⚠ No encontrado';
+
+    const cellBase = {
+      backgroundColor: bg,
+      borderColor: '#0284C7',
+      borderStyle: 'thin' as const,
+      ...(isLast ? { bottomBorderStyle: 'medium' as const } : {}),
+      alignVertical: 'center' as const,
+      height: 19,
+    };
+
+    dataCruce.push([
+      {
+        ...cellBase,
+        value: row.filaOriginal,
+        type: typeof row.filaOriginal === 'number' ? Number : String,
+        align: 'center' as const,
+        fontWeight: 'bold' as const,
+        leftBorderStyle: 'medium' as const,
+      },
+      {
+        ...cellBase,
+        value: row.original,
+        type: String,
+        align: 'center' as const,
+        fontWeight: 'bold' as const,
+        textColor: '#B45309',
+      },
+      {
+        ...cellBase,
+        value: row.normalizado,
+        type: String,
+        align: 'center' as const,
+        fontWeight: 'bold' as const,
+        textColor: '#0369A1',
+      },
+      {
+        ...cellBase,
+        value: row.cliente,
+        type: String,
+      },
+      {
+        ...cellBase,
+        value: row.ubicacion,
+        type: String,
+        align: 'center' as const,
+      },
+      {
+        ...cellBase,
+        value: `${motivoLabel} · ${estadoLabel}`,
+        type: String,
+        textColor: row.encontrado ? '#0369A1' : '#991B1B',
+        rightBorderStyle: 'medium' as const,
+      },
+    ]);
+  }
+}
 
 export type { FilaResultadoCobro };
 
@@ -285,6 +425,10 @@ export function generarHojasPlanillaCobros(
   // =========================================================================
   // HOJA 1: "Cruce Planilla" (Referencia completa con agrupados al final)
   // =========================================================================
+  const totalNormRows = filas.filter((f) => getRowNormalizedWrs(f).length > 0).length;
+  const totalNormCodes = filas.reduce((acc, f) => acc + getRowNormalizedWrs(f).length, 0);
+  const normalizationAuditRows: NormalizationAuditEntry[] = [];
+
   const headerRowCruce: Row = [
     { value: 'NOMBRE', fontWeight: 'bold' as const },
     { value: 'PESO', fontWeight: 'bold' as const },
@@ -302,6 +446,31 @@ export function generarHojasPlanillaCobros(
         fontSize: 12,
       },
     ],
+    ...(totalNormCodes > 0
+      ? [
+          [
+            {
+              value: `ℹ AVISO DE NORMALIZACIÓN: ${totalNormCodes} ${totalNormCodes === 1 ? 'código WR' : 'códigos WR'} (${totalNormRows} ${totalNormRows === 1 ? 'fila' : 'filas'} del instructivo) venían sin prefijo "WR" o con ceros incompletos y se completaron a WR000... — Filas en celeste y detalle al final de esta hoja`,
+              columnSpan: 6,
+              fontWeight: 'bold' as const,
+              fontSize: 9.5,
+              textColor: '#0C4A6E',
+              backgroundColor: '#E0F2FE',
+              align: 'left' as const,
+              alignVertical: 'center' as const,
+              wrap: true,
+              height: 22,
+              borderColor: '#0284C7',
+              borderStyle: 'thin' as const,
+            },
+            null,
+            null,
+            null,
+            null,
+            null,
+          ],
+        ]
+      : []),
     [],
     headerRowCruce,
   ];
@@ -313,13 +482,57 @@ export function generarHojasPlanillaCobros(
       ? { value: it.pesoTotal, type: Number, format: '#,##0.00' }
       : { value: it.pesoFormateado || '—', type: String };
 
+    const normItems = getRowNormalizedWrs(it);
+    const isNormalized = normItems.length > 0;
+    for (const ni of normItems) {
+      normalizationAuditRows.push({
+        filaOriginal: it.filaOriginal || '—',
+        original: ni.original,
+        normalizado: ni.normalizado,
+        motivo: ni.motivo,
+        cliente: nombreCliente,
+        ubicacion: 'WR Simple',
+        encontrado: Boolean(it.encontrado),
+      });
+    }
+
+    const normNote = formatWrNormalizationNote(normItems);
+    const obsValue = normNote
+      ? (it.observaciones ? `${it.observaciones} · ${normNote}` : normNote)
+      : (it.observaciones || '');
+
+    const simpleNormStyle = isNormalized
+      ? {
+          backgroundColor: '#E0F2FE',
+          borderColor: '#7DD3FC',
+          borderStyle: 'thin' as const,
+          alignVertical: 'center' as const,
+        }
+      : {};
+
     dataCruce.push([
-      { value: nombreCliente, type: String },
-      pesoVal,
-      { value: it.wr || '', type: String },
-      it.tracking ? { value: it.tracking, type: String } : null,
-      it.tipo ? { value: it.tipo, type: String } : null,
-      it.observaciones ? { value: it.observaciones, type: String } : null,
+      { ...simpleNormStyle, value: nombreCliente, type: String },
+      { ...simpleNormStyle, ...pesoVal },
+      {
+        ...simpleNormStyle,
+        value: it.wr || '',
+        type: String,
+        ...(isNormalized ? { fontWeight: 'bold' as const, textColor: '#0369A1' } : {}),
+      },
+      it.tracking
+        ? { ...simpleNormStyle, value: it.tracking, type: String }
+        : (isNormalized ? { ...simpleNormStyle } : null),
+      it.tipo
+        ? { ...simpleNormStyle, value: it.tipo, type: String }
+        : (isNormalized ? { ...simpleNormStyle } : null),
+      obsValue
+        ? {
+            ...simpleNormStyle,
+            value: obsValue,
+            type: String,
+            ...(isNormalized ? { fontWeight: 'bold' as const, textColor: '#0369A1', wrap: true } : {}),
+          }
+        : (isNormalized ? { ...simpleNormStyle } : null),
     ]);
   }
 
@@ -407,12 +620,33 @@ export function generarHojasPlanillaCobros(
       ]);
 
       // 2. Filas individuales de cada WR dentro del recuadro
+      const groupNormItems = getRowNormalizedWrs(it);
       let sumaPesosGrupo = 0;
       let tienePesos = false;
 
       for (let i = 0; i < detallesList.length; i++) {
         const d = detallesList[i];
         const nombreCliente = String(d.cliente || it.cliente || 'SIN NOMBRE').trim().toUpperCase();
+
+        const childWrNorm = normalizeInstructivoWrToken(d.wr);
+        const childNormItem = groupNormItems.find((ni) => ni.normalizado === childWrNorm);
+        if (childNormItem) {
+          const statusLabel =
+            cls.status === 'full-match'
+              ? 'Pasado completo'
+              : cls.status === 'partial-match'
+                ? (d.matchesSimple ? 'Parcial a cobro' : 'Parcial pendiente')
+                : 'Sin WR simple';
+          normalizationAuditRows.push({
+            filaOriginal: it.filaOriginal || '—',
+            original: childNormItem.original,
+            normalizado: childNormItem.normalizado,
+            motivo: childNormItem.motivo,
+            cliente: nombreCliente,
+            ubicacion: `Grupo ${grupoIndex} (${statusLabel})`,
+            encontrado: Boolean(d.encontrado),
+          });
+        }
 
         let pesoVal: { value: number | string; type: typeof Number | typeof String; format?: string };
         if (typeof d.peso === 'number' && d.peso > 0) {
@@ -431,7 +665,7 @@ export function generarHojasPlanillaCobros(
           cls.status === 'partial-match'
             ? (d.matchesSimple ? '#166534' : '#991B1B')
             : undefined;
-        const obsNote =
+        const baseObsNote =
           cls.status === 'full-match'
             ? (it.observaciones ? `${it.observaciones} · ✓ Pasado a Cobro` : '✓ Pasado a Cobro')
             : cls.status === 'partial-match'
@@ -439,6 +673,12 @@ export function generarHojasPlanillaCobros(
                   ? (it.observaciones ? `${it.observaciones} · ✓ PASADO A COBRO` : '✓ PASADO A COBRO')
                   : (it.observaciones ? `${it.observaciones} · ⚠ PENDIENTE (SIN WR SIMPLE)` : '⚠ PENDIENTE (SIN WR SIMPLE)'))
               : (it.observaciones || '');
+        const childNormText = childNormItem
+          ? `WR original: ${childNormItem.original} → ${childNormItem.normalizado}`
+          : '';
+        const obsNote = childNormText
+          ? (baseObsNote ? `${baseObsNote} · ${childNormText}` : childNormText)
+          : baseObsNote;
 
         const baseStyle = {
           backgroundColor: rowBg,
@@ -493,6 +733,7 @@ export function generarHojasPlanillaCobros(
             ...baseStyle,
             value: obsNote,
             type: String,
+            ...(childNormItem ? { wrap: true } : {}),
             ...(rowTextColor ? { textColor: rowTextColor, fontWeight: 'bold' as const } : {}),
             rightBorderStyle: 'medium' as const,
           },
@@ -548,7 +789,7 @@ export function generarHojasPlanillaCobros(
         // Col 3: Celda original
         {
           ...subtotalStyle,
-          value: `Original: ${it.wr}`,
+          value: it.wrOriginal && it.wrOriginal !== it.wr ? `Original instructivo: ${it.wrOriginal}` : `Original: ${it.wr}`,
           type: String,
           fontSize: 8.5,
           textColor: '#64748b',
@@ -569,6 +810,9 @@ export function generarHojasPlanillaCobros(
       ]);
     }
   }
+
+  // Tabla detallada de auditoría de WRs normalizados al final de Cruce Planilla
+  appendNormalizationAuditSection(dataCruce, normalizationAuditRows, totalNormRows);
 
   // =========================================================================
   // HOJA 2: "Plantilla Cobros" (TAL CUAL como archivo COBRO 22.09)
@@ -802,12 +1046,12 @@ export function generarHojasPlanillaCobros(
       sheet: 'Cruce Planilla',
       data: dataCruce,
       columns: [
-        { width: 44 }, // NOMBRE
-        { width: 22 }, // PESO
-        { width: 32 }, // CODIGO WAREHOUSE
-        { width: 36 }, // TRACKING
-        { width: 18 }, // TIPO DE PAQUETE
-        { width: 24 }, // OBSERVACIONES
+        { width: 44 }, // NOMBRE / FILA INSTRUCTIVO
+        { width: 22 }, // PESO / VALOR ORIGINAL
+        { width: 32 }, // CODIGO WAREHOUSE / WR NORMALIZADO
+        { width: 36 }, // TRACKING / CLIENTE TIB
+        { width: 22 }, // TIPO DE PAQUETE / UBICACION EN CRUCE
+        { width: 36 }, // OBSERVACIONES / MOTIVO Y ESTADO
       ],
     },
     {

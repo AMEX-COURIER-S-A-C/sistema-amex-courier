@@ -27,6 +27,14 @@ export interface MultiWrGroupClassification {
   extractedBillingRows: FilaResultadoCobro[];
 }
 
+export type WrNormalizationReason = 'sin-prefijo' | 'ceros-completados';
+
+export interface NormalizedWrDetail {
+  original: string;
+  normalizado: string;
+  motivo: WrNormalizationReason;
+}
+
 const INSTRUCTIVO_WR_TOKEN_RE = /(?:WR\d+|\b\d{6,9}\b)/gi;
 
 /**
@@ -56,28 +64,76 @@ export function normalizeInstructivoWrToken(rawToken: string): string {
 
 /**
  * Extrae y normaliza todos los códigos WR presentes en una celda del instructivo,
- * aceptando tanto códigos con prefijo ("WR000452551") como numéricos de 6 a 9 dígitos ("453115").
+ * aceptando tanto códigos con prefijo ("WR000452551") como numéricos de 6 a 9 dígitos ("453115"),
+ * registrando cada código autocompletado o completado con ceros.
  */
 export function extractAndNormalizeWrsFromCell(rawCell: string): {
   wrs: string[];
   hadBareNumber: boolean;
+  wasNormalized: boolean;
+  normalizedItems: NormalizedWrDetail[];
 } {
-  const text = String(rawCell || '').toUpperCase();
+  const text = String(rawCell || '').trim();
   const rawMatches = text.match(INSTRUCTIVO_WR_TOKEN_RE) || [];
   const wrs: string[] = [];
+  const normalizedItems: NormalizedWrDetail[] = [];
   let hadBareNumber = false;
 
-  for (const token of rawMatches) {
-    if (!token.startsWith('WR')) {
+  for (const rawToken of rawMatches) {
+    const tokenCleanUpper = rawToken.trim().toUpperCase();
+    const normalized = normalizeInstructivoWrToken(tokenCleanUpper);
+    if (!normalized) continue;
+    wrs.push(normalized);
+
+    if (!tokenCleanUpper.startsWith('WR')) {
       hadBareNumber = true;
-    }
-    const normalized = normalizeInstructivoWrToken(token);
-    if (normalized) {
-      wrs.push(normalized);
+      normalizedItems.push({
+        original: rawToken.trim(),
+        normalizado: normalized,
+        motivo: 'sin-prefijo',
+      });
+    } else if (tokenCleanUpper !== normalized) {
+      normalizedItems.push({
+        original: rawToken.trim(),
+        normalizado: normalized,
+        motivo: 'ceros-completados',
+      });
     }
   }
 
-  return { wrs, hadBareNumber };
+  return {
+    wrs,
+    hadBareNumber,
+    wasNormalized: normalizedItems.length > 0,
+    normalizedItems,
+  };
+}
+
+/**
+ * Obtiene el detalle de normalizaciones WR asociadas a una fila del cruce,
+ * reconstruyéndolo desde `wrOriginal` si aún no estuviera hidratado.
+ */
+export function getRowNormalizedWrs(
+  f: Pick<FilaResultadoCobro, 'wrOriginal' | 'wrsNormalizados'>
+): NormalizedWrDetail[] {
+  if (Array.isArray(f.wrsNormalizados) && f.wrsNormalizados.length > 0) {
+    return f.wrsNormalizados;
+  }
+  if (f.wrOriginal) {
+    return extractAndNormalizeWrsFromCell(f.wrOriginal).normalizedItems;
+  }
+  return [];
+}
+
+/**
+ * Formatea una nota concisa de auditoría para la columna OBSERVACIONES del Excel.
+ */
+export function formatWrNormalizationNote(items: NormalizedWrDetail[]): string {
+  if (!items || items.length === 0) return '';
+  if (items.length === 1) {
+    return `WR original: ${items[0].original} → ${items[0].normalizado}`;
+  }
+  return `WRs originales: ${items.map((i) => `${i.original} → ${i.normalizado}`).join(', ')}`;
 }
 
 /**

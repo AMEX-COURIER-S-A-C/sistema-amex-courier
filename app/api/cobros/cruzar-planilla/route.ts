@@ -7,7 +7,11 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { z } from 'zod';
 import { withApi } from '@/lib/api/withApi';
 import { normalizeTibWr } from '@/lib/tib/apiClient';
-import { extractAndNormalizeWrsFromCell, normalizeInstructivoWrToken } from '@/features/cobros/services/wr-matching';
+import {
+  extractAndNormalizeWrsFromCell,
+  normalizeInstructivoWrToken,
+  type NormalizedWrDetail,
+} from '@/features/cobros/services/wr-matching';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -25,6 +29,8 @@ export interface FilaCruzarInput {
   filaOriginal?: number;
   rawWr: string;
   wrs: string[];
+  wrOriginal?: string;
+  wrsNormalizados?: NormalizedWrDetail[];
   delimiter?: string;
   esMultiWr?: boolean;
   consignatario?: string;
@@ -40,6 +46,10 @@ export interface FilaResultadoCobro {
   wr: string;
   /** Los WRs individuales */
   wrs: string[];
+  /** Texto literal original de la celda del instructivo cuando fue normalizado (ej: "453115") */
+  wrOriginal?: string;
+  /** Lista de códigos normalizados en la fila */
+  wrsNormalizados?: NormalizedWrDetail[];
   esMultiWr: boolean;
   delimiter: string;
   /** Nombre del cliente oficial (del TIB o consignatario del instructivo) */
@@ -521,9 +531,16 @@ export const POST = withApi(
     for (let i = 0; i < filasInput.length; i++) {
       const f = filasInput[i];
       const delimiter = f.delimiter || (f.rawWr.includes('/') ? ' / ' : ' - ');
+      const cellExtracted = extractAndNormalizeWrsFromCell(f.rawWr);
       const wrsTokens = (f.wrs && f.wrs.length > 0)
         ? f.wrs.map((w) => normalizeInstructivoWrToken(limpiar(w))).filter(Boolean)
-        : extractAndNormalizeWrsFromCell(f.rawWr).wrs;
+        : cellExtracted.wrs;
+      const wrsNormalizadosFinal =
+        Array.isArray(f.wrsNormalizados) && f.wrsNormalizados.length > 0
+          ? f.wrsNormalizados
+          : (cellExtracted.normalizedItems.length > 0 ? cellExtracted.normalizedItems : undefined);
+      const wrOriginalFinal = f.wrOriginal || (cellExtracted.wasNormalized ? f.rawWr : undefined);
+      const rawWrDisplay = !f.wrOriginal && cellExtracted.wasNormalized ? wrsTokens.join(delimiter) : f.rawWr;
 
       totalWrsBuscados += wrsTokens.length;
 
@@ -579,8 +596,10 @@ export const POST = withApi(
 
       filasResultado.push({
         filaOriginal: f.filaOriginal || i + 1,
-        wr: f.rawWr,
+        wr: rawWrDisplay,
         wrs: wrsTokens,
+        ...(wrOriginalFinal ? { wrOriginal: wrOriginalFinal } : {}),
+        ...(wrsNormalizadosFinal ? { wrsNormalizados: wrsNormalizadosFinal } : {}),
         esMultiWr: wrsTokens.length > 1,
         delimiter,
         cliente: clienteNombre.toUpperCase(),
