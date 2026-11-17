@@ -659,10 +659,10 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
                 opacity: descargando ? 0.6 : 1,
                 boxShadow: '0 2px 8px rgba(22, 163, 74, 0.3)',
               }}
-              title="Genera un libro con 2 hojas: 1. Cruce Planilla (todos los paquetes) y 2. Plantilla Cobros (formato oficial Cobro 22 Septiembre con solo WRs individuales)"
+              title="Genera un libro con 3 hojas: 1. Cruce Planilla (todos los paquetes), 2. COBRO DD.MM (por cliente sin combinar) y 3. COBRO CONSOLIDADO (tabla continua de WRs simples con fila TOTAL)"
             >
               <Download style={{ width: '16px', height: '16px' }} />
-              {descargando ? 'Generando Excel (2 Hojas)…' : 'Descargar Planilla Excel (2 Hojas)'}
+              {descargando ? 'Generando Excel (3 Hojas)…' : 'Descargar Planilla Excel (3 Hojas)'}
             </button>
           </div>
 

@@ -58,8 +58,159 @@ export function obtenerInfoFecha(fechaRef?: string) {
   return { fecha, diaNombre, diaStr, mesStr, anioStr, tituloCobros, nombreHojaCobro };
 }
 
+const ACCOUNTING_USD_FORMAT = '_("$ "* #,##0.00_);_("$ "* (#,##0.00);_("$ "* "-"??_);_(@_)';
+
 /**
- * Genera la planilla de cobros (.xlsx) con 2 hojas:
+ * Construye la 3ra hoja ("COBRO CONSOLIDADO"):
+ * - Incluye únicamente los WRs simples (1 WR por fila), preservando el orden del instructivo.
+ * - Tabla continua desde la columna A: NOMBRE | PESO | PRECIO $ | wr | tracking.
+ * - Combina verticalmente (rowSpan) la celda NOMBRE solo cuando hay filas consecutivas del mismo cliente TIB.
+ * - Columna PRECIO $ vacía para llenado manual, con fila TOTAL al final usando fórmula =SUM(...).
+ */
+export function buildCobroConsolidadoSheetData(filasSimples: FilaResultadoCobro[]): SheetData {
+  const ordenadasPorInstructivo = [...filasSimples].sort(
+    (a, b) => (a.filaOriginal ?? Number.MAX_SAFE_INTEGER) - (b.filaOriginal ?? Number.MAX_SAFE_INTEGER)
+  );
+
+  const thinBlackBorder = {
+    borderColor: '#000000',
+    borderStyle: 'thin' as const,
+  };
+
+  const headerStyle = {
+    fontWeight: 'bold' as const,
+    backgroundColor: '#4472C4',
+    textColor: '#ffffff',
+    align: 'center' as const,
+    alignVertical: 'center' as const,
+    height: 22,
+    ...thinBlackBorder,
+  };
+
+  const greenCellBase = {
+    backgroundColor: '#E2EFDA',
+    align: 'center' as const,
+    alignVertical: 'center' as const,
+    ...thinBlackBorder,
+  };
+
+  const blueCellBase = {
+    backgroundColor: '#D9E1F2',
+    alignVertical: 'center' as const,
+    ...thinBlackBorder,
+  };
+
+  const precioCellBase = {
+    align: 'right' as const,
+    alignVertical: 'center' as const,
+    format: ACCOUNTING_USD_FORMAT,
+    ...thinBlackBorder,
+  };
+
+  const sheetData: SheetData = [
+    [
+      { value: 'NOMBRE', ...headerStyle },
+      { value: 'PESO', ...headerStyle },
+      { value: 'PRECIO $', ...headerStyle },
+      { value: 'wr', ...headerStyle },
+      { value: 'tracking', ...headerStyle },
+    ],
+  ];
+
+  if (ordenadasPorInstructivo.length === 0) {
+    return sheetData;
+  }
+
+  let idx = 0;
+  while (idx < ordenadasPorInstructivo.length) {
+    const clienteActual = String(ordenadasPorInstructivo[idx].cliente || 'SIN NOMBRE').trim().toUpperCase();
+    let runEnd = idx + 1;
+    while (
+      runEnd < ordenadasPorInstructivo.length &&
+      String(ordenadasPorInstructivo[runEnd].cliente || 'SIN NOMBRE').trim().toUpperCase() === clienteActual
+    ) {
+      runEnd++;
+    }
+    const runLength = runEnd - idx;
+
+    for (let j = idx; j < runEnd; j++) {
+      const it = ordenadasPorInstructivo[j];
+      const pesoNum = typeof it.pesoTotal === 'number' && it.pesoTotal > 0
+        ? it.pesoTotal
+        : (parseFloat(String(it.pesoFormateado || '0').replace(',', '.')) || 0);
+
+      const rawTracking = String(it.tracking || '').trim();
+      const cleanTracking = rawTracking === '-' ? '' : rawTracking;
+
+      const nombreCell = j === idx
+        ? {
+            value: clienteActual,
+            type: String,
+            wrap: true,
+            ...(runLength > 1 ? { rowSpan: runLength } : {}),
+            ...greenCellBase,
+          }
+        : null;
+
+      sheetData.push([
+        nombreCell,
+        {
+          value: pesoNum,
+          type: Number,
+          format: '#,##0.00',
+          align: 'right' as const,
+          ...blueCellBase,
+        },
+        { type: Number, ...precioCellBase },
+        {
+          value: it.wr || '',
+          type: String,
+          wrap: true,
+          ...greenCellBase,
+        },
+        cleanTracking
+          ? {
+              value: cleanTracking,
+              type: String,
+              align: 'left' as const,
+              wrap: true,
+              ...blueCellBase,
+            }
+          : {
+              align: 'left' as const,
+              ...blueCellBase,
+            },
+      ]);
+    }
+
+    idx = runEnd;
+  }
+
+  const lastDataExcelRow = ordenadasPorInstructivo.length + 1;
+  sheetData.push([
+    { ...greenCellBase },
+    {
+      value: 'TOTAL',
+      type: String,
+      fontWeight: 'bold' as const,
+      align: 'right' as const,
+      ...blueCellBase,
+    },
+    {
+      value: `SUM(C2:C${lastDataExcelRow})`,
+      type: 'Formula',
+      fontWeight: 'bold' as const,
+      ...precioCellBase,
+    },
+    { ...greenCellBase },
+    { ...blueCellBase },
+  ]);
+
+  return sheetData;
+}
+
+/**
+ * Genera la planilla de cobros (.xlsx) con 3 hojas:
  *
  * 1. Hoja "Cruce Planilla":
  *    - Cada fila individual lleva explícitamente el nombre de a quién le pertenece ese WR.
@@ -77,6 +228,11 @@ export function obtenerInfoFecha(fechaRef?: string) {
  *    - Columna F con TRACKING al costado derecho del WR.
  *    - Fila TOTAL por cliente y separación limpia de 1 fila en blanco.
  *    - Título centrado sin sufijo KMMQ.
+ *
+ * 3. Hoja "COBRO CONSOLIDADO":
+ *    - SOLO incluye WRs simples en filas individuales respetando el orden original del instructivo.
+ *    - Tabla unificada desde columna A (NOMBRE | PESO | PRECIO $ | wr | tracking) con combinación vertical en filas consecutivas del mismo cliente.
+ *    - Columna PRECIO $ vacía para llenado manual y fila final TOTAL con fórmula =SUM(...).
  */
 export function generarHojasPlanillaCobros(
   filas: FilaResultadoCobro[],
@@ -583,7 +739,12 @@ export function generarHojasPlanillaCobros(
   }
 
   // =========================================================================
-  // EXPORTAR LIBRO CON AMBAS HOJAS
+  // HOJA 3: "COBRO CONSOLIDADO" (Tabla continua desde Columna A, solo WRs simples)
+  // =========================================================================
+  const dataCobroConsolidado = buildCobroConsolidadoSheetData(filasSimples);
+
+  // =========================================================================
+  // EXPORTAR LIBRO CON LAS 3 HOJAS
   // =========================================================================
   const sheets = [
     {
@@ -610,17 +771,28 @@ export function generarHojasPlanillaCobros(
         { width: 34 }, // F: TRACKING
       ],
     },
+    {
+      sheet: 'COBRO CONSOLIDADO',
+      data: dataCobroConsolidado,
+      columns: [
+        { width: 34 }, // A: NOMBRE
+        { width: 12 }, // B: PESO
+        { width: 15 }, // C: PRECIO $
+        { width: 24 }, // D: wr
+        { width: 38 }, // E: tracking
+      ],
+    },
   ];
 
   const nombreFinal = nombreArchivo.toLowerCase().endsWith('.xlsx')
     ? nombreArchivo
     : `${nombreArchivo}.xlsx`;
 
-  return { sheets, nombreFinal, nombreHojaCobro, dataCruce, dataCobros };
+  return { sheets, nombreFinal, nombreHojaCobro, dataCruce, dataCobros, dataCobroConsolidado };
 }
 
 /**
- * Descarga en el navegador o genera el archivo Excel con ambas hojas
+ * Descarga en el navegador o genera el archivo Excel con las 3 hojas
  */
 export async function exportarPlanillaCobros(
   filas: FilaResultadoCobro[],
