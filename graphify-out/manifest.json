@@ -1131,8 +1131,8 @@
     "semantic_hash": ""
   },
   "scripts/vps-deploy-worker.ps1": {
-    "mtime": 1794540555.0342007,
-    "ast_hash": "edbe20d3837aa808aa267c2582e0ea8e",
+    "mtime": 1794880341.3471322,
+    "ast_hash": "5526fbfe4cf8728f47414d59f0184da9",
     "semantic_hash": ""
   },
   "scripts/vps-exec.ps1": {

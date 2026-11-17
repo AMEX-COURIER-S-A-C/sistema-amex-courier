@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$WorkerPath = "worker/worker.js"
 )
 
@@ -106,21 +106,23 @@ powershell.exe -NoProfile -NonInteractive -Command "[Console]::Write($env:AMEC_S
     & $scpPath @scpArgs $localTibEnv $remoteTibEnvTarget
     if ($LASTEXITCODE -ne 0) { throw "Falló la copia segura de las credenciales TIB al VPS." }
 
-    $remoteCommand = @"
-set -e
-trap 'rm -f $remoteWorker $remoteTibSync $remoteTibEnv' EXIT
-chmod 600 $remoteTibEnv
-docker cp $remoteWorker amex-worker:/app/worker/worker.js
-docker cp $remoteTibSync amex-worker:/app/worker/tib-daily-sync.js
-docker cp $remoteTibEnv amex-worker:/app/.env.tib
-docker exec amex-worker chmod 600 /app/.env.tib
-docker exec amex-worker node --check /app/worker/worker.js
-docker exec amex-worker node --check /app/worker/tib-daily-sync.js
-docker restart amex-worker
-sleep 2
-docker exec amex-worker node -e 'fetch("http://127.0.0.1:10000/").then(r=>{if(!r.ok)process.exit(1);return r.json()}).then(x=>console.log(JSON.stringify({status:x.status,tibDailySync:x.tibDailySync}))).catch(e=>{console.error(e.message);process.exit(1)})'
-"@
-    & $sshPath @sshArgs ("{0}@{1}" -f $vpsUser, $vpsHost) $remoteCommand
+    $remoteLines = @(
+        "set -euo pipefail",
+        "trap 'rm -f $remoteWorker $remoteTibSync $remoteTibEnv' EXIT",
+        "chmod 600 $remoteTibEnv",
+        "docker cp $remoteWorker amex-worker:/app/worker/worker.js",
+        "docker cp $remoteTibSync amex-worker:/app/worker/tib-daily-sync.js",
+        "docker cp $remoteTibEnv amex-worker:/app/.env.tib",
+        "docker exec amex-worker chmod 600 /app/.env.tib",
+        "docker exec amex-worker node --check /app/worker/worker.js",
+        "docker exec amex-worker node --check /app/worker/tib-daily-sync.js",
+        "docker restart amex-worker",
+        "sleep 2",
+        "docker exec amex-worker node -e 'fetch(""http://127.0.0.1:10000/"").then(r=>{if(!r.ok)process.exit(1);return r.json()}).then(x=>console.log(JSON.stringify({status:x.status,tibDailySync:x.tibDailySync}))).catch(e=>{console.error(e.message);process.exit(1)})'"
+    )
+    $remoteScript = $remoteLines -join "`n"
+    $remoteCommandB64 = [Convert]::ToBase64String($utf8NoBom.GetBytes($remoteScript))
+    & $sshPath @sshArgs ("{0}@{1}" -f $vpsUser, $vpsHost) ("echo '{0}' | base64 -d | bash" -f $remoteCommandB64)
     if ($LASTEXITCODE -ne 0) { throw "Falló la actualización o verificación del Worker existente." }
     Write-Host "Worker actualizado en el mismo contenedor; caché local y volúmenes existentes preservados."
 } finally {
