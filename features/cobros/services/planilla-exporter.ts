@@ -1,20 +1,19 @@
-import writeXlsxFile, { type SheetData, type Row, type Sheet } from 'write-excel-file/browser';
+import writeXlsxFile, { type SheetData, type Row } from 'write-excel-file/browser';
 import type { FilaResultadoCobro } from '@/app/api/cobros/cruzar-planilla/route';
+import {
+  buildSimpleClientKeySet,
+  classifyMultiWrGroup,
+  cleanTrackingValue,
+  isGroupedWrRow,
+  normalizeClientNameKey,
+  type MultiWrGroupClassification,
+} from './wr-matching';
 
 export type { FilaResultadoCobro };
 
 export interface OpcionesExportarPlanilla {
   getTarifaCliente?: (clienteNombre: string) => { tarifa: number; personalizada: boolean };
   fechaReferencia?: string;
-}
-
-function esFilaAgrupada(f: FilaResultadoCobro): boolean {
-  if (f.esMultiWr) return true;
-  if (Array.isArray(f.wrs) && f.wrs.length > 1) return true;
-  const wrStr = String(f.wr || '').trim();
-  if (wrStr.includes('-') || wrStr.includes('/') || wrStr.includes(',')) return true;
-  const matches = wrStr.match(/WR\d+/gi);
-  return Boolean(matches && matches.length > 1);
 }
 
 /**
@@ -123,11 +122,11 @@ export function buildCobroConsolidadoSheetData(filasSimples: FilaResultadoCobro[
 
   let idx = 0;
   while (idx < ordenadasPorInstructivo.length) {
-    const clienteActual = String(ordenadasPorInstructivo[idx].cliente || 'SIN NOMBRE').trim().toUpperCase();
+    const clienteActual = normalizeClientNameKey(ordenadasPorInstructivo[idx].cliente) || 'SIN NOMBRE';
     let runEnd = idx + 1;
     while (
       runEnd < ordenadasPorInstructivo.length &&
-      String(ordenadasPorInstructivo[runEnd].cliente || 'SIN NOMBRE').trim().toUpperCase() === clienteActual
+      (normalizeClientNameKey(ordenadasPorInstructivo[runEnd].cliente) || 'SIN NOMBRE') === clienteActual
     ) {
       runEnd++;
     }
@@ -139,8 +138,7 @@ export function buildCobroConsolidadoSheetData(filasSimples: FilaResultadoCobro[
         ? it.pesoTotal
         : (parseFloat(String(it.pesoFormateado || '0').replace(',', '.')) || 0);
 
-      const rawTracking = String(it.tracking || '').trim();
-      const cleanTracking = rawTracking === '-' ? '' : rawTracking;
+      const cleanTracking = cleanTrackingValue(it.tracking);
 
       const nombreCell = j === idx
         ? {
@@ -252,7 +250,7 @@ export function generarHojasPlanillaCobros(
   const filasAgrupadas: FilaResultadoCobro[] = [];
 
   for (const f of filas) {
-    if (esFilaAgrupada(f)) {
+    if (isGroupedWrRow(f)) {
       filasAgrupadas.push(f);
     } else {
       filasSimples.push(f);
@@ -266,6 +264,23 @@ export function generarHojasPlanillaCobros(
   filasAgrupadas.sort((a, b) =>
     (a.cliente || '').localeCompare(b.cliente || '', 'es') || (a.wr || '').localeCompare(b.wr || '')
   );
+
+  // Clasificar grupos contra clientes de WRs simples y reunir filas promovidas a Cobros
+  const simplesClientKeys = buildSimpleClientKeySet(filasSimples);
+  const clasificacionesGrupos = new Map<FilaResultadoCobro, MultiWrGroupClassification>();
+  const filasPromovidasACobros: FilaResultadoCobro[] = [];
+
+  for (const g of filasAgrupadas) {
+    const cls = classifyMultiWrGroup(g, simplesClientKeys);
+    clasificacionesGrupos.set(g, cls);
+    if (cls.status === 'full-match' && cls.combinedBillingRow) {
+      filasPromovidasACobros.push(cls.combinedBillingRow);
+    } else if (cls.status === 'partial-match' && cls.extractedBillingRows.length > 0) {
+      filasPromovidasACobros.push(...cls.extractedBillingRows);
+    }
+  }
+
+  const filasParaCobros: FilaResultadoCobro[] = [...filasSimples, ...filasPromovidasACobros];
 
   // =========================================================================
   // HOJA 1: "Cruce Planilla" (Referencia completa con agrupados al final)
@@ -327,27 +342,41 @@ export function generarHojasPlanillaCobros(
     for (const it of filasAgrupadas) {
       grupoIndex++;
 
-      // Obtener la lista de detalles individuales de cada paquete dentro del grupo
-      const detallesList: Array<{
-        wr: string;
-        tracking: string;
-        cliente: string;
-        tipo: string;
-        peso: number | null;
-        encontrado: boolean;
-      }> = Array.isArray(it.detalles) && it.detalles.length > 0
-        ? it.detalles
-        : (it.wrs && it.wrs.length > 0 ? it.wrs : [it.wr]).map((w, idx) => ({
-            wr: w,
-            tracking: it.tracking ? it.tracking.split(/[-/]/)[idx]?.trim() || '' : '',
-            cliente: it.cliente ? it.cliente.split(/[-/]/)[idx]?.trim() || it.cliente : 'SIN NOMBRE',
-            tipo: it.tipo || 'CAJA',
-            peso: null,
-            encontrado: it.encontrado,
-          }));
-
+      const cls = clasificacionesGrupos.get(it)!;
+      const detallesList = cls.detalles;
       const cantPaquetes = detallesList.length;
       const filaOriginalStr = it.filaOriginal ? `FILA INSTRUCTIVO ${it.filaOriginal}` : `GRUPO ${grupoIndex}`;
+
+      const groupPalette =
+        cls.status === 'full-match'
+          ? {
+              headerBg: '#DCFCE7',
+              rowBg: '#F0FDF4',
+              borderColor: '#16A34A',
+              headerTextColor: '#166534',
+              bannerText: `✅ GRUPO ${grupoIndex} — ${filaOriginalStr} | ${cantPaquetes} PAQUETES ("${it.wr}") — PASADO COMPLETO A COBRO`,
+              subtotalStatus: `✓ MOVIDO A COBRO (${cantPaquetes}/${cantPaquetes})`,
+              subtotalTextColor: '#15803d',
+            }
+          : cls.status === 'partial-match'
+            ? {
+                headerBg: '#FFEDD5',
+                rowBg: '#FFFBEB',
+                borderColor: '#EA580C',
+                headerTextColor: '#9A3412',
+                bannerText: `⚡ GRUPO ${grupoIndex} — ${filaOriginalStr} | ${cantPaquetes} PAQUETES ("${it.wr}") — PARCIAL: ${cls.matchedCount} A COBRO · ${cls.pendingCount} PENDIENTE`,
+                subtotalStatus: `⚡ ${cls.matchedCount} A COBRO / ${cls.pendingCount} PENDIENTE`,
+                subtotalTextColor: '#c2410c',
+              }
+            : {
+                headerBg: '#FEF3C7',
+                rowBg: '#FFFBEB',
+                borderColor: '#D97706',
+                headerTextColor: '#92400E',
+                bannerText: `📦 GRUPO ${grupoIndex} — ${filaOriginalStr} | ${cantPaquetes} PAQUETES ("${it.wr}") — SIN COINCIDENCIA EN SIMPLES`,
+                subtotalStatus: it.encontrado ? '⚠ SIN WR SIMPLE (NO PASADO A COBRO)' : '⚠ MATCH PARCIAL O PENDIENTE',
+                subtotalTextColor: '#b45309',
+              };
 
       // Fila vacía de separación antes de cada recuadro para que respire visualmente
       dataCruce.push([]);
@@ -355,16 +384,16 @@ export function generarHojasPlanillaCobros(
       // 1. Fila de Encabezado del Recuadro de Grupo (span 6 columnas)
       dataCruce.push([
         {
-          value: `📦 GRUPO ${grupoIndex} — ${filaOriginalStr} | ${cantPaquetes} PAQUETES DETECTADOS EN LA MISMA CELDA ("${it.wr}")`,
+          value: groupPalette.bannerText,
           columnSpan: 6,
           fontWeight: 'bold' as const,
           fontSize: 10.5,
-          textColor: '#92400E',
-          backgroundColor: '#FEF3C7',
+          textColor: groupPalette.headerTextColor,
+          backgroundColor: groupPalette.headerBg,
           align: 'left' as const,
           alignVertical: 'center' as const,
           height: 22,
-          borderColor: '#D97706',
+          borderColor: groupPalette.borderColor,
           borderStyle: 'thin' as const,
           topBorderStyle: 'medium' as const,
           leftBorderStyle: 'medium' as const,
@@ -394,9 +423,26 @@ export function generarHojasPlanillaCobros(
           pesoVal = { value: '—', type: String };
         }
 
+        const rowBg =
+          cls.status === 'partial-match'
+            ? (d.matchesSimple ? '#DCFCE7' : '#FEE2E2')
+            : groupPalette.rowBg;
+        const rowTextColor =
+          cls.status === 'partial-match'
+            ? (d.matchesSimple ? '#166534' : '#991B1B')
+            : undefined;
+        const obsNote =
+          cls.status === 'full-match'
+            ? (it.observaciones ? `${it.observaciones} · ✓ Pasado a Cobro` : '✓ Pasado a Cobro')
+            : cls.status === 'partial-match'
+              ? (d.matchesSimple
+                  ? (it.observaciones ? `${it.observaciones} · ✓ PASADO A COBRO` : '✓ PASADO A COBRO')
+                  : (it.observaciones ? `${it.observaciones} · ⚠ PENDIENTE (SIN WR SIMPLE)` : '⚠ PENDIENTE (SIN WR SIMPLE)'))
+              : (it.observaciones || '');
+
         const baseStyle = {
-          backgroundColor: '#FFFBEB',
-          borderColor: '#D97706',
+          backgroundColor: rowBg,
+          borderColor: groupPalette.borderColor,
           borderStyle: 'thin' as const,
           alignVertical: 'center' as const,
           height: 20,
@@ -408,6 +454,7 @@ export function generarHojasPlanillaCobros(
             ...baseStyle,
             value: nombreCliente,
             type: String,
+            ...(rowTextColor ? { textColor: rowTextColor, fontWeight: 'bold' as const } : {}),
             leftBorderStyle: 'medium' as const,
           },
           // Col 1: PESO
@@ -416,7 +463,7 @@ export function generarHojasPlanillaCobros(
             ...pesoVal,
             align: 'center' as const,
             fontWeight: 'bold' as const,
-            textColor: '#047857',
+            textColor: cls.status === 'partial-match' && !d.matchesSimple ? '#991B1B' : '#047857',
           },
           // Col 2: CODIGO WAREHOUSE
           {
@@ -425,11 +472,12 @@ export function generarHojasPlanillaCobros(
             type: String,
             align: 'center' as const,
             fontWeight: 'bold' as const,
+            ...(rowTextColor ? { textColor: rowTextColor } : {}),
           },
           // Col 3: TRACKING
           {
             ...baseStyle,
-            value: d.tracking || '—',
+            value: cleanTrackingValue(d.tracking) || '—',
             type: String,
             align: 'center' as const,
           },
@@ -443,8 +491,9 @@ export function generarHojasPlanillaCobros(
           // Col 5: OBSERVACIONES (Borde derecho medium para cerrar el recuadro por la derecha)
           {
             ...baseStyle,
-            value: it.observaciones || '',
+            value: obsNote,
             type: String,
+            ...(rowTextColor ? { textColor: rowTextColor, fontWeight: 'bold' as const } : {}),
             rightBorderStyle: 'medium' as const,
           },
         ]);
@@ -456,8 +505,8 @@ export function generarHojasPlanillaCobros(
         : (it.pesoTotal || 0);
 
       const subtotalStyle = {
-        backgroundColor: '#FEF3C7',
-        borderColor: '#D97706',
+        backgroundColor: groupPalette.headerBg,
+        borderColor: groupPalette.borderColor,
         borderStyle: 'thin' as const,
         bottomBorderStyle: 'medium' as const,
         alignVertical: 'center' as const,
@@ -473,7 +522,7 @@ export function generarHojasPlanillaCobros(
           align: 'right' as const,
           fontWeight: 'bold' as const,
           fontSize: 9.5,
-          textColor: '#92400E',
+          textColor: groupPalette.headerTextColor,
           leftBorderStyle: 'medium' as const,
         },
         // Col 1: Peso Total del Grupo
@@ -489,12 +538,12 @@ export function generarHojasPlanillaCobros(
         // Col 2: Estado general del grupo
         {
           ...subtotalStyle,
-          value: it.encontrado ? '✓ TODOS ENCONTRADOS' : '⚠ MATCH PARCIAL O PENDIENTE',
+          value: groupPalette.subtotalStatus,
           type: String,
           align: 'center' as const,
           fontWeight: 'bold' as const,
           fontSize: 9,
-          textColor: it.encontrado ? '#15803d' : '#b45309',
+          textColor: groupPalette.subtotalTextColor,
         },
         // Col 3: Celda original
         {
@@ -523,13 +572,13 @@ export function generarHojasPlanillaCobros(
 
   // =========================================================================
   // HOJA 2: "Plantilla Cobros" (TAL CUAL como archivo COBRO 22.09)
-  // SOLO incluye los WRs que están solos (filasSimples) agrupados por cliente.
+  // Incluye WRs simples + los promovidos desde grupos coincidentes.
   // Columna A libre. Columna B: NOMBRE, C: PESO, D: PRECIO $, E: wr, F: TRACKING.
   // Sin cálculo de precio (libre para operador). Título sin KMMQ.
   // =========================================================================
   const gruposPorCliente = new Map<string, FilaResultadoCobro[]>();
-  for (const it of filasSimples) {
-    const key = String(it.cliente || 'SIN NOMBRE').trim().toUpperCase();
+  for (const it of filasParaCobros) {
+    const key = normalizeClientNameKey(it.cliente) || 'SIN NOMBRE';
     if (!gruposPorCliente.has(key)) {
       gruposPorCliente.set(key, []);
     }
@@ -684,14 +733,16 @@ export function generarHojasPlanillaCobros(
         {
           value: it.wr || '',
           type: String,
+          wrap: true,
           align: 'center' as const,
           alignVertical: 'center' as const,
           borderColor: '#000000',
           borderStyle: 'thin' as const,
         },
         {
-          value: it.tracking || '',
+          value: cleanTrackingValue(it.tracking),
           type: String,
+          wrap: true,
           align: 'center' as const,
           alignVertical: 'center' as const,
           borderColor: '#000000',
@@ -739,9 +790,9 @@ export function generarHojasPlanillaCobros(
   }
 
   // =========================================================================
-  // HOJA 3: "COBRO CONSOLIDADO" (Tabla continua desde Columna A, solo WRs simples)
+  // HOJA 3: "COBRO CONSOLIDADO" (Tabla continua desde Columna A, simples + promovidos)
   // =========================================================================
-  const dataCobroConsolidado = buildCobroConsolidadoSheetData(filasSimples);
+  const dataCobroConsolidado = buildCobroConsolidadoSheetData(filasParaCobros);
 
   // =========================================================================
   // EXPORTAR LIBRO CON LAS 3 HOJAS

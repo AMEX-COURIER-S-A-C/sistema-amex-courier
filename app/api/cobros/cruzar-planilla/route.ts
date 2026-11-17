@@ -7,6 +7,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { z } from 'zod';
 import { withApi } from '@/lib/api/withApi';
 import { normalizeTibWr } from '@/lib/tib/apiClient';
+import { extractAndNormalizeWrsFromCell, normalizeInstructivoWrToken } from '@/features/cobros/services/wr-matching';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -521,8 +522,8 @@ export const POST = withApi(
       const f = filasInput[i];
       const delimiter = f.delimiter || (f.rawWr.includes('/') ? ' / ' : ' - ');
       const wrsTokens = (f.wrs && f.wrs.length > 0)
-        ? f.wrs.map(w => limpiar(w).toUpperCase()).filter(Boolean)
-        : (f.rawWr.toUpperCase().match(/WR\d+/gi) || []);
+        ? f.wrs.map((w) => normalizeInstructivoWrToken(limpiar(w))).filter(Boolean)
+        : extractAndNormalizeWrsFromCell(f.rawWr).wrs;
 
       totalWrsBuscados += wrsTokens.length;
 

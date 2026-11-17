@@ -15,6 +15,12 @@ import {
 } from 'lucide-react';
 import { parseInstructivo, type InstructivoParseResult } from '../services/instructivo-parser';
 import { exportarPlanillaCobros, type FilaResultadoCobro } from '../services/planilla-exporter';
+import {
+  buildSimpleClientKeySet,
+  classifyMultiWrGroup,
+  cleanTrackingValue,
+  isGroupedWrRow,
+} from '../services/wr-matching';
 
 interface FuenteTibOpcion {
   id: string;
@@ -190,11 +196,24 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
     setError('');
   };
 
+  const simplesClientKeys = useMemo(
+    () => buildSimpleClientKeySet(filas.filter((f) => !isGroupedWrRow(f))),
+    [filas]
+  );
+
   const stats = useMemo(() => {
     const ok = filas.filter((f) => f.encontrado);
     const clientes = new Set(ok.map((f) => (f.cliente || 'SIN CLIENTE').toUpperCase()));
     const pesoAcumulado = ok.reduce((s, f) => s + (f.pesoTotal || 0), 0);
-    const multiCount = filas.filter((f) => f.esMultiWr).length;
+    const grupos = filas.filter((f) => isGroupedWrRow(f));
+    const multiCount = grupos.length;
+    let gruposMovidosCompletos = 0;
+    let gruposParciales = 0;
+    for (const g of grupos) {
+      const cls = classifyMultiWrGroup(g, simplesClientKeys);
+      if (cls.status === 'full-match') gruposMovidosCompletos++;
+      else if (cls.status === 'partial-match') gruposParciales++;
+    }
     const totalWrs = filas.reduce((s, f) => s + (f.totalWrsFila || 1), 0);
 
     return {
@@ -202,10 +221,12 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
       totalWrs,
       conMatch: ok.length,
       multiCount,
+      gruposMovidosCompletos,
+      gruposParciales,
       clientes: clientes.size,
       peso: Math.round(pesoAcumulado * 100) / 100,
     };
-  }, [filas]);
+  }, [filas, simplesClientKeys]);
 
   const filasFiltradas = useMemo(() => {
     return filas.filter((f) => {
@@ -636,6 +657,12 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
                 <span>·</span>
                 <span>
                   Agrupados Multi-WR: <strong style={{ color: '#d97706' }}>{stats.multiCount}</strong>
+                  {stats.gruposMovidosCompletos > 0 && (
+                    <span style={{ color: '#15803d', fontWeight: 700, marginLeft: '6px' }}>
+                      ({stats.gruposMovidosCompletos} completo(s) a Cobro
+                      {stats.gruposParciales > 0 ? `, ${stats.gruposParciales} parcial(es)` : ''})
+                    </span>
+                  )}
                 </span>
               </div>
             </div>
@@ -753,31 +780,65 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
                       ? Math.round(pesoNum * tarifaVal! * 100) / 100
                       : null;
 
-                    // Si es una fila con múltiples WRs agrupados, renderizar el recuadro visual completo
-                    if (f.esMultiWr) {
-                      const cantPaquetes = (f.detalles && f.detalles.length > 0)
-                        ? f.detalles.length
-                        : (f.wrs?.length || f.totalWrsFila || 1);
-                      const detallesList = (f.detalles && f.detalles.length > 0)
-                        ? f.detalles
-                        : (f.wrs || [f.wr]).map((w, i) => ({
-                            wr: w,
-                            tracking: f.tracking ? f.tracking.split(/[-/]/)[i]?.trim() || '' : '',
-                            cliente: f.cliente ? f.cliente.split(/[-/]/)[i]?.trim() || f.cliente : 'SIN NOMBRE',
-                            tipo: f.tipo || 'CAJA',
-                            peso: null,
-                            encontrado: f.encontrado,
-                          }));
+                    // Si es una fila con múltiples WRs agrupados, renderizar el recuadro visual completo según su estado frente a WRs simples
+                    if (isGroupedWrRow(f)) {
+                      const cls = classifyMultiWrGroup(f, simplesClientKeys);
+                      const detallesList = cls.detalles;
+                      const cantPaquetes = detallesList.length;
+                      const groupUiPalette =
+                        cls.status === 'full-match'
+                          ? {
+                              borderColor: '#16a34a',
+                              headerBg: 'linear-gradient(90deg, #dcfce7 0%, #f0fdf4 100%)',
+                              badgeBg: '#16a34a',
+                              titleColor: '#166534',
+                              pillBg: '#bbf7d0',
+                              pillText: '#14532d',
+                              pillBorder: '#86efac',
+                              statusLabel: '✓ Pasado completo a Cobro (1 fila combinada)',
+                              statusColor: '#15803d',
+                              footerNote:
+                                'Todos los paquetes pertenecen al mismo cliente con WR simple: pasan agrupados en 1 fila a COBRO DD.MM y COBRO CONSOLIDADO.',
+                            }
+                          : cls.status === 'partial-match'
+                            ? {
+                                borderColor: '#ea580c',
+                                headerBg: 'linear-gradient(90deg, #ffedd5 0%, #fff7ed 100%)',
+                                badgeBg: '#ea580c',
+                                titleColor: '#9a3412',
+                                pillBg: '#fed7aa',
+                                pillText: '#7c2d12',
+                                pillBorder: '#fdba74',
+                                statusLabel: `⚡ Parcial: ${cls.matchedCount} pasado(s) a Cobro · ${cls.pendingCount} pendiente(s)`,
+                                statusColor: '#c2410c',
+                                footerNote:
+                                  'En verde: WRs extraídos a las hojas de Cobro por coincidir con WR simple. En rojo: WRs pendientes sin WR simple.',
+                              }
+                            : {
+                                borderColor: '#d97706',
+                                headerBg: 'linear-gradient(90deg, #fef3c7 0%, #fffbeb 100%)',
+                                badgeBg: '#d97706',
+                                titleColor: '#92400e',
+                                pillBg: '#fde68a',
+                                pillText: '#78350f',
+                                pillBorder: '#fcd34d',
+                                statusLabel: f.encontrado
+                                  ? '⚠ Sin coincidencia en WRs simples (solo en Cruce Planilla)'
+                                  : '⚠ Verificación parcial',
+                                statusColor: '#b45309',
+                                footerNote:
+                                  'Guías cruzadas individualmente. Quedan solo en Cruce Planilla por no coincidir con ningún WR simple.',
+                              };
 
                       return (
-                        <React.Fragment key={f.wr}>
+                        <React.Fragment key={`${f.filaOriginal ?? idx}-${f.wr}`}>
                           {/* Fila 1: Encabezado del Recuadro de Grupo */}
                           <tr
                             style={{
-                              background: 'linear-gradient(90deg, #fef3c7 0%, #fffbeb 100%)',
-                              borderTop: '2px solid #d97706',
-                              borderLeft: '2px solid #d97706',
-                              borderRight: '2px solid #d97706',
+                              background: groupUiPalette.headerBg,
+                              borderTop: `2px solid ${groupUiPalette.borderColor}`,
+                              borderLeft: `2px solid ${groupUiPalette.borderColor}`,
+                              borderRight: `2px solid ${groupUiPalette.borderColor}`,
                             }}
                           >
                             <td colSpan={9} style={{ padding: '8px 12px' }}>
@@ -785,7 +846,7 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                   <span
                                     style={{
-                                      background: '#d97706',
+                                      background: groupUiPalette.badgeBg,
                                       color: '#ffffff',
                                       padding: '2px 8px',
                                       borderRadius: '6px',
@@ -799,14 +860,14 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
                                     <Layers style={{ width: '12px', height: '12px' }} />
                                     GRUPO — FILA INSTRUCTIVO {f.filaOriginal ?? (idx + 1)}
                                   </span>
-                                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#92400E', fontFamily: 'monospace' }}>
+                                  <span style={{ fontSize: '12px', fontWeight: 700, color: groupUiPalette.titleColor, fontFamily: 'monospace' }}>
                                     Celda Original: {f.wr}
                                   </span>
                                   <span
                                     style={{
-                                      background: '#fde68a',
-                                      color: '#78350f',
-                                      border: '1px solid #fcd34d',
+                                      background: groupUiPalette.pillBg,
+                                      color: groupUiPalette.pillText,
+                                      border: `1px solid ${groupUiPalette.pillBorder}`,
                                       borderRadius: '12px',
                                       padding: '1px 8px',
                                       fontSize: '11px',
@@ -817,15 +878,14 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
                                   </span>
                                 </div>
                                 <div>
-                                  {f.encontrado ? (
-                                    <span style={{ fontSize: '11.5px', color: '#15803d', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                      <CheckCircle2 style={{ width: '13px', height: '13px' }} /> Todos los paquetes cruzados en TIB
-                                    </span>
-                                  ) : (
-                                    <span style={{ fontSize: '11.5px', color: '#b45309', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                      <AlertTriangle style={{ width: '13px', height: '13px' }} /> Verificación parcial
-                                    </span>
-                                  )}
+                                  <span style={{ fontSize: '11.5px', color: groupUiPalette.statusColor, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                    {cls.status === 'full-match' ? (
+                                      <CheckCircle2 style={{ width: '13px', height: '13px' }} />
+                                    ) : (
+                                      <AlertTriangle style={{ width: '13px', height: '13px' }} />
+                                    )}{' '}
+                                    {groupUiPalette.statusLabel}
+                                  </span>
                                 </div>
                               </div>
                             </td>
@@ -839,17 +899,30 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
                             const dPesoNum = typeof d.peso === 'number' && d.peso > 0 ? d.peso : null;
                             const dPrecio = dTieneTarifa && dPesoNum !== null ? Math.round(dPesoNum * dTarifaVal! * 100) / 100 : null;
 
+                            const rowBg =
+                              cls.status === 'full-match'
+                                ? '#f0fdf4'
+                                : cls.status === 'partial-match'
+                                  ? (d.matchesSimple ? '#dcfce7' : '#fee2e2')
+                                  : '#fffdf5';
+                            const wrChipStyle =
+                              cls.status === 'full-match' || (cls.status === 'partial-match' && d.matchesSimple)
+                                ? { background: '#bbf7d0', border: '1px solid #86efac', color: '#14532d' }
+                                : cls.status === 'partial-match'
+                                  ? { background: '#fecaca', border: '1px solid #fca5a5', color: '#7f1d1d' }
+                                  : { background: '#fef3c7', border: '1px solid #fde68a', color: '#1e293b' };
+
                             return (
                               <tr
-                                key={`${f.wr}-${d.wr}-${dIdx}`}
+                                key={`${f.filaOriginal ?? idx}-${f.wr}-${d.wr}-${dIdx}`}
                                 style={{
-                                  background: '#fffdf5',
-                                  borderLeft: '2px solid #d97706',
-                                  borderRight: '2px solid #d97706',
-                                  borderBottom: '1px dashed #fde68a',
+                                  background: rowBg,
+                                  borderLeft: `2px solid ${groupUiPalette.borderColor}`,
+                                  borderRight: `2px solid ${groupUiPalette.borderColor}`,
+                                  borderBottom: `1px dashed ${groupUiPalette.pillBorder}`,
                                 }}
                               >
-                                <td style={{ padding: '6px 10px', color: '#b45309', fontSize: '11px', textAlign: 'center', fontWeight: 700 }}>
+                                <td style={{ padding: '6px 10px', color: groupUiPalette.titleColor, fontSize: '11px', textAlign: 'center', fontWeight: 700 }}>
                                   {idx + 1}.{dIdx + 1}
                                 </td>
                                 <td style={{ padding: '6px 10px', fontWeight: 700, color: '#0f172a' }}>
@@ -858,13 +931,13 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
                                 <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontWeight: 700, color: '#047857' }}>
                                   {dPesoNum !== null ? `${dPesoNum.toFixed(2)} lb` : '—'}
                                 </td>
-                                <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontWeight: 800, color: '#1e293b' }}>
-                                  <span style={{ background: '#fef3c7', padding: '2px 6px', borderRadius: '4px', border: '1px solid #fde68a' }}>
+                                <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontWeight: 800 }}>
+                                  <span style={{ ...wrChipStyle, padding: '2px 6px', borderRadius: '4px' }}>
                                     {d.wr}
                                   </span>
                                 </td>
                                 <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontSize: '11.5px', color: '#334155' }}>
-                                  {d.tracking || '—'}
+                                  {cleanTrackingValue(d.tracking) || '—'}
                                 </td>
                                 <td style={{ padding: '6px 10px', textAlign: 'center' }}>
                                   {dTieneTarifa ? (
@@ -883,8 +956,12 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
                                     {d.tipo || 'CAJA'}
                                   </span>
                                 </td>
-                                <td style={{ padding: '6px 10px', fontSize: '11px', color: '#64748b' }}>
-                                  {f.observaciones || '—'}
+                                <td style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 700, color: d.matchesSimple ? '#166534' : cls.status === 'partial-match' ? '#991b1b' : '#64748b' }}>
+                                  {cls.status === 'full-match' || (cls.status === 'partial-match' && d.matchesSimple)
+                                    ? '✓ Pasado a Cobro'
+                                    : cls.status === 'partial-match'
+                                      ? '⚠ Pendiente'
+                                      : (f.observaciones || '—')}
                                 </td>
                               </tr>
                             );
@@ -893,20 +970,20 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
                           {/* Fila Subtotal de Cierre del Recuadro */}
                           <tr
                             style={{
-                              background: '#fef3c7',
-                              borderBottom: '2px solid #d97706',
-                              borderLeft: '2px solid #d97706',
-                              borderRight: '2px solid #d97706',
+                              background: groupUiPalette.headerBg,
+                              borderBottom: `2px solid ${groupUiPalette.borderColor}`,
+                              borderLeft: `2px solid ${groupUiPalette.borderColor}`,
+                              borderRight: `2px solid ${groupUiPalette.borderColor}`,
                             }}
                           >
-                            <td colSpan={2} style={{ padding: '6px 12px', textAlign: 'right', fontWeight: 800, fontSize: '11.5px', color: '#92400E' }}>
+                            <td colSpan={2} style={{ padding: '6px 12px', textAlign: 'right', fontWeight: 800, fontSize: '11.5px', color: groupUiPalette.titleColor }}>
                               SUBTOTAL GRUPO ({cantPaquetes} PAQUETES):
                             </td>
                             <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontWeight: 800, fontSize: '12.5px', color: '#047857' }}>
                               {f.pesoTotal !== null ? `${f.pesoTotal.toFixed(2)} lb` : (f.pesoFormateado || '—')}
                             </td>
-                            <td colSpan={6} style={{ padding: '6px 10px', fontSize: '11px', color: '#78350f', fontWeight: 600 }}>
-                              Guías cruzadas individualmente. En el Excel descargado aparecerán en filas separadas con su recuadro y subtotal.
+                            <td colSpan={6} style={{ padding: '6px 10px', fontSize: '11px', color: groupUiPalette.titleColor, fontWeight: 600 }}>
+                              {groupUiPalette.footerNote}
                             </td>
                           </tr>
                         </React.Fragment>
@@ -915,7 +992,7 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
 
                     return (
                       <tr
-                        key={f.wr}
+                        key={`${f.filaOriginal ?? idx}-${f.wr}`}
                         style={{
                           background: f.encontrado
                             ? idx % 2 === 0
@@ -951,7 +1028,7 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
                               const val = e.target.value;
                               actualizarFila(f.wr, {
                                 pesoFormateado: val,
-                                pesoTotal: parseFloat(val) || null,
+                                pesoTotal: parseFloat(val.replace(',', '.')) || null,
                               });
                             }}
                             style={{

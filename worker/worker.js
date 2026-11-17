@@ -435,10 +435,13 @@ const tibDailySyncScheduler = createTibDailyScheduler({
 
 function extractWrsFromCell(rawWr) {
   if (!rawWr) return [];
-  const s = String(rawWr).trim();
-  const matches = s.match(/WR\d{5,12}/gi);
+  const s = String(rawWr).trim().toUpperCase();
+  const matches = s.match(/(?:WR\d{5,12}|\b\d{6,9}\b)/gi);
   if (matches && matches.length > 0) {
-    return Array.from(new Set(matches.map((w) => w.toUpperCase())));
+    const normalized = matches.map((w) =>
+      w.startsWith('WR') ? w : `WR${w.padStart(9, '0')}`
+    );
+    return Array.from(new Set(normalized));
   }
   return s
     .split(/[\s,;/|-]+/)

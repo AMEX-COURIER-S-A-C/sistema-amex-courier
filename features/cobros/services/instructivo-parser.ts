@@ -1,4 +1,5 @@
 import readXlsxFile, { type SheetData } from 'read-excel-file/browser';
+import { extractAndNormalizeWrsFromCell } from './wr-matching';
 
 export interface InstructivoFila {
   filaOriginal: number;
@@ -32,8 +33,6 @@ export interface InstructivoParseResult {
   /** Lista consolidada de WRs únicos para búsquedas masivas e índices */
   wrsUnicos: string[];
 }
-
-const WR_RE = /WR\d+/gi;
 
 function aTexto(v: unknown): string {
   if (v === null || v === undefined) return '';
@@ -133,21 +132,23 @@ export async function parseInstructivo(buffer: ArrayBuffer, fileName: string): P
       break;
     }
 
-    // Extraer códigos WR válidos
-    const matches = celdaWr.toUpperCase().match(WR_RE) || [];
-    if (matches.length === 0) continue;
+    // Extraer códigos WR válidos (con prefijo "WR" o numéricos de 6 a 9 dígitos autocompletados a WR000...)
+    const { wrs: normalizedWrs, hadBareNumber } = extractAndNormalizeWrsFromCell(celdaWr);
+    if (normalizedWrs.length === 0) continue;
 
-    const esMulti = matches.length > 1;
+    const delimiter = detectarDelimitador(celdaWr);
+    const esMulti = normalizedWrs.length > 1;
     if (esMulti) celdasMultiWR++;
-    totalWrsIndividuales += matches.length;
+    totalWrsIndividuales += normalizedWrs.length;
 
-    matches.forEach((w) => wrsUnicosSet.add(w.toUpperCase()));
+    normalizedWrs.forEach((w) => wrsUnicosSet.add(w));
+    const rawWrFinal = hadBareNumber ? normalizedWrs.join(delimiter) : celdaWr;
 
     filas.push({
       filaOriginal: r + 1,
-      rawWr: celdaWr,
-      wrs: matches.map((m) => m.toUpperCase()),
-      delimiter: detectarDelimitador(celdaWr),
+      rawWr: rawWrFinal,
+      wrs: normalizedWrs,
+      delimiter,
       esMultiWr: esMulti,
       consignatario: consigCol >= 0 ? aTexto(row[consigCol]) : '',
       observaciones: obsCol >= 0 ? aTexto(row[obsCol]) : '',
