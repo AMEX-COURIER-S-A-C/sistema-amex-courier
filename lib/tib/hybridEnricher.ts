@@ -103,9 +103,9 @@ export async function getOrRefreshOfficialTibMap(forceRefresh = false): Promise<
 }
 
 /**
- * Fallback unitario hacia el endpoint AJAX para paquetes que no figuren en la lista de hoy
+ * Fallback unitario hacia el endpoint AJAX para paquetes que no figuren en la lista filtrada por cuenta
  */
-async function fetchSinglePackageFallback(rawWr: string, timeoutMs = 8000): Promise<NormalizedTibItem | null> {
+export async function fetchSinglePackageFallback(rawWr: string, timeoutMs = 8000): Promise<NormalizedTibItem | null> {
   const cleanNumericWr = rawWr.replace(/\D/g, '').replace(/^0+/, '');
   if (!cleanNumericWr) return null;
 

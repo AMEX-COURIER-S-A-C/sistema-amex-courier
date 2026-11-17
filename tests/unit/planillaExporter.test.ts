@@ -5,7 +5,9 @@ import {
   buildSimpleClientKeySet,
   classifyMultiWrGroup,
   extractAndNormalizeWrsFromCell,
+  extractMissingWrCodes,
   normalizeClientNameKey,
+  recalculateRowFromDetails,
 } from '@/features/cobros/services/wr-matching';
 import { parseInstructivo } from '@/features/cobros/services/instructivo-parser';
 
@@ -607,5 +609,55 @@ describe('Módulo 4: Cobros — Exportación de Planilla Excel (Sin Merge & Cent
     const { default: writeXlsxFileNode } = await import('write-excel-file/node');
     const buffer = await writeXlsxFileNode(sheets).toBuffer();
     expect(buffer.byteLength).toBeGreaterThan(1000);
+  });
+
+  it('reporta solo los WRs individuales faltantes en extractMissingWrCodes y recalcula fila tras rescate individual en recalculateRowFromDetails', () => {
+    const filaParcial: FilaResultadoCobro = {
+      filaOriginal: 117,
+      wr: 'WR000451258 - WR000454689 - WR000453465 - WR000453681',
+      wrs: ['WR000451258', 'WR000454689', 'WR000453465', 'WR000453681'],
+      esMultiWr: true,
+      delimiter: ' - ',
+      cliente: 'VALENTINO VICENTE - AMEX RENY REINA SOPHIA - AMEX REYNALDO MURGUIA - AMEX REYNALDO MURGUIA',
+      pesoTotal: 0.82,
+      pesoFormateado: '? - 0.14 - 0.24 - 0.44',
+      tracking: '9261299996388733115030 - 28189400108106245487564613 - 28189434608106244470420686',
+      tipo: 'BOLSA',
+      observaciones: '',
+      descripcion: '',
+      dni: '',
+      encontrado: false,
+      matchParcial: true,
+      wrsEncontrados: 3,
+      totalWrsFila: 4,
+      detalles: [
+        { wr: 'WR000451258', tracking: '', cliente: '', tipo: 'CAJA', peso: null, encontrado: false },
+        { wr: 'WR000454689', tracking: '9261299996388733115030', cliente: 'AMEX RENY REINA SOPHIA', tipo: 'BOLSA', peso: 0.14, encontrado: true },
+        { wr: 'WR000453465', tracking: '28189400108106245487564613', cliente: 'AMEX REYNALDO MURGUIA', tipo: 'BOLSA', peso: 0.24, encontrado: true },
+        { wr: 'WR000453681', tracking: '28189434608106244470420686', cliente: 'AMEX REYNALDO MURGUIA', tipo: 'BOLSA', peso: 0.44, encontrado: true },
+      ],
+    };
+
+    // Antes del rescate individual: solo debe reportar el WR individual faltante (no los 4 del grupo)
+    expect(extractMissingWrCodes([filaParcial])).toEqual(['WR000451258']);
+
+    // Simular rescate vía readListaWarehouse.php para WR000451258
+    filaParcial.detalles[0] = {
+      wr: 'WR000451258',
+      tracking: 'TBA333941680249',
+      cliente: 'GIANCARLO SALAZAR/GENERAL BORGOÑO INVERSIONES SAC',
+      tipo: 'BOLSA',
+      peso: 0.78,
+      encontrado: true,
+    };
+    recalculateRowFromDetails(filaParcial);
+
+    expect(filaParcial.encontrado).toBe(true);
+    expect(filaParcial.matchParcial).toBe(false);
+    expect(filaParcial.wrsEncontrados).toBe(4);
+    expect(filaParcial.pesoTotal).toBe(1.6);
+    expect(filaParcial.pesoFormateado).toBe('0.78 - 0.14 - 0.24 - 0.44');
+    expect(filaParcial.tracking).toContain('TBA333941680249');
+    expect(extractMissingWrCodes([filaParcial])).toEqual([]);
   });
 });

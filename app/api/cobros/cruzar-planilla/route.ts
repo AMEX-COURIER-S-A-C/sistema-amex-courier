@@ -6,10 +6,12 @@ import { getR2Client, R2_BUCKET_NAME, R2_ROOT_FOLDER } from '@/lib/r2/client';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { z } from 'zod';
 import { withApi } from '@/lib/api/withApi';
-import { normalizeTibWr } from '@/lib/tib/apiClient';
+import { normalizeTibWr, type NormalizedTibItem } from '@/lib/tib/apiClient';
 import {
   extractAndNormalizeWrsFromCell,
+  extractMissingWrCodes,
   normalizeInstructivoWrToken,
+  recalculateRowFromDetails,
   type NormalizedWrDetail,
 } from '@/features/cobros/services/wr-matching';
 
@@ -279,19 +281,7 @@ async function enriquecerConSupabasePaquetes(
       }
 
       if (rowUpdated) {
-        const wrsEncontrados = f.detalles.filter(d => d.encontrado).length;
-        f.encontrado = wrsEncontrados === f.detalles.length;
-        f.matchParcial = wrsEncontrados > 0 && wrsEncontrados < f.detalles.length;
-        f.wrsEncontrados = wrsEncontrados;
-
-        const delimiter = f.delimiter || ' - ';
-        const nombresClientes = f.detalles.map(d => d.cliente || f.cliente || 'SIN CLIENTE');
-        f.cliente = f.detalles.length > 1 ? nombresClientes.join(delimiter) : (nombresClientes[0] || f.cliente);
-
-        const pesosValidos = f.detalles.filter(d => d.peso !== null).map(d => d.peso as number);
-        f.pesoTotal = pesosValidos.length > 0 ? Math.round(pesosValidos.reduce((a, b) => a + b, 0) * 100) / 100 : null;
-        f.pesoFormateado = f.detalles.map(d => (d.peso !== null ? d.peso.toFixed(2) : '?')).join(delimiter);
-        f.tracking = f.detalles.map(d => d.tracking || '').filter(Boolean).join(delimiter);
+        recalculateRowFromDetails(f);
       }
     }
   } catch (err) {
@@ -302,8 +292,8 @@ async function enriquecerConSupabasePaquetes(
 }
 
 /**
- * Consulta en vivo la API oficial de TIB para cualquier WR que no haya hecho match en la caché
- * ni en Supabase (ej: paquetes registrados hoy o hace minutos en TIB Miami).
+ * Consulta en vivo la API oficial de TIB y el buscador individual AJAX (para paquetes
+ * reasignados a otros clientes/subcuentas en TIB que /api/list-warehouse omite).
  */
 async function enriquecerConTibApiEnVivo(
   filasResultado: FilaResultadoCobro[]
@@ -324,21 +314,45 @@ async function enriquecerConTibApiEnVivo(
 
   try {
     const { fetchTibWarehouseByStatus } = await import('@/lib/tib/apiClient');
-    // Consultar estados en vivo (ENVIADO y RECIBIDO son los más comunes para embarques recientes)
-    const [resSent, resRec] = await Promise.all([
-      fetchTibWarehouseByStatus('ENVIADO', 12000).catch(() => null),
-      fetchTibWarehouseByStatus('RECIBIDO', 12000).catch(() => null),
-    ]);
+    const { fetchSinglePackageFallback } = await import('@/lib/tib/hybridEnricher');
+    const liveHits = new Map<string, NormalizedTibItem>();
 
-    const liveHits = new Map<string, any>();
-    if (resSent?.items) {
-      for (const item of resSent.items) {
-        if (missingWrs.has(item.wr)) liveHits.set(item.wr, item);
+    // 1. Consultar listas en vivo (ENVIADO y RECIBIDO para embarques recientes)
+    try {
+      const [resSent, resRec] = await Promise.all([
+        fetchTibWarehouseByStatus('ENVIADO', 12000).catch(() => null),
+        fetchTibWarehouseByStatus('RECIBIDO', 12000).catch(() => null),
+      ]);
+
+      if (resSent?.items) {
+        for (const item of resSent.items) {
+          if (missingWrs.has(item.wr)) liveHits.set(item.wr, item);
+        }
       }
+      if (resRec?.items) {
+        for (const item of resRec.items) {
+          if (missingWrs.has(item.wr) && !liveHits.has(item.wr)) liveHits.set(item.wr, item);
+        }
+      }
+    } catch (listErr) {
+      console.warn('[Cruzar Planilla] Listas API TIB no disponibles en vivo:', listErr);
     }
-    if (resRec?.items) {
-      for (const item of resRec.items) {
-        if (missingWrs.has(item.wr) && !liveHits.has(item.wr)) liveHits.set(item.wr, item);
+
+    // 2. Fallback puntual por WR individual en readListaWarehouse.php
+    // Recupera paquetes en ENTREGADO o reasignados a otra subcuenta/cliente en TIB.
+    const unresolvedWrs = Array.from(missingWrs).filter((wr) => !liveHits.has(wr)).slice(0, 40);
+    const BATCH_SIZE = 6;
+    for (let i = 0; i < unresolvedWrs.length; i += BATCH_SIZE) {
+      const batch = unresolvedWrs.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.all(
+        batch.map((wr) => fetchSinglePackageFallback(wr, 8000).catch(() => null))
+      );
+      for (const item of batchResults) {
+        if (!item) continue;
+        const normKey = normalizeTibWr(item.wr);
+        if (normKey && !liveHits.has(normKey)) {
+          liveHits.set(normKey, item);
+        }
       }
     }
 
@@ -364,19 +378,7 @@ async function enriquecerConTibApiEnVivo(
       }
 
       if (rowUpdated) {
-        const wrsEncontrados = f.detalles.filter((d) => d.encontrado).length;
-        f.encontrado = wrsEncontrados === f.detalles.length;
-        f.matchParcial = wrsEncontrados > 0 && wrsEncontrados < f.detalles.length;
-        f.wrsEncontrados = wrsEncontrados;
-
-        const delimiter = f.delimiter || ' - ';
-        const nombresClientes = f.detalles.map((d) => d.cliente || f.cliente || 'SIN CLIENTE');
-        f.cliente = f.detalles.length > 1 ? nombresClientes.join(delimiter) : (nombresClientes[0] || f.cliente);
-
-        const pesosValidos = f.detalles.filter((d) => d.peso !== null).map((d) => d.peso as number);
-        f.pesoTotal = pesosValidos.length > 0 ? Math.round(pesosValidos.reduce((a, b) => a + b, 0) * 100) / 100 : null;
-        f.pesoFormateado = f.detalles.map((d) => (d.peso !== null ? d.peso.toFixed(2) : '?')).join(delimiter);
-        f.tracking = f.detalles.map((d) => d.tracking || '').filter(Boolean).join(delimiter);
+        recalculateRowFromDetails(f);
       }
     }
   } catch (err) {
@@ -459,7 +461,7 @@ export const POST = withApi(
               filasCruzadas = await enriquecerConTibApiEnVivo(filasCruzadas);
             }
 
-            const sinMatch = filasCruzadas.filter((f: any) => !f.encontrado).map((f: any) => f.wr);
+            const sinMatch = extractMissingWrCodes(filasCruzadas);
             const totalWrs = filasCruzadas.reduce((acc: number, f: any) => acc + (f.totalWrsFila || 1), 0);
             const wrsEncontrados = filasCruzadas.reduce((acc: number, f: any) => acc + (f.wrsEncontrados || 0), 0);
 
@@ -626,7 +628,7 @@ export const POST = withApi(
       filasResultado = await enriquecerConTibApiEnVivo(filasResultado);
     }
 
-    const finalSinMatch = filasResultado.filter((f) => !f.encontrado).map((f) => f.wr);
+    const finalSinMatch = extractMissingWrCodes(filasResultado);
     const finalWrsEncontrados = filasResultado.reduce((acc, f) => acc + (f.wrsEncontrados || 0), 0);
 
     return NextResponse.json({

@@ -312,3 +312,66 @@ export function classifyMultiWrGroup(
     extractedBillingRows: [],
   };
 }
+
+/**
+ * Recalcula estado agregado, cliente, peso y tracking de una fila tras enriquecer sus `detalles`.
+ */
+export function recalculateRowFromDetails(f: FilaResultadoCobro): void {
+  const detalles = Array.isArray(f.detalles) ? f.detalles : [];
+  if (detalles.length === 0) return;
+
+  const wrsEncontrados = detalles.filter((d) => d.encontrado).length;
+  f.wrsEncontrados = wrsEncontrados;
+  f.totalWrsFila = detalles.length;
+  f.encontrado = wrsEncontrados === detalles.length;
+  f.matchParcial = wrsEncontrados > 0 && wrsEncontrados < detalles.length;
+
+  const delimiter = f.delimiter || ' - ';
+  const singleFallbackClient = detalles.length === 1 ? f.cliente : '';
+  const nombresClientes = detalles.map((d) =>
+    (d.cliente || singleFallbackClient || 'SIN CLIENTE').trim().toUpperCase()
+  );
+  f.cliente = detalles.length > 1 ? nombresClientes.join(delimiter) : (nombresClientes[0] || f.cliente);
+
+  const pesosValidos = detalles
+    .map((d) => (typeof d.peso === 'number' && Number.isFinite(d.peso) ? d.peso : null))
+    .filter((p): p is number => p !== null);
+  f.pesoTotal =
+    pesosValidos.length > 0 ? Math.round(pesosValidos.reduce((a, b) => a + b, 0) * 100) / 100 : null;
+  f.pesoFormateado = detalles
+    .map((d) => (typeof d.peso === 'number' && Number.isFinite(d.peso) ? d.peso.toFixed(2) : '?'))
+    .join(delimiter);
+  f.tracking = detalles
+    .map((d) => cleanTrackingValue(d.tracking))
+    .filter(Boolean)
+    .join(delimiter);
+
+  const tiposSet = new Set(detalles.map((d) => String(d.tipo || '').trim()).filter(Boolean));
+  if (tiposSet.size > 0) {
+    f.tipo = Array.from(tiposSet).join(' / ');
+  }
+}
+
+/**
+ * Devuelve solo los códigos WR individuales que realmente quedaron sin match
+ * (evitando listar celdas multi-WR completas cuando tuvieron coincidencia parcial).
+ */
+export function extractMissingWrCodes(filas: FilaResultadoCobro[]): string[] {
+  const missing: string[] = [];
+
+  for (const f of filas) {
+    if (f.encontrado) continue;
+    const detalles = Array.isArray(f.detalles) ? f.detalles : [];
+    if (detalles.length > 0) {
+      for (const d of detalles) {
+        if (!d.encontrado && d.wr) {
+          missing.push(d.wr);
+        }
+      }
+    } else if (f.wr) {
+      missing.push(f.wr);
+    }
+  }
+
+  return Array.from(new Set(missing));
+}

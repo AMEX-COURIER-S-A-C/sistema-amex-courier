@@ -611,7 +611,7 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
         >
           <strong>
             <AlertTriangle style={{ width: '15px', height: '15px', display: 'inline', verticalAlign: '-2px' }} />{' '}
-            {sinMatch.length} WRs no encontrados en el archivo ENVIADO
+            {sinMatch.length} {sinMatch.length === 1 ? 'WR no encontrado' : 'WRs no encontrados'} en TIB
           </strong>{' '}
           (puedes completar sus datos o pesos manualmente en la tabla):
           <div
@@ -734,7 +734,7 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
                 [
                   { key: 'todos', label: `Todos (${filas.length})` },
                   { key: 'multi', label: `Agrupados Multi-WR (${stats.multiCount})` },
-                  { key: 'sin-match', label: `Sin Match (${sinMatch.length})` },
+                  { key: 'sin-match', label: `Sin Match (${Math.max(0, stats.totalFilas - stats.conMatch)})` },
                 ] as Array<{ key: FiltroEstado; label: string }>
               ).map((tab) => (
                 <button
