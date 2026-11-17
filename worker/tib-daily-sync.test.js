@@ -3,6 +3,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const XLSX = require('xlsx');
+const TEST_TIB_PASSWORD = process.env.TIB_TEST_PASSWORD || 'placeholder';
+
 const {
   PUBLISHER_NAME,
   REPORT_HEADERS,
@@ -65,7 +67,7 @@ test('publica el conjunto completo solo después de obtener los tres estados', a
   const sync = createTibDailySync({
     tibApiUrl: 'https://tib.example/api',
     tibEmail: 'tib@example.test',
-    tibPassword: 'secret',
+    tibPassword: TEST_TIB_PASSWORD,
     fetchImpl,
     now: () => new Date('2026-11-05T12:00:00.000Z'),
     randomId: () => 'run-test',
@@ -101,7 +103,7 @@ test('si una respuesta TIB es inválida, no sube ni publica ningún archivo', as
   let requestCount = 0;
   const sync = createTibDailySync({
     tibEmail: 'tib@example.test',
-    tibPassword: 'secret',
+    tibPassword: TEST_TIB_PASSWORD,
     fetchImpl: async () => {
       requestCount++;
       return { ok: true, json: async () => requestCount === 2 ? { error: 'invalid' } : [] };
@@ -122,7 +124,7 @@ test('si una respuesta TIB es inválida, no sube ni publica ningún archivo', as
 test('informa limpieza pendiente si R2 se limpió pero no pudo marcarse el historial', async () => {
   const sync = createTibDailySync({
     tibEmail: 'tib@example.test',
-    tibPassword: 'secret',
+    tibPassword: TEST_TIB_PASSWORD,
     fetchImpl: async () => ({ ok: true, json: async () => [] }),
     putObject: async () => {},
     deleteObject: async () => {},
@@ -171,7 +173,7 @@ test('si los tres reportes ya están publicados hoy, reutiliza la publicación y
   let fetches = 0;
   const sync = createTibDailySync({
     tibEmail: 'tib@example.test',
-    tibPassword: 'secret',
+    tibPassword: TEST_TIB_PASSWORD,
     now: () => new Date('2026-11-05T12:00:00.000Z'),
     fetchImpl: async () => { fetches++; throw new Error('no debe consultar TIB'); },
     putObject: async () => { throw new Error('no debe subir'); },
