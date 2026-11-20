@@ -18,20 +18,21 @@ import { exportarPlanillaCobros, type FilaResultadoCobro } from '../services/pla
 import {
   buildSimpleClientKeySet,
   classifyMultiWrGroup,
-  cleanTrackingValue,
+  extractMissingWrCodes,
   isGroupedWrRow,
+  updateMultiWrDetail,
+  updateSimpleRow,
 } from '../services/wr-matching';
-
-interface FuenteTibOpcion {
-  id: string;
-  nombre: string;
-  enviado_key: string;
-  fecha: string;
-  origen: 'trabajo_inventario' | 'tib_diario';
-}
+import type { FuenteTibOpcion } from '@/app/api/cobros/ultimo-enviado/route';
 
 type Fase = 'idle' | 'cruzando' | 'listo';
 type FiltroEstado = 'todos' | 'multi' | 'sin-match';
+
+interface UltimoCruceMeta {
+  vpsProcesado: boolean;
+  duracionMs?: number;
+  indiceCacheado?: boolean | null;
+}
 
 interface ArmarPlanillaTabProps {
   getTarifaCliente?: (clienteNombre: string) => { tarifa: number; personalizada: boolean };
@@ -40,6 +41,8 @@ interface ArmarPlanillaTabProps {
 export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabProps = {}) {
   const [fuentes, setFuentes] = useState<FuenteTibOpcion[]>([]);
   const [selectedEnviadoKey, setSelectedEnviadoKey] = useState<string>('');
+  const [vpsOnline, setVpsOnline] = useState<boolean | null>(null);
+  const [vpsRamWarm, setVpsRamWarm] = useState<boolean | null>(null);
   const [cargandoFuentes, setCargandoFuentes] = useState(true);
   const [isSyncingTib, setIsSyncingTib] = useState(false);
   const [syncSuccessMsg, setSyncSuccessMsg] = useState<string | null>(null);
@@ -47,8 +50,8 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
   const [parseando, setParseando] = useState(false);
   const [fase, setFase] = useState<Fase>('idle');
   const [filas, setFilas] = useState<FilaResultadoCobro[]>([]);
-  const [sinMatch, setSinMatch] = useState<string[]>([]);
-  const [indiceCacheado, setIndiceCacheado] = useState<boolean | null>(null);
+  const [pesoDrafts, setPesoDrafts] = useState<Record<string, string>>({});
+  const [ultimoCruceMeta, setUltimoCruceMeta] = useState<UltimoCruceMeta | null>(null);
   const [descargando, setDescargando] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const [filtro, setFiltro] = useState<FiltroEstado>('todos');
@@ -90,15 +93,20 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
       if (res.error) throw new Error(res.error);
       const list: FuenteTibOpcion[] = res.fuentes_disponibles || [];
       setFuentes(list);
-      if (list.length > 0 && !selectedEnviadoKey) {
-        setSelectedEnviadoKey(list[0].enviado_key);
-      }
+      setVpsOnline(Boolean(res.vps_online));
+      setVpsRamWarm(typeof res.vps_ram_warm === 'boolean' ? res.vps_ram_warm : null);
+      setSelectedEnviadoKey((prev) => {
+        if (prev && list.some((item) => item.enviado_key === prev)) return prev;
+        return list[0]?.enviado_key || '';
+      });
     } catch (err) {
+      setVpsOnline(false);
+      setVpsRamWarm(null);
       setError(err instanceof Error ? err.message : 'No se pudo leer las fuentes TIB disponibles.');
     } finally {
       setCargandoFuentes(false);
     }
-  }, [selectedEnviadoKey]);
+  }, []);
 
   useEffect(() => {
     void cargarFuentes();
@@ -118,8 +126,8 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
       setInstructivo(parsed);
       setFase('idle');
       setFilas([]);
-      setSinMatch([]);
-      setIndiceCacheado(null);
+      setPesoDrafts({});
+      setUltimoCruceMeta(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo procesar el instructivo.');
     } finally {
@@ -133,7 +141,7 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
       return;
     }
     if (!selectedEnviadoKey) {
-      setError('Selecciona una fuente ENVIADO TIB para realizar el cruce.');
+      setError('No hay una fuente TIB activa (VPS ni respaldo R2). Usa "Sincronizar TIB Hoy" o "Actualizar".');
       return;
     }
     try {
@@ -169,8 +177,12 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
         );
 
       setFilas(ordenadas);
-      setSinMatch(res.sin_match || []);
-      setIndiceCacheado(res.indice_cacheado ?? null);
+      setPesoDrafts({});
+      setUltimoCruceMeta({
+        vpsProcesado: Boolean(res.vps_procesado),
+        duracionMs: typeof res.duracion_ms === 'number' ? res.duracion_ms : undefined,
+        indiceCacheado: res.indice_cacheado ?? null,
+      });
       setFase('listo');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cruzar el instructivo.');
@@ -178,8 +190,25 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
     }
   };
 
-  const actualizarFila = (wr: string, patch: Partial<FilaResultadoCobro>) => {
-    setFilas((prev) => prev.map((f) => (f.wr === wr ? { ...f, ...patch } : f)));
+  const actualizarFila = (filaOriginal: number, wr: string, patch: Partial<FilaResultadoCobro>) => {
+    setFilas((prev) =>
+      prev.map((f) => (f.filaOriginal === filaOriginal && f.wr === wr ? updateSimpleRow(f, patch) : f))
+    );
+  };
+
+  const actualizarDetalleGrupo = (
+    filaOriginal: number,
+    wrGrupo: string,
+    detalleIndex: number,
+    patch: { cliente?: string; peso?: number | null; tracking?: string }
+  ) => {
+    setFilas((prev) =>
+      prev.map((f) =>
+        f.filaOriginal === filaOriginal && f.wr === wrGrupo
+          ? updateMultiWrDetail(f, detalleIndex, patch)
+          : f
+      )
+    );
   };
 
   const descargar = async () => {
@@ -201,13 +230,15 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
   const limpiar = () => {
     setInstructivo(null);
     setFilas([]);
-    setSinMatch([]);
-    setIndiceCacheado(null);
+    setPesoDrafts({});
+    setUltimoCruceMeta(null);
     setFase('idle');
     setBusqueda('');
     setFiltro('todos');
     setError('');
   };
+
+  const sinMatch = useMemo(() => extractMissingWrCodes(filas), [filas]);
 
   const simplesClientKeys = useMemo(
     () => buildSimpleClientKeySet(filas.filter((f) => !isGroupedWrRow(f))),
@@ -285,11 +316,11 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
       >
         <FileSpreadsheet style={{ width: '22px', height: '22px', color: '#16a34a', flexShrink: 0 }} />
         <div style={{ flex: 1, minWidth: '260px' }}>
-          <div style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <span>Motor de Procesamiento VPS Hostinger:</span>
             {cargandoFuentes ? (
               <span style={{ fontSize: '11.5px', color: '#64748b', fontWeight: 600 }}>Conectando…</span>
-            ) : fuentes.length > 0 ? (
+            ) : vpsOnline && fuentes.length > 0 ? (
               <span
                 style={{
                   fontSize: '11px',
@@ -305,7 +336,29 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
                 }}
               >
                 <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#16a34a' }} />
-                En Línea (0ms latencia)
+                {vpsRamWarm === true
+                  ? 'En Línea (RAM lista)'
+                  : vpsRamWarm === false
+                    ? 'En Línea (precalentando RAM…)'
+                    : 'En Línea'}
+              </span>
+            ) : fuentes.length > 0 ? (
+              <span
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  color: '#92400e',
+                  background: '#fef3c7',
+                  border: '1px solid #fcd34d',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#d97706' }} />
+                Modo Respaldo R2
               </span>
             ) : (
               <span
@@ -327,13 +380,17 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
             <span style={{ fontSize: '12px', color: '#64748b', display: 'block', marginTop: '3px' }}>
               Consultando archivo activo en el VPS…
             </span>
-          ) : fuentes.length > 0 ? (
+          ) : vpsOnline && fuentes.length > 0 ? (
             <div style={{ marginTop: '3px', fontSize: '12.5px', color: '#334155' }}>
               Archivo activo en disco local SSD: <strong style={{ color: '#0369a1' }}>{fuentes[0].nombre.replace(/^⚡\s*/, '')}</strong>
             </div>
+          ) : fuentes.length > 0 ? (
+            <div style={{ marginTop: '3px', fontSize: '12.5px', color: '#92400e' }}>
+              VPS Hostinger no disponible. Usando respaldo en la nube: <strong style={{ color: '#b45309' }}>{fuentes[0].nombre}</strong>
+            </div>
           ) : (
             <span style={{ color: '#b91c1c', fontSize: '12px', fontWeight: 600, display: 'block', marginTop: '3px' }}>
-              No se pudo conectar al VPS. Verifica que el worker esté activo en el puerto 10000.
+              No se pudo conectar al VPS ni se encontró respaldo en R2. Usa &quot;Sincronizar TIB Hoy&quot; o verifica el worker en el puerto 10000.
             </span>
           )}
         </div>
@@ -659,13 +716,13 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
               <strong style={{ fontSize: '15px', color: '#0f172a' }}>
                 3. Planilla Armada — {stats.totalFilas} Filas ({stats.totalWrs} WRs Totales)
               </strong>
-              <div style={{ display: 'flex', gap: '12px', marginTop: '4px', fontSize: '12.5px', color: '#64748b' }}>
+              <div style={{ display: 'flex', gap: '12px', marginTop: '4px', fontSize: '12.5px', color: '#64748b', flexWrap: 'wrap', alignItems: 'center' }}>
                 <span>
                   Clientes: <strong>{stats.clientes}</strong>
                 </span>
                 <span>·</span>
                 <span>
-                  Peso Total Acumulado: <strong>{stats.peso} lb</strong>
+                  Peso Total Acumulado: <strong>{stats.peso} kg</strong>
                 </span>
                 <span>·</span>
                 <span>
@@ -677,6 +734,26 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
                     </span>
                   )}
                 </span>
+                {ultimoCruceMeta && (
+                  <>
+                    <span>·</span>
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        padding: '1px 8px',
+                        borderRadius: '999px',
+                        background: ultimoCruceMeta.vpsProcesado ? '#dcfce7' : '#fef3c7',
+                        color: ultimoCruceMeta.vpsProcesado ? '#166534' : '#92400e',
+                        border: ultimoCruceMeta.vpsProcesado ? '1px solid #86efac' : '1px solid #fcd34d',
+                      }}
+                    >
+                      {ultimoCruceMeta.vpsProcesado
+                        ? `VPS Hostinger${typeof ultimoCruceMeta.duracionMs === 'number' ? ` · ${ultimoCruceMeta.duracionMs}ms` : ''}`
+                        : `Respaldo R2${ultimoCruceMeta.indiceCacheado ? ' (caché)' : ''}`}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
 
@@ -765,7 +842,7 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
                 <tr style={{ background: '#f8fafc', textAlign: 'left', borderBottom: '1.5px solid #e2e8f0' }}>
                   <th style={{ padding: '10px 12px', color: '#475569', fontSize: '11.5px', textTransform: 'uppercase', width: '40px' }}>#</th>
                   <th style={{ padding: '10px 12px', color: '#475569', fontSize: '11.5px', textTransform: 'uppercase', minWidth: '220px' }}>NOMBRE (CLIENTE)</th>
-                  <th style={{ padding: '10px 12px', color: '#475569', fontSize: '11.5px', textTransform: 'uppercase', minWidth: '150px' }}>PESO (lb)</th>
+                  <th style={{ padding: '10px 12px', color: '#475569', fontSize: '11.5px', textTransform: 'uppercase', minWidth: '150px' }}>PESO (kg)</th>
                   <th style={{ padding: '10px 12px', color: '#475569', fontSize: '11.5px', textTransform: 'uppercase', minWidth: '220px' }}>CODIGO WAREHOUSE (WR)</th>
                   <th style={{ padding: '10px 12px', color: '#475569', fontSize: '11.5px', textTransform: 'uppercase', minWidth: '220px' }}>TRACKING USA</th>
                   <th style={{ padding: '10px 12px', color: '#475569', fontSize: '11.5px', textTransform: 'uppercase', minWidth: '110px', textAlign: 'center' }}>TARIFA ($/kg)</th>
@@ -904,13 +981,21 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
                             </td>
                           </tr>
 
-                          {/* Filas Hijas: Desglose individual de cada WR */}
+                          {/* Filas Hijas: Desglose individual editable de cada WR */}
                           {detallesList.map((d, dIdx) => {
                             const dTarifaInfo = getTarifaCliente ? getTarifaCliente(d.cliente) : null;
                             const dTieneTarifa = Boolean(dTarifaInfo && dTarifaInfo.personalizada && dTarifaInfo.tarifa > 0);
                             const dTarifaVal = dTieneTarifa ? dTarifaInfo!.tarifa : null;
                             const dPesoNum = typeof d.peso === 'number' && d.peso > 0 ? d.peso : null;
                             const dPrecio = dTieneTarifa && dPesoNum !== null ? Math.round(dPesoNum * dTarifaVal! * 100) / 100 : null;
+                            const draftKey = `${f.filaOriginal ?? idx}-${f.wr}-${d.wr}-${dIdx}`;
+                            const pesoInputVal =
+                              pesoDrafts[draftKey] !== undefined
+                                ? pesoDrafts[draftKey]
+                                : dPesoNum !== null
+                                  ? dPesoNum.toFixed(2)
+                                  : '';
+                            const trackingInputVal = d.tracking === '-' ? '' : (d.tracking || '');
 
                             const rowBg =
                               cls.status === 'full-match'
@@ -927,7 +1012,7 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
 
                             return (
                               <tr
-                                key={`${f.filaOriginal ?? idx}-${f.wr}-${d.wr}-${dIdx}`}
+                                key={draftKey}
                                 style={{
                                   background: rowBg,
                                   borderLeft: `2px solid ${groupUiPalette.borderColor}`,
@@ -938,19 +1023,82 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
                                 <td style={{ padding: '6px 10px', color: groupUiPalette.titleColor, fontSize: '11px', textAlign: 'center', fontWeight: 700 }}>
                                   {idx + 1}.{dIdx + 1}
                                 </td>
-                                <td style={{ padding: '6px 10px', fontWeight: 700, color: '#0f172a' }}>
-                                  {d.cliente || 'SIN NOMBRE'}
+                                <td style={{ padding: '5px 8px' }}>
+                                  <input
+                                    value={d.cliente || ''}
+                                    onChange={(e) =>
+                                      actualizarDetalleGrupo(f.filaOriginal, f.wr, dIdx, {
+                                        cliente: e.target.value.toUpperCase(),
+                                      })
+                                    }
+                                    style={{
+                                      ...inputCell,
+                                      padding: '4px 7px',
+                                      fontSize: '12px',
+                                      fontWeight: 700,
+                                      color: '#0f172a',
+                                      background: 'rgba(255,255,255,0.85)',
+                                    }}
+                                    placeholder="Nombre del cliente…"
+                                  />
                                 </td>
-                                <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontWeight: 700, color: '#047857' }}>
-                                  {dPesoNum !== null ? `${dPesoNum.toFixed(2)} lb` : '—'}
+                                <td style={{ padding: '5px 8px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <input
+                                      value={pesoInputVal}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        setPesoDrafts((prev) => ({ ...prev, [draftKey]: val }));
+                                        const parsed = parseFloat(val.replace(',', '.'));
+                                        actualizarDetalleGrupo(f.filaOriginal, f.wr, dIdx, {
+                                          peso: Number.isFinite(parsed) && parsed > 0 ? parsed : null,
+                                        });
+                                      }}
+                                      onBlur={() => {
+                                        setPesoDrafts((prev) => {
+                                          if (!(draftKey in prev)) return prev;
+                                          const next = { ...prev };
+                                          delete next[draftKey];
+                                          return next;
+                                        });
+                                      }}
+                                      style={{
+                                        ...inputCell,
+                                        padding: '4px 7px',
+                                        fontSize: '12px',
+                                        fontFamily: 'monospace',
+                                        fontWeight: 700,
+                                        color: '#047857',
+                                        background: 'rgba(255,255,255,0.85)',
+                                      }}
+                                      placeholder="0.00"
+                                    />
+                                    <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b' }}>kg</span>
+                                  </div>
                                 </td>
                                 <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontWeight: 800 }}>
                                   <span style={{ ...wrChipStyle, padding: '2px 6px', borderRadius: '4px' }}>
                                     {d.wr}
                                   </span>
                                 </td>
-                                <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontSize: '11.5px', color: '#334155' }}>
-                                  {cleanTrackingValue(d.tracking) || '—'}
+                                <td style={{ padding: '5px 8px' }}>
+                                  <input
+                                    value={trackingInputVal}
+                                    onChange={(e) =>
+                                      actualizarDetalleGrupo(f.filaOriginal, f.wr, dIdx, {
+                                        tracking: e.target.value,
+                                      })
+                                    }
+                                    style={{
+                                      ...inputCell,
+                                      padding: '4px 7px',
+                                      fontFamily: 'monospace',
+                                      fontSize: '11.5px',
+                                      color: '#334155',
+                                      background: 'rgba(255,255,255,0.85)',
+                                    }}
+                                    placeholder="Tracking…"
+                                  />
                                 </td>
                                 <td style={{ padding: '6px 10px', textAlign: 'center' }}>
                                   {dTieneTarifa ? (
@@ -993,7 +1141,7 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
                               SUBTOTAL GRUPO ({cantPaquetes} PAQUETES):
                             </td>
                             <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontWeight: 800, fontSize: '12.5px', color: '#047857' }}>
-                              {f.pesoTotal !== null ? `${f.pesoTotal.toFixed(2)} lb` : (f.pesoFormateado || '—')}
+                              {f.pesoTotal !== null ? `${f.pesoTotal.toFixed(2)} kg` : (f.pesoFormateado || '—')}
                             </td>
                             <td colSpan={6} style={{ padding: '6px 10px', fontSize: '11px', color: groupUiPalette.titleColor, fontWeight: 600 }}>
                               {groupUiPalette.footerNote}
@@ -1023,7 +1171,9 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
                         <td style={{ padding: '6px 8px' }}>
                           <input
                             value={f.cliente}
-                            onChange={(e) => actualizarFila(f.wr, { cliente: e.target.value.toUpperCase() })}
+                            onChange={(e) =>
+                              actualizarFila(f.filaOriginal, f.wr, { cliente: e.target.value.toUpperCase() })
+                            }
                             style={{
                               ...inputCell,
                               fontWeight: 700,
@@ -1039,9 +1189,10 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
                             value={f.pesoFormateado}
                             onChange={(e) => {
                               const val = e.target.value;
-                              actualizarFila(f.wr, {
+                              const parsed = parseFloat(val.replace(',', '.'));
+                              actualizarFila(f.filaOriginal, f.wr, {
                                 pesoFormateado: val,
-                                pesoTotal: parseFloat(val.replace(',', '.')) || null,
+                                pesoTotal: Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 100) / 100 : null,
                               });
                             }}
                             style={{
@@ -1064,7 +1215,7 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
                         <td style={{ padding: '6px 8px' }}>
                           <input
                             value={f.tracking}
-                            onChange={(e) => actualizarFila(f.wr, { tracking: e.target.value })}
+                            onChange={(e) => actualizarFila(f.filaOriginal, f.wr, { tracking: e.target.value })}
                             style={{
                               ...inputCell,
                               fontFamily: 'monospace',
@@ -1131,7 +1282,7 @@ export default function ArmarPlanillaTab({ getTarifaCliente }: ArmarPlanillaTabP
                         <td style={{ padding: '6px 8px' }}>
                           <input
                             value={f.observaciones}
-                            onChange={(e) => actualizarFila(f.wr, { observaciones: e.target.value })}
+                            onChange={(e) => actualizarFila(f.filaOriginal, f.wr, { observaciones: e.target.value })}
                             style={{ ...inputCell, color: '#475569' }}
                             placeholder="Casillero…"
                           />

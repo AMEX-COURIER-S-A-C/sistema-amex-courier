@@ -11,7 +11,9 @@ import {
   extractAndNormalizeWrsFromCell,
   extractMissingWrCodes,
   normalizeInstructivoWrToken,
+  orderMultiStateSourceKeys,
   recalculateRowFromDetails,
+  setIndexEntryIfAbsent,
   type NormalizedWrDetail,
 } from '@/features/cobros/services/wr-matching';
 
@@ -105,7 +107,7 @@ function esKeyValida(key: string): boolean {
 
 function indiceKeyPara(enviadoKey: string): string {
   const hash = createHash('sha1').update(enviadoKey).digest('hex').slice(0, 16);
-  return `${R2_ROOT_FOLDER}/inventario-jobs/cobros-indices/${hash}.json`;
+  return `${R2_ROOT_FOLDER}/inventario-jobs/cobros-indices/${hash}-v2.json`;
 }
 
 /**
@@ -179,14 +181,8 @@ async function construirIndiceMultiestado(
   enviadoKey: string
 ): Promise<Record<string, TibItem>> {
   const fuentesMap = await resolverFuentesTibDiario();
-  // Orden de precedencia: RECIBIDO primero, luego ENVIADO, luego ENTREGADO
-  const keysToLoad: string[] = [];
-  if (fuentesMap.received) keysToLoad.push(fuentesMap.received);
-  if (enviadoKey) keysToLoad.push(enviadoKey);
-  else if (fuentesMap.sent) keysToLoad.push(fuentesMap.sent);
-  if (fuentesMap.delivered) keysToLoad.push(fuentesMap.delivered);
-
-  const uniqueKeys = Array.from(new Set(keysToLoad));
+  // Misma precedencia exacta que el VPS Worker: ENVIADO (sent) -> ENTREGADO (delivered) -> RECIBIDO (received)
+  const uniqueKeys = orderMultiStateSourceKeys(fuentesMap, enviadoKey);
   const indice: Record<string, TibItem> = {};
 
   for (const key of uniqueKeys) {
@@ -209,8 +205,7 @@ async function construirIndiceMultiestado(
           tipo: limpiar(r[3]),
           peso: aNumero(r[4]),
         };
-        indice[raw.toUpperCase()] = item;
-        if (norm) indice[norm] = item;
+        setIndexEntryIfAbsent(indice, raw, norm, item);
       }
     } catch (readErr) {
       console.warn(`[Cruzar Planilla] Error leyendo fuente R2 ${key}:`, readErr);
@@ -485,7 +480,7 @@ export const POST = withApi(
     }
 
     let enviadoKey = String(body.enviado_key || '').trim();
-    if (!enviadoKey) {
+    if (!enviadoKey || enviadoKey === 'vps-activo') {
       const ultimo = await resolverUltimoEnviadoKey();
       if (!ultimo) {
         return NextResponse.json(

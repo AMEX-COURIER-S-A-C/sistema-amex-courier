@@ -24,6 +24,7 @@ export async function GET() {
     const workerUrl = process.env.WORKER_URL || process.env.INVENTORY_WORKER_URL || `http://${vpsHost}:${workerPort}`;
 
     let vpsOnline = false;
+    let vpsRamWarm = false;
     let tibActivoNombre = 'ENVIADO TIB.xlsx';
     let tibSizeMb = '14.7';
     let tibActualizadoEn = new Date().toISOString();
@@ -39,6 +40,7 @@ export async function GET() {
         const memoryCache = vpsData?.tibMemoryCache?.sent;
         if (sentCache && sentCache.exists) {
           vpsOnline = true;
+          vpsRamWarm = Boolean(memoryCache?.isWarm);
           tibActivoNombre = sentCache.meta?.nombre_archivo || 'ENVIADO TIB.xlsx';
           tibSizeMb = (sentCache.sizeBytes / (1024 * 1024)).toFixed(1);
           tibActualizadoEn = sentCache.meta?.updated_at || vpsData.time || new Date().toISOString();
@@ -46,7 +48,7 @@ export async function GET() {
           // Zero Cold-Start: Si por cualquier motivo la memoria RAM aún no tiene indexado el TIB
           // (ej. reinicio reciente del VPS), disparamos precalentamiento inmediato en background.
           // Cuando el operador dé click en Cruzar, el cruce tomará ~2ms en lugar de 24 segundos.
-          if (!memoryCache?.isWarm) {
+          if (!vpsRamWarm) {
             void fetch(`${workerUrl.replace(/\/+$/, '')}/prewarm-cobros?fuente=sent`, {
               signal: AbortSignal.timeout(60000),
             }).catch((err: unknown) => {
@@ -60,26 +62,28 @@ export async function GET() {
       vpsOnline = false;
     }
 
-    // Única opción oficial: El archivo TIB almacenado en el VPS de Hostinger
-    const fuentesDisponibles: FuenteTibOpcion[] = [
-      {
+    const fuentesDisponibles: FuenteTibOpcion[] = [];
+
+    if (vpsOnline) {
+      // Opción oficial prioritaria: archivo TIB residente en SSD/RAM del VPS Hostinger
+      fuentesDisponibles.push({
         id: 'vps-activo',
         nombre: `⚡ VPS Hostinger: ${tibActivoNombre} (${tibSizeMb} MB)`,
         enviado_key: 'vps-activo',
         fecha: tibActualizadoEn,
         origen: 'vps_hostinger',
-      },
-    ];
-
-    // Fallback: Si el VPS estuviera apagado, buscar el último de R2 como respaldo
-    if (!vpsOnline) {
+      });
+    } else {
+      // Fallback honesto: si el VPS no responde, buscar el último archivo ENVIADO activo en R2
       try {
         const admin = getSupabaseAdmin();
         const { data: diarios } = await admin
           .from('inventario_tib_diario')
           .select('id,nombre_archivo,r2_key,fecha,subido_en')
           .eq('tipo', 'sent')
+          .eq('es_activo', true)
           .order('fecha', { ascending: false })
+          .order('subido_en', { ascending: false })
           .limit(1);
 
         if (diarios && diarios.length > 0 && diarios[0].r2_key) {
@@ -96,15 +100,16 @@ export async function GET() {
       }
     }
 
-    const seleccionado = fuentesDisponibles[0];
+    const seleccionado = fuentesDisponibles[0] || null;
 
     return NextResponse.json({
       vps_online: vpsOnline,
-      job_id: seleccionado.id,
-      enviado_key: seleccionado.enviado_key,
-      creado_en: seleccionado.fecha,
-      nombre_archivo: tibActivoNombre,
-      size_mb: tibSizeMb,
+      vps_ram_warm: vpsRamWarm,
+      job_id: seleccionado?.id || null,
+      enviado_key: seleccionado?.enviado_key || '',
+      creado_en: seleccionado?.fecha || tibActualizadoEn,
+      nombre_archivo: vpsOnline ? tibActivoNombre : (seleccionado?.nombre || ''),
+      size_mb: vpsOnline ? tibSizeMb : null,
       fuentes_disponibles: fuentesDisponibles,
     });
   } catch (err: unknown) {

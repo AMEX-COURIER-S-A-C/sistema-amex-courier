@@ -7,7 +7,11 @@ import {
   extractAndNormalizeWrsFromCell,
   extractMissingWrCodes,
   normalizeClientNameKey,
+  orderMultiStateSourceKeys,
   recalculateRowFromDetails,
+  setIndexEntryIfAbsent,
+  updateMultiWrDetail,
+  updateSimpleRow,
 } from '@/features/cobros/services/wr-matching';
 import { parseInstructivo } from '@/features/cobros/services/instructivo-parser';
 
@@ -659,5 +663,151 @@ describe('Módulo 4: Cobros — Exportación de Planilla Excel (Sin Merge & Cent
     expect(filaParcial.pesoFormateado).toBe('0.78 - 0.14 - 0.24 - 0.44');
     expect(filaParcial.tracking).toContain('TBA333941680249');
     expect(extractMissingWrCodes([filaParcial])).toEqual([]);
+  });
+
+  it('mantiene paridad de precedencia multi-estado (sent -> delivered -> received) con first-hit wins en R2', () => {
+    const ordered = orderMultiStateSourceKeys(
+      {
+        received: 'r2/received.xlsx',
+        sent: 'r2/sent-default.xlsx',
+        delivered: 'r2/delivered.xlsx',
+      },
+      'r2/sent-override.xlsx'
+    );
+    expect(ordered).toEqual([
+      'r2/sent-override.xlsx',
+      'r2/delivered.xlsx',
+      'r2/received.xlsx',
+    ]);
+
+    const indice: Record<string, { cliente: string; peso: number }> = {};
+    // 1. Llega primero desde sent (debe ganar)
+    setIndexEntryIfAbsent(indice, 'WR000460001', 'WR000460001', { cliente: 'DESDE SENT', peso: 3.25 });
+    // 2. Llega después desde delivered (NO debe sobrescribir WR000460001, sí insertar WR000460002)
+    setIndexEntryIfAbsent(indice, 'WR000460001', 'WR000460001', { cliente: 'DESDE DELIVERED', peso: 9.99 });
+    setIndexEntryIfAbsent(indice, 'WR000460002', 'WR000460002', { cliente: 'SOLO DELIVERED', peso: 1.5 });
+    // 3. Llega último desde received (NO debe sobrescribir ninguno previo, sí insertar WR000460003)
+    setIndexEntryIfAbsent(indice, 'WR000460002', 'WR000460002', { cliente: 'DESDE RECEIVED', peso: 5.0 });
+    setIndexEntryIfAbsent(indice, 'WR000460003', 'WR000460003', { cliente: 'SOLO RECEIVED', peso: 0.8 });
+
+    expect(indice['WR000460001']).toEqual({ cliente: 'DESDE SENT', peso: 3.25 });
+    expect(indice['WR000460002']).toEqual({ cliente: 'SOLO DELIVERED', peso: 1.5 });
+    expect(indice['WR000460003']).toEqual({ cliente: 'SOLO RECEIVED', peso: 0.8 });
+  });
+
+  it('updateSimpleRow sincroniza detalles[0] y resuelve filas faltantes sin alterar otras filas con el mismo WR', () => {
+    const filaA: FilaResultadoCobro = {
+      filaOriginal: 10,
+      wr: 'WR000470001',
+      wrs: ['WR000470001'],
+      esMultiWr: false,
+      delimiter: ' - ',
+      cliente: 'SIN CLIENTE',
+      pesoFormateado: '?',
+      pesoTotal: null,
+      tracking: '',
+      tipo: 'CAJA',
+      observaciones: '',
+      descripcion: '',
+      dni: '',
+      encontrado: false,
+      matchParcial: false,
+      wrsEncontrados: 0,
+      totalWrsFila: 1,
+      detalles: [{ wr: 'WR000470001', tracking: '', cliente: '', tipo: 'CAJA', peso: null, encontrado: false }],
+    };
+    const filaB: FilaResultadoCobro = { ...filaA, filaOriginal: 25 };
+
+    const filas = [filaA, filaB].map((f) =>
+      f.filaOriginal === 10 && f.wr === 'WR000470001'
+        ? updateSimpleRow(f, {
+            cliente: 'AMEX CARLOS VEGA',
+            pesoFormateado: '2.40',
+            pesoTotal: 2.4,
+            tracking: 'TRK-MANUAL-1',
+          })
+        : f
+    );
+
+    expect(filas[0].encontrado).toBe(true);
+    expect(filas[0].detalles[0].cliente).toBe('AMEX CARLOS VEGA');
+    expect(filas[0].detalles[0].peso).toBe(2.4);
+    expect(filas[0].detalles[0].tracking).toBe('TRK-MANUAL-1');
+    expect(filas[0].detalles[0].encontrado).toBe(true);
+
+    // La segunda fila (distinto filaOriginal) permanece intacta
+    expect(filas[1].encontrado).toBe(false);
+    expect(filas[1].cliente).toBe('SIN CLIENTE');
+    expect(filas[1].pesoTotal).toBeNull();
+  });
+
+  it('updateMultiWrDetail edita subfilas inline, recalcula subtotales y promueve el grupo en vivo a full-match', () => {
+    const filaSimpleCliente: FilaResultadoCobro = {
+      filaOriginal: 5,
+      wr: 'WR000480001',
+      wrs: ['WR000480001'],
+      esMultiWr: false,
+      delimiter: '',
+      cliente: 'AMEX LUCIA TORRES',
+      pesoFormateado: '1.20',
+      pesoTotal: 1.2,
+      tracking: 'TRK-S1',
+      tipo: 'BOLSA',
+      observaciones: '',
+      descripcion: '',
+      dni: '',
+      encontrado: true,
+      matchParcial: false,
+      wrsEncontrados: 1,
+      totalWrsFila: 1,
+      detalles: [{ wr: 'WR000480001', tracking: 'TRK-S1', cliente: 'AMEX LUCIA TORRES', tipo: 'BOLSA', peso: 1.2, encontrado: true }],
+    };
+
+    const grupoInicial: FilaResultadoCobro = {
+      filaOriginal: 18,
+      wr: 'WR000480010 - WR000480011',
+      wrs: ['WR000480010', 'WR000480011'],
+      esMultiWr: true,
+      delimiter: ' - ',
+      cliente: 'AMEX LUCIA TORRES - SIN CLIENTE',
+      pesoFormateado: '1.50 - ?',
+      pesoTotal: 1.5,
+      tracking: 'TRK-G1',
+      tipo: 'CAJA',
+      observaciones: '',
+      descripcion: '',
+      dni: '',
+      encontrado: false,
+      matchParcial: true,
+      wrsEncontrados: 1,
+      totalWrsFila: 2,
+      detalles: [
+        { wr: 'WR000480010', tracking: 'TRK-G1', cliente: 'AMEX LUCIA TORRES', tipo: 'CAJA', peso: 1.5, encontrado: true },
+        { wr: 'WR000480011', tracking: '', cliente: '', tipo: 'CAJA', peso: null, encontrado: false },
+      ],
+    };
+
+    const simpleKeys = buildSimpleClientKeySet([filaSimpleCliente]);
+    expect(classifyMultiWrGroup(grupoInicial, simpleKeys).status).toBe('partial-match');
+    expect(extractMissingWrCodes([filaSimpleCliente, grupoInicial])).toEqual(['WR000480011']);
+
+    // El operador edita inline la subfila faltante (índice 1)
+    const grupoEditado = updateMultiWrDetail(grupoInicial, 1, {
+      cliente: 'amex lucia torres',
+      peso: 2.35,
+      tracking: 'TRK-G2',
+    });
+
+    expect(grupoEditado.encontrado).toBe(true);
+    expect(grupoEditado.matchParcial).toBe(false);
+    expect(grupoEditado.pesoTotal).toBe(3.85);
+    expect(grupoEditado.pesoFormateado).toBe('1.50 - 2.35');
+    expect(grupoEditado.tracking).toBe('TRK-G1 - TRK-G2');
+    expect(extractMissingWrCodes([filaSimpleCliente, grupoEditado])).toEqual([]);
+
+    const clsFinal = classifyMultiWrGroup(grupoEditado, simpleKeys);
+    expect(clsFinal.status).toBe('full-match');
+    expect(clsFinal.combinedBillingRow?.wr).toBe('WR000480010 / WR000480011');
+    expect(clsFinal.combinedBillingRow?.pesoTotal).toBe(3.85);
   });
 });

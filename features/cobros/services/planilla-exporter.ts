@@ -357,20 +357,19 @@ export function buildCobroConsolidadoSheetData(filasSimples: FilaResultadoCobro[
  *    - Sección final: Celdas con WRs agrupados (con '-' o '/'), nombres concatenados y pesos delimitados.
  *
  * 2. Hoja "Plantilla Cobros" (ej. "COBRO 22.09" o "COBRO 24.09"):
- *    - Formato TAL CUAL como el archivo oficial de Cobros 22 Septiembre.
- *    - SOLO incluye los WRs que están solos y NO están agrupados varios en una celda (los agrupados los gestiona manualmente el operador).
+ *    - Formato oficial de Cobros agrupado alfabéticamente por cliente.
+ *    - Incluye los WRs simples más las filas promovidas desde grupos Multi-WR coincidentes (full-match combinadas y partial-match extraídas).
  *    - Columna A libre (vacía, margen para operador).
- *    - Agrupado por cliente con encabezados azul amex (#4472C4) y texto blanco: NOMBRE (B) | PESO (C) | PRECIO $ (D) | wr (E) | TRACKING (F).
+ *    - Encabezados azul amex (#4472C4) y texto blanco: NOMBRE (B) | PESO (C) | PRECIO $ (D) | wr (E) | TRACKING (F).
  *    - Nombre del cliente solo en la primera celda por cada grupo de paquetes, sin combinar celdas (sin Merge & Center) para facilitar ordenamiento y filtrado.
- *    - Columna "PRECIO $" vacía (sin cálculo automático, libre para que el operador lo llene manualmente).
- *    - Columna F con TRACKING al costado derecho del WR.
- *    - Fila TOTAL por cliente y separación limpia de 1 fila en blanco.
+ *    - Columna "PRECIO $" y fila "TOTAL": se calculan automáticamente si el cliente tiene tarifa personalizada en el Directorio (tarifaInfo.personalizada && tarifa > 0); de lo contrario quedan vacías para llenado manual.
+ *    - Columna F con TRACKING al costado derecho del WR y separación limpia de 1 fila en blanco entre clientes.
  *    - Título centrado sin sufijo KMMQ.
  *
  * 3. Hoja "COBRO CONSOLIDADO":
- *    - SOLO incluye WRs simples en filas individuales respetando el orden original del instructivo.
- *    - Tabla unificada desde columna A (NOMBRE | PESO | PRECIO $ | wr | tracking) con combinación vertical en filas consecutivas del mismo cliente.
- *    - Columna PRECIO $ vacía para llenado manual y fila final TOTAL con fórmula =SUM(...).
+ *    - Incluye las mismas filas de cobro (WRs simples + filas promovidas desde grupos Multi-WR coincidentes) respetando el orden original del instructivo (filaOriginal).
+ *    - Tabla unificada desde columna A (NOMBRE | PESO | PRECIO $ | wr | tracking) con combinación vertical (rowSpan) solo en filas consecutivas del mismo cliente.
+ *    - Columna PRECIO $ siempre vacía con formato contable USD para llenado manual y fila final TOTAL con fórmula =SUM(...).
  */
 export function generarHojasPlanillaCobros(
   filas: FilaResultadoCobro[],

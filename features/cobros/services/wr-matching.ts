@@ -375,3 +375,137 @@ export function extractMissingWrCodes(filas: FilaResultadoCobro[]): string[] {
 
   return Array.from(new Set(missing));
 }
+
+/**
+ * Ordena las claves R2 multi-estado con la misma prioridad exacta del VPS Worker:
+ * 1. sent (ENVIADO) -> 2. delivered (ENTREGADO) -> 3. received (RECIBIDO).
+ */
+export function orderMultiStateSourceKeys(
+  fuentesMap: Partial<Record<'sent' | 'delivered' | 'received', string>>,
+  enviadoKey?: string
+): string[] {
+  const keys: string[] = [];
+  const primarySent = String(enviadoKey || '').trim() || String(fuentesMap.sent || '').trim();
+  if (primarySent) keys.push(primarySent);
+  if (fuentesMap.delivered) keys.push(fuentesMap.delivered.trim());
+  if (fuentesMap.received) keys.push(fuentesMap.received.trim());
+  return Array.from(new Set(keys.filter(Boolean)));
+}
+
+/**
+ * Inserta una entrada en el índice multi-estado respetando prioridad first-hit wins
+ * (las fuentes de mayor precedencia nunca son sobrescritas por fuentes secundarias).
+ */
+export function setIndexEntryIfAbsent<T>(
+  indice: Record<string, T>,
+  rawKey: string,
+  normKey: string,
+  item: T
+): void {
+  const upperRaw = String(rawKey || '').trim().toUpperCase();
+  if (upperRaw && !Object.prototype.hasOwnProperty.call(indice, upperRaw)) {
+    indice[upperRaw] = item;
+  }
+  const upperNorm = String(normKey || '').trim().toUpperCase();
+  if (upperNorm && !Object.prototype.hasOwnProperty.call(indice, upperNorm)) {
+    indice[upperNorm] = item;
+  }
+}
+
+/**
+ * Actualiza de forma inmutable una fila simple manteniendo sincronizado su detalle interno
+ * y resolviendo `encontrado` si el operador completó manualmente cliente y peso válidos.
+ */
+export function updateSimpleRow(
+  row: FilaResultadoCobro,
+  patch: Partial<FilaResultadoCobro>
+): FilaResultadoCobro {
+  const next: FilaResultadoCobro = { ...row, ...patch };
+  const detalles = Array.isArray(row.detalles) ? row.detalles.map((d) => ({ ...d })) : [];
+
+  if (detalles.length === 1) {
+    const d0 = detalles[0];
+    if (patch.cliente !== undefined) d0.cliente = patch.cliente;
+    if (patch.pesoTotal !== undefined) d0.peso = patch.pesoTotal;
+    if (patch.tracking !== undefined) d0.tracking = patch.tracking;
+    if (patch.tipo !== undefined) d0.tipo = patch.tipo;
+
+    const hasValidManualData =
+      isValidClientKey(normalizeClientNameKey(d0.cliente)) &&
+      typeof d0.peso === 'number' &&
+      Number.isFinite(d0.peso) &&
+      d0.peso > 0;
+
+    if (!d0.encontrado && hasValidManualData) {
+      d0.encontrado = true;
+      next.encontrado = true;
+      next.matchParcial = false;
+      next.wrsEncontrados = 1;
+      next.totalWrsFila = 1;
+    }
+    next.detalles = detalles;
+  } else if (!next.encontrado) {
+    const hasValidManualData =
+      isValidClientKey(normalizeClientNameKey(next.cliente)) &&
+      typeof next.pesoTotal === 'number' &&
+      Number.isFinite(next.pesoTotal) &&
+      next.pesoTotal > 0;
+
+    if (hasValidManualData) {
+      next.encontrado = true;
+      next.matchParcial = false;
+      next.wrsEncontrados = next.totalWrsFila || 1;
+    }
+  }
+
+  return next;
+}
+
+/**
+ * Actualiza de forma inmutable una subfila hija dentro de un grupo Multi-WR
+ * y recalcula peso total, cliente agregado, tracking y estado del grupo.
+ */
+export function updateMultiWrDetail(
+  row: FilaResultadoCobro,
+  detalleIndex: number,
+  patch: Partial<Pick<GrupoDetalleItem, 'cliente' | 'peso' | 'tracking' | 'tipo'>>
+): FilaResultadoCobro {
+  const baseDetalles = getGroupDetailsList(row).map((d) => ({ ...d }));
+  if (detalleIndex < 0 || detalleIndex >= baseDetalles.length) {
+    return row;
+  }
+
+  const target = baseDetalles[detalleIndex];
+  if (patch.cliente !== undefined) {
+    target.cliente = patch.cliente.toUpperCase();
+  }
+  if (patch.peso !== undefined) {
+    target.peso =
+      typeof patch.peso === 'number' && Number.isFinite(patch.peso) && patch.peso > 0
+        ? Math.round(patch.peso * 100) / 100
+        : null;
+  }
+  if (patch.tracking !== undefined) {
+    target.tracking = patch.tracking;
+  }
+  if (patch.tipo !== undefined) {
+    target.tipo = patch.tipo;
+  }
+
+  const hasValidManualData =
+    isValidClientKey(normalizeClientNameKey(target.cliente)) &&
+    typeof target.peso === 'number' &&
+    Number.isFinite(target.peso) &&
+    target.peso > 0;
+
+  if (!target.encontrado && hasValidManualData) {
+    target.encontrado = true;
+  }
+
+  const nextRow: FilaResultadoCobro = {
+    ...row,
+    detalles: baseDetalles,
+  };
+  recalculateRowFromDetails(nextRow);
+  return nextRow;
+}
