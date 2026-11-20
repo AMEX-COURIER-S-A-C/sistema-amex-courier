@@ -422,10 +422,19 @@ async function runMirrorSyncCycle() {
 
   try {
     // 1. Obtener directorio de clientes registrados en tiempo real
-    const { data: clientes, error: cErr } = await sb
+    let { data: clientes, error: cErr } = await sb
       .from('clientes_portal')
       .select('email, nombre_completo, alias_palabras_clave, casillero_codigo')
       .eq('activo', true);
+
+    if (cErr && /casillero_codigo/i.test(cErr.message || '')) {
+      const fallbackRes = await sb
+        .from('clientes_portal')
+        .select('email, nombre_completo, alias_palabras_clave')
+        .eq('activo', true);
+      clientes = fallbackRes.data;
+      cErr = fallbackRes.error;
+    }
 
     if (cErr) throw new Error(`Fallo al leer clientes_portal: ${cErr.message}`);
 
