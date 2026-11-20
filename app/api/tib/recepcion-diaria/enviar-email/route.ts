@@ -1,11 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAppBaseUrl } from '@/lib/auth/appUrl';
 import { sendEmail } from '@/lib/email/resend';
+import { createCargoSystemClient, isTibV2Configured } from '@/lib/tib/cargoSystemClient';
+import {
+  buildCargoTicketReference,
+  CARGO_SYNC_STATUSES,
+  cleanNullableText,
+  formatCargoCanonicalWr,
+  formatDateYmdLima,
+  parseCargoDatePartsLima,
+  resolveDisplayTicketUrl,
+  splitPhotoUrls,
+} from '@/lib/tib/cargoSystemHelpers';
+import { normalizeTibWr } from '@/lib/tib/apiClient';
 import * as XLSX from 'xlsx';
 
 export const dynamic = 'force-dynamic';
 
-const TIB_API_URL = 'https://www.tibcourier.com/global-courier/ajax/readListaWarehouse.php';
+const LEGACY_TIB_API_URL = 'https://www.tibcourier.com/global-courier/ajax/readListaWarehouse.php';
+const LEGACY_TIB_MEDIA_BASE = 'https://www.tibcourier.com/global-courier/ajax/';
+
+interface EmailFeedPkg {
+  wr: string;
+  nclient: string;
+  tracking: string;
+  weight: number;
+  rack: string;
+  container: string;
+  fecha: string;
+  hora: string;
+  fecRegister: string;
+  nuser: string;
+  fotoUrl: string | null;
+  ticketUrl: string | null;
+}
+
+function addDaysYmd(ymd: string, delta: number): string {
+  const d = new Date(`${ymd}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return formatDateYmdLima();
+  d.setUTCDate(d.getUTCDate() + delta);
+  return d.toISOString().slice(0, 10);
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -15,50 +50,103 @@ export async function POST(req: NextRequest) {
       ? body.recipients
       : ['sistemaamexcourier@gmail.com', 'maldonado4250@gmail.com'];
 
-    // 1. Determinar fecha a consultar (por defecto ayer)
+    // 1. Determinar fecha a consultar (por defecto ayer en Lima)
     let targetDate = dateParam;
     if (!targetDate) {
-      const d = new Date();
-      d.setDate(d.getDate() - 1);
-      targetDate = d.toISOString().split('T')[0];
+      targetDate = addDaysYmd(formatDateYmdLima(), -1);
     }
 
-    // 2. Consultar paquetes en vivo desde el API de TIBCARGO Miami
-    const tibRes = await fetch(TIB_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({}),
-      cache: 'no-store',
-    });
+    const appBaseUrl = getAppBaseUrl();
+    const mergedByWr = new Map<string, EmailFeedPkg>();
 
-    if (!tibRes.ok) {
-      return NextResponse.json(
-        { error: `Error al consultar TIBCARGO Miami (HTTP ${tibRes.status})` },
-        { status: 502 }
-      );
+    // 2A. Prioridad TIB v2 (Cargo System)
+    if (isTibV2Configured()) {
+      try {
+        const client = createCargoSystemClient({ timeoutMs: 20000, maxRetries: 2 });
+        const rawV2 = await client.fetchMultipleStatuses(CARGO_SYNC_STATUSES, {
+          startDate: addDaysYmd(targetDate, -1),
+          endDate: addDaysYmd(targetDate, 1),
+        });
+        for (const item of rawV2) {
+          const idInfo = formatCargoCanonicalWr(item?.id);
+          if (!idInfo) continue;
+          const dateParts = parseCargoDatePartsLima(item.dateRegister);
+          if (dateParts.date !== targetDate) continue;
+          const nclient = cleanNullableText(item.nameClient) || cleanNullableText(item.nameConsignee) || '';
+          if (!nclient.toUpperCase().includes('AMEX')) continue;
+
+          const wRaw = cleanNullableText(item.weight);
+          const wNum = wRaw !== null ? parseFloat(wRaw.replace(',', '.')) : 0;
+          const fotos = splitPhotoUrls(item.photoUrl);
+          const relTicket = resolveDisplayTicketUrl(buildCargoTicketReference(idInfo.numericId), idInfo.canonicalWr);
+
+          mergedByWr.set(idInfo.canonicalWr, {
+            wr: idInfo.canonicalWr,
+            nclient,
+            tracking: cleanNullableText(item.tracking) || cleanNullableText(item.secondTracking) || '',
+            weight: Number.isFinite(wNum) && wNum > 0 ? wNum : 0,
+            rack: cleanNullableText(item.rack) || '',
+            container: (cleanNullableText(item.container) || 'CAJA').toUpperCase(),
+            fecha: dateParts.date,
+            hora: dateParts.time,
+            fecRegister: dateParts.full,
+            nuser: '',
+            fotoUrl: fotos[0] || null,
+            ticketUrl: relTicket ? `${appBaseUrl}${relTicket}` : null,
+          });
+        }
+      } catch (v2Err) {
+        console.warn('[recepcion-diaria/enviar-email] Aviso TIB v2:', v2Err instanceof Error ? v2Err.message : v2Err);
+      }
     }
 
-    const rawList = await tibRes.json();
-    if (!Array.isArray(rawList)) {
-      return NextResponse.json(
-        { error: 'Respuesta inválida de TIBCARGO Miami' },
-        { status: 502 }
-      );
+    // 2B. Fallback histórico TIB v1 (para fechas previas a la migración)
+    try {
+      const tibRes = await fetch(LEGACY_TIB_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({}),
+        signal: AbortSignal.timeout(12000),
+        cache: 'no-store',
+      });
+      if (tibRes.ok) {
+        const rawList = await tibRes.json();
+        if (Array.isArray(rawList)) {
+          for (const pkg of rawList) {
+            const clientName = String(pkg.nclient || '').trim();
+            if (!clientName.toUpperCase().includes('AMEX')) continue;
+            const fecRegister = String(pkg.fecRegister || '').trim();
+            const [fecha = '', hora = ''] = fecRegister.split(' ');
+            if (fecha !== targetDate) continue;
+
+            const canonicalWr = normalizeTibWr(pkg.wr, pkg.seqwr);
+            if (!canonicalWr || mergedByWr.has(canonicalWr)) continue;
+            const wNum = parseFloat(String(pkg.weight || '0').replace(/[^0-9.,]/g, '').replace(',', '.')) || 0;
+
+            mergedByWr.set(canonicalWr, {
+              wr: canonicalWr,
+              nclient: clientName,
+              tracking: String(pkg.tracking || '').trim(),
+              weight: wNum,
+              rack: String(pkg.rack || '').trim(),
+              container: String(pkg.container || 'CAJA').trim().toUpperCase(),
+              fecha,
+              hora,
+              fecRegister,
+              nuser: String(pkg.nuser || pkg.seqUser || '').trim(),
+              fotoUrl: pkg.img ? `${LEGACY_TIB_MEDIA_BASE}${String(pkg.img).replace(/^\/+/, '')}` : null,
+              ticketUrl: pkg.ticket ? `${LEGACY_TIB_MEDIA_BASE}${String(pkg.ticket).replace(/^\/+/, '')}` : null,
+            });
+          }
+        }
+      }
+    } catch {
+      // Continuar con los paquetes recuperados de TIB v2
     }
 
-    // 3. Filtrar paquetes exclusivos de AMEX para la fecha seleccionada
-    const amexPackages = rawList.filter((pkg: any) => {
-      const client = String(pkg.nclient || '').toUpperCase();
-      const isAmex = client.includes('AMEX');
-      if (!isAmex) return false;
-
-      const regDate = String(pkg.fecRegister || '').split(' ')[0];
-      return regDate === targetDate;
-    });
-
-    // Ordenar cronológicamente (más antiguo al más reciente)
-    amexPackages.sort((a: any, b: any) =>
-      String(a.fecRegister || '').localeCompare(String(b.fecRegister || ''))
+    // 3. Ordenar cronológicamente (más antiguo al más reciente)
+    const amexPackages = Array.from(mergedByWr.values()).sort((a, b) =>
+      a.fecRegister.localeCompare(b.fecRegister)
     );
 
     // 4. Calcular KPIs Operativos
@@ -68,37 +156,28 @@ export async function POST(req: NextRequest) {
     let ultimaRecepcion = '--:--';
 
     if (totalBultos > 0) {
-      pesoTotalLbs = amexPackages.reduce((acc: number, p: any) => {
-        const w = parseFloat(String(p.weight || '0').replace(/[^0-9.]/g, '')) || 0;
-        return acc + w;
-      }, 0);
-
-      const getTime = (fec: string) => (fec.includes(' ') ? fec.split(' ')[1].slice(0, 5) : fec);
-      primeraRecepcion = getTime(amexPackages[0].fecRegister);
-      ultimaRecepcion = getTime(amexPackages[amexPackages.length - 1].fecRegister);
+      pesoTotalLbs = amexPackages.reduce((acc, p) => acc + (p.weight || 0), 0);
+      primeraRecepcion = amexPackages[0].hora ? amexPackages[0].hora.slice(0, 5) : '--:--';
+      ultimaRecepcion = amexPackages[amexPackages.length - 1].hora
+        ? amexPackages[amexPackages.length - 1].hora.slice(0, 5)
+        : '--:--';
     }
 
     // 5. Construir Hoja de Cálculo Excel (.xlsx) en memoria
-    const excelRows = amexPackages.map((p: any, idx: number) => {
-      const parts = String(p.fecRegister || '').split(' ');
-      const fecha = parts[0] || '';
-      const hora = parts[1] || '';
-
-      return {
-        '#': idx + 1,
-        'Guía WR': p.wr || '',
-        'Consignatario': p.nclient || '',
-        'Tracking USA': p.tracking || '',
-        'Peso (lbs)': p.weight || '',
-        'Rack Miami': p.rack || '',
-        'Tipo Empaque': p.container || '',
-        'Fecha Registro': fecha,
-        'Hora Registro': hora,
-        'Operador TIB': p.nuser || '',
-        'URL Foto': p.img ? `https://www.tibcourier.com/global-courier/${p.img}` : 'Sin foto',
-        'URL Ticket': p.ticket ? `https://www.tibcourier.com/global-courier/${p.ticket}` : 'Sin ticket',
-      };
-    });
+    const excelRows = amexPackages.map((p, idx) => ({
+      '#': idx + 1,
+      'Guía WR': p.wr,
+      'Consignatario': p.nclient,
+      'Tracking USA': p.tracking,
+      'Peso (lbs)': p.weight || '',
+      'Rack Miami': p.rack,
+      'Tipo Empaque': p.container,
+      'Fecha Registro': p.fecha,
+      'Hora Registro': p.hora,
+      'Operador TIB': p.nuser,
+      'URL Foto': p.fotoUrl || 'Sin foto',
+      'URL Ticket': p.ticketUrl || 'Sin ticket',
+    }));
 
     const worksheet = XLSX.utils.json_to_sheet(excelRows);
     worksheet['!cols'] = [

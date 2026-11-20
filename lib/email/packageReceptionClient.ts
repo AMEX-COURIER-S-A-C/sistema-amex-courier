@@ -1,4 +1,5 @@
 import { sendEmail } from './resend';
+import { splitPhotoUrls } from '@/lib/tib/cargoSystemHelpers';
 
 export interface SendPackageReceptionEmailOptions {
   email: string;
@@ -15,7 +16,9 @@ export interface SendPackageReceptionEmailOptions {
  * arriba y es recibido en el almacén de Miami.
  */
 export async function sendPackageReceptionEmail(options: SendPackageReceptionEmailOptions) {
-  const { email, nombreCompleto, wr, tracking, pesoKg, tipoEmpaque, fotoUrl } = options;
+  const { email, nombreCompleto, wr, tracking, pesoKg, tipoEmpaque } = options;
+  const parsedPhotos = splitPhotoUrls(options.fotoUrl);
+  const fotoUrl = parsedPhotos[0] || (options.fotoUrl && !options.fotoUrl.includes(',') ? options.fotoUrl : null);
 
   const subject = `📦 ¡Tu paquete ha llegado a nuestro almacén de Miami! [${wr}]`;
 

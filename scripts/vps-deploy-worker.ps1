@@ -31,14 +31,19 @@ $sshKeyPath = $envValues.VPS_SSH_KEY_PATH
 $tibApiUrl = if ($envValues.TIB_API_URL) { $envValues.TIB_API_URL } else { "https://www.tibcourier.com/api/list-warehouse" }
 $tibEmail = $envValues.TIB_API_EMAIL
 $tibPassword = $envValues.TIB_API_PASSWORD
+$tibV2ApiUrl = if ($envValues.TIB_V2_API_URL) { $envValues.TIB_V2_API_URL } else { "https://api.tibgrupo.com" }
+$tibV2Email = $envValues.TIB_V2_EMAIL
+$tibV2Password = $envValues.TIB_V2_PASSWORD
 
 if ($vpsUser -ne "root") {
     throw "El despliegue del contenedor existente requiere acceso SSH como root."
 }
-if (-not $tibEmail -or -not $tibPassword) {
-    throw "Faltan TIB_API_EMAIL o TIB_API_PASSWORD en .env.local."
+$hasV2 = [bool]($tibV2Email -and $tibV2Password)
+$hasV1 = [bool]($tibEmail -and $tibPassword)
+if (-not $hasV2 -and -not $hasV1) {
+    throw "Faltan TIB_V2_EMAIL/TIB_V2_PASSWORD (y tampoco existen TIB_API_EMAIL/TIB_API_PASSWORD) en .env.local."
 }
-if (@($tibApiUrl, $tibEmail, $tibPassword) | Where-Object { $_.Contains("`n") -or $_.Contains("`r") }) {
+if (@($tibApiUrl, $tibEmail, $tibPassword, $tibV2ApiUrl, $tibV2Email, $tibV2Password) | Where-Object { $_ -and ($_.Contains("`n") -or $_.Contains("`r")) }) {
     throw "Las variables TIB no pueden contener saltos de línea."
 }
 
@@ -62,12 +67,24 @@ $savedSecret = $env:AMEC_SSH_ASKPASS_SECRET
 $remoteWorker = "/root/amex-worker-{0}.js" -f $deployId
 $remoteTibSync = "/root/amex-worker-tib-sync-{0}.js" -f $deployId
 $remoteTibEnv = "/root/amex-worker-tib-{0}.env" -f $deployId
-$tibEnvContent = @(
-    "TIB_API_URL=$tibApiUrl",
-    "TIB_API_EMAIL=$tibEmail",
-    "TIB_API_PASSWORD=$tibPassword",
+$tibEnvLines = @(
+    "TIB_V2_API_URL=$tibV2ApiUrl",
     "TIB_DAILY_SYNC_ENABLED=true"
-) -join "`n"
+)
+if ($hasV2) {
+    $tibEnvLines += @(
+        "TIB_V2_EMAIL=$tibV2Email",
+        "TIB_V2_PASSWORD=$tibV2Password"
+    )
+}
+if ($hasV1) {
+    $tibEnvLines += @(
+        "TIB_API_URL=$tibApiUrl",
+        "TIB_API_EMAIL=$tibEmail",
+        "TIB_API_PASSWORD=$tibPassword"
+    )
+}
+$tibEnvContent = $tibEnvLines -join "`n"
 
 try {
     [System.IO.File]::WriteAllText($localTibEnv, $tibEnvContent, $utf8NoBom)
@@ -118,7 +135,7 @@ powershell.exe -NoProfile -NonInteractive -Command "[Console]::Write($env:AMEC_S
         "docker exec amex-worker node --check /app/worker/tib-daily-sync.js",
         "docker restart amex-worker",
         "sleep 2",
-        "docker exec amex-worker node -e 'fetch(""http://127.0.0.1:10000/"").then(r=>{if(!r.ok)process.exit(1);return r.json()}).then(x=>console.log(JSON.stringify({status:x.status,tibDailySync:x.tibDailySync}))).catch(e=>{console.error(e.message);process.exit(1)})'"
+        "docker exec amex-worker node -e 'fetch(""http://127.0.0.1:10000/"").then(r=>{if(!r.ok)process.exit(1);return r.json()}).then(x=>console.log(JSON.stringify({status:x.status,tibApiMode:x.tibApiMode,tibDailySync:x.tibDailySync}))).catch(e=>{console.error(e.message);process.exit(1)})'"
     )
     $remoteScript = $remoteLines -join "`n"
     $remoteCommandB64 = [Convert]::ToBase64String($utf8NoBom.GetBytes($remoteScript))

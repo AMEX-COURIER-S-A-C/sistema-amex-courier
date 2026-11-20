@@ -1,4 +1,28 @@
 import * as XLSX from 'xlsx';
+import {
+  buildCargoTicketReference,
+  CANONICAL_STATUS_PRIORITY,
+  cleanNullableText,
+  extractNumericWrId,
+  formatCargoCanonicalWr,
+  mapCargoStatusToTibStatus,
+  normalizeCargoPhotoUrls,
+  TIB_STATUS_TO_CARGO_STATUSES,
+  type RawCargoWarehouseItem,
+} from '@/lib/tib/cargoSystemHelpers';
+import {
+  createCargoSystemClient,
+  DEFAULT_TIB_V2_API_URL,
+  getTibV2Credentials,
+  isTibV2Configured,
+} from '@/lib/tib/cargoSystemClient';
+
+export {
+  DEFAULT_TIB_V2_API_URL,
+  extractNumericWrId,
+  getTibV2Credentials,
+  isTibV2Configured,
+};
 
 export type TibApiStatus = 'RECIBIDO' | 'ENVIADO' | 'ENTREGADO';
 export type TibSlotType = 'received' | 'sent' | 'delivered';
@@ -43,16 +67,13 @@ export interface NormalizedTibItem {
   postal: string;
   fotoUrl: string | null;
   ticketUrl: string | null;
+  source?: 'tib_v2' | 'tib_v1';
 }
 
 const DEFAULT_TIB_API_URL = 'https://www.tibcourier.com/api/list-warehouse';
 const TIB_MEDIA_BASE_URL = 'https://www.tibcourier.com/global-courier/ajax/';
 
-const STATUS_PRIORITY: Record<TibApiStatus, number> = {
-  RECIBIDO: 1,
-  ENVIADO: 2,
-  ENTREGADO: 3,
-};
+const STATUS_PRIORITY: Record<TibApiStatus, number> = CANONICAL_STATUS_PRIORITY;
 
 export const SLOT_TO_TIB_STATUS: Record<TibSlotType, TibApiStatus> = {
   received: 'RECIBIDO',
@@ -65,6 +86,12 @@ export const TIB_STATUS_TO_SLOT: Record<TibApiStatus, TibSlotType> = {
   ENVIADO: 'sent',
   ENTREGADO: 'delivered',
 };
+
+export function isTibV1Configured(): boolean {
+  const email = (process.env.TIB_API_EMAIL || '').trim();
+  const password = (process.env.TIB_API_PASSWORD || '').trim();
+  return Boolean(email && password);
+}
 
 export function getTibApiCredentials(): { url: string; email: string; password: string } {
   const url = (process.env.TIB_API_URL || DEFAULT_TIB_API_URL).trim();
@@ -114,8 +141,17 @@ export function normalizeTibWr(rawWr: unknown, seqwr?: unknown): string {
 
 export function mapTibStatusToDbEstado(status: string): 'Recibido' | 'Enviado' | 'Entregado' {
   const norm = status.trim().toUpperCase();
-  if (norm.includes('ENTREGADO') || norm.includes('RECOGIDO')) return 'Entregado';
-  if (norm.includes('ENVIADO') || norm.includes('DESPACHADO') || norm.includes('TRANSITO')) return 'Enviado';
+  if (norm.includes('ENTREGADO') || norm.includes('RECOGIDO') || norm === 'DELIVERED') return 'Entregado';
+  if (
+    norm.includes('ENVIADO') ||
+    norm.includes('DESPACHADO') ||
+    norm.includes('TRANSITO') ||
+    norm === 'IN_TRANSIT' ||
+    norm === 'TEMP_ASSIGNED' ||
+    norm === 'ASSIGNED'
+  ) {
+    return 'Enviado';
+  }
   return 'Recibido';
 }
 
@@ -171,23 +207,111 @@ export function normalizeTibWarehouseItem(
     postal: String(raw.postal || '').trim(),
     fotoUrl: raw.img ? `${TIB_MEDIA_BASE_URL}${String(raw.img).replace(/^\/+/, '')}` : null,
     ticketUrl: raw.ticket ? `${TIB_MEDIA_BASE_URL}${String(raw.ticket).replace(/^\/+/, '')}` : null,
+    source: 'tib_v1',
   };
 }
 
 /**
- * Consulta en vivo un estado específico ('RECIBIDO' | 'ENVIADO' | 'ENTREGADO') en la API oficial de TIB Courier.
+ * Normaliza un registro crudo de TIB v2 (Cargo System - api.tibgrupo.com) al modelo unificado NormalizedTibItem.
  */
-export async function fetchTibWarehouseByStatus(
+export function normalizeCargoWarehouseItem(
+  raw: RawCargoWarehouseItem,
+  fallbackStatus: TibApiStatus = 'RECIBIDO'
+): NormalizedTibItem | null {
+  const idInfo = formatCargoCanonicalWr(raw?.id);
+  if (!idInfo) return null;
+
+  const rawStatusStr = cleanNullableText(raw.status) || cleanNullableText(raw._fetchedStatus);
+  const status: TibApiStatus = rawStatusStr
+    ? mapCargoStatusToTibStatus(rawStatusStr)
+    : fallbackStatus;
+
+  let peso: number | null = null;
+  const rawWeight = cleanNullableText(raw.weight);
+  if (rawWeight !== null) {
+    const parsed = Number(rawWeight.replace(',', '.'));
+    if (Number.isFinite(parsed) && parsed > 0) {
+      peso = Math.round(parsed * 100) / 100;
+    }
+  }
+
+  const cliente =
+    cleanNullableText(raw.nameClient) ||
+    cleanNullableText(raw.nameConsignee) ||
+    '';
+  const tracking =
+    cleanNullableText(raw.tracking) ||
+    cleanNullableText(raw.secondTracking) ||
+    '';
+  const tipoEmpaque = (
+    cleanNullableText(raw.container) ||
+    cleanNullableText(raw.description) ||
+    'CAJA'
+  ).toUpperCase();
+  const fecRegister = cleanNullableText(raw.dateRegister) || '';
+  const fecModify = cleanNullableText(raw.dateModify) || '';
+
+  return {
+    wr: idInfo.canonicalWr,
+    rawWr: String(idInfo.numericId),
+    seqwr: String(idInfo.numericId),
+    tracking,
+    cliente,
+    tipoEmpaque,
+    peso,
+    status,
+    estadoBd: mapTibStatusToDbEstado(status),
+    fecRegister,
+    fecModify,
+    timestampRank: parseTimestampRank(fecModify, fecRegister),
+    statusPriority: STATUS_PRIORITY[status] || 1,
+    rack: cleanNullableText(raw.rack) || '',
+    postal: cleanNullableText(raw.postalService) || '',
+    fotoUrl: normalizeCargoPhotoUrls(raw.photoUrl),
+    ticketUrl: buildCargoTicketReference(idInfo.numericId),
+    source: 'tib_v2',
+  };
+}
+
+/**
+ * Fusiona registros de TIB v2 (prioridad absoluta) con registros históricos de TIB v1
+ * sin duplicar WRs y preservando campos multimedia históricos si v2 no trajera foto.
+ */
+export function mergeTibItemsV2First(
+  v2Items: NormalizedTibItem[],
+  v1Items: NormalizedTibItem[]
+): NormalizedTibItem[] {
+  const merged = new Map<string, NormalizedTibItem>();
+
+  for (const item of v2Items) {
+    const existing = merged.get(item.wr);
+    if (
+      !existing ||
+      item.statusPriority > existing.statusPriority ||
+      (item.statusPriority === existing.statusPriority && item.timestampRank >= existing.timestampRank)
+    ) {
+      merged.set(item.wr, item);
+    }
+  }
+
+  for (const item of v1Items) {
+    const existing = merged.get(item.wr);
+    if (!existing) {
+      merged.set(item.wr, item);
+    } else if (!existing.fotoUrl && item.fotoUrl) {
+      // Conservar foto histórica si el registro migrado en v2 no la trae
+      merged.set(item.wr, { ...existing, fotoUrl: item.fotoUrl });
+    }
+  }
+
+  return Array.from(merged.values());
+}
+
+async function fetchTibV1WarehouseByStatus(
   status: TibApiStatus,
   timeoutMs = 25000
-): Promise<{
-  status: TibApiStatus;
-  items: NormalizedTibItem[];
-  rawCount: number;
-  durationMs: number;
-}> {
+): Promise<NormalizedTibItem[]> {
   const { url, email, password } = getTibApiCredentials();
-  const t0 = Date.now();
 
   const res = await fetch(url, {
     method: 'POST',
@@ -205,7 +329,7 @@ export async function fetchTibWarehouseByStatus(
   });
 
   if (!res.ok) {
-    throw new Error(`El servidor de TIB Courier respondió HTTP ${res.status} al consultar ${status}.`);
+    throw new Error(`El servidor de TIB v1 respondió HTTP ${res.status} al consultar ${status}.`);
   }
 
   const payload = await res.json();
@@ -216,7 +340,7 @@ export async function fetchTibWarehouseByStatus(
       : [];
 
   if (!Array.isArray(rawArray)) {
-    throw new Error(`Respuesta inválida de TIB Courier para el estado ${status}.`);
+    throw new Error(`Respuesta inválida de TIB v1 para el estado ${status}.`);
   }
 
   const items: NormalizedTibItem[] = [];
@@ -224,18 +348,101 @@ export async function fetchTibWarehouseByStatus(
     const norm = normalizeTibWarehouseItem(raw, status);
     if (norm) items.push(norm);
   }
+  return items;
+}
+
+async function fetchTibV2WarehouseByStatus(
+  status: TibApiStatus,
+  timeoutMs = 30000
+): Promise<NormalizedTibItem[]> {
+  const client = createCargoSystemClient({ timeoutMs });
+  const cargoStatuses = TIB_STATUS_TO_CARGO_STATUSES[status];
+  const rawItems = await client.fetchMultipleStatuses(cargoStatuses);
+
+  const items: NormalizedTibItem[] = [];
+  for (const raw of rawItems) {
+    const norm = normalizeCargoWarehouseItem(raw, status);
+    if (norm) items.push(norm);
+  }
+  return items;
+}
+
+/**
+ * Consulta en vivo un estado específico ('RECIBIDO' | 'ENVIADO' | 'ENTREGADO'):
+ * - Motor primario: TIB v2 (Cargo System - api.tibgrupo.com).
+ * - Fusión histórica + respaldo: TIB v1 (tibcourier.com) con prioridad absoluta a v2 por WR.
+ */
+export async function fetchTibWarehouseByStatus(
+  status: TibApiStatus,
+  timeoutMs = 25000
+): Promise<{
+  status: TibApiStatus;
+  items: NormalizedTibItem[];
+  rawCount: number;
+  durationMs: number;
+  v2Count?: number;
+  v1Count?: number;
+}> {
+  const t0 = Date.now();
+  const hasV2 = isTibV2Configured();
+  const hasV1 = isTibV1Configured();
+
+  if (!hasV2 && !hasV1) {
+    throw new Error(
+      'Faltan credenciales TIB_V2_EMAIL/TIB_V2_PASSWORD (y tampoco existe respaldo TIB_API_EMAIL/TIB_API_PASSWORD).'
+    );
+  }
+
+  let v2Items: NormalizedTibItem[] = [];
+  let v1Items: NormalizedTibItem[] = [];
+  let v2Error: unknown = null;
+  let v1Error: unknown = null;
+
+  await Promise.all([
+    hasV2
+      ? fetchTibV2WarehouseByStatus(status, Math.max(timeoutMs, 25000))
+          .then((list) => {
+            v2Items = list;
+          })
+          .catch((err) => {
+            v2Error = err;
+            console.warn(`[TIB v2] Error consultando ${status}:`, err instanceof Error ? err.message : err);
+          })
+      : Promise.resolve(),
+    hasV1
+      ? fetchTibV1WarehouseByStatus(status, timeoutMs)
+          .then((list) => {
+            v1Items = list;
+          })
+          .catch((err) => {
+            v1Error = err;
+            console.warn(`[TIB v1] Aviso consultando historial ${status}:`, err instanceof Error ? err.message : err);
+          })
+      : Promise.resolve(),
+  ]);
+
+  if (hasV2 && v2Error && (!hasV1 || v1Error)) {
+    throw v2Error instanceof Error ? v2Error : new Error(`Error consultando TIB v2 (${status})`);
+  }
+  if (!hasV2 && v1Error) {
+    throw v1Error instanceof Error ? v1Error : new Error(`Error consultando TIB v1 (${status})`);
+  }
+
+  const items = mergeTibItemsV2First(v2Items, v1Items);
 
   return {
     status,
     items,
-    rawCount: rawArray.length,
+    rawCount: v2Items.length + v1Items.length,
     durationMs: Date.now() - t0,
+    v2Count: v2Items.length,
+    v1Count: v1Items.length,
   };
 }
 
 /**
  * Descarga en paralelo los 3 estados oficiales de TIB ('RECIBIDO', 'ENVIADO', 'ENTREGADO')
- * y construye el índice unificado de guías WR en memoria.
+ * fusionando TIB v2 (prioridad) + TIB v1 (historial) y construye el índice unificado de guías WR.
  */
 export async function fetchAllTibWarehouseLists(
   statuses: TibApiStatus[] = ['RECIBIDO', 'ENVIADO', 'ENTREGADO']
@@ -269,10 +476,17 @@ export async function fetchAllTibWarehouseLists(
       if (!existing) {
         lookup.set(item.wr, item);
       } else {
-        // Priorizar estado más avanzado (ENTREGADO > ENVIADO > RECIBIDO) o fecha de modificación más reciente
+        // Priorizar estado más avanzado (ENTREGADO > ENVIADO > RECIBIDO), luego TIB v2 sobre v1, o fecha más reciente
+        const prefersV2 =
+          item.statusPriority === existing.statusPriority &&
+          item.source === 'tib_v2' &&
+          existing.source !== 'tib_v2';
         const shouldReplace =
           item.statusPriority > existing.statusPriority ||
-          (item.statusPriority === existing.statusPriority && item.timestampRank >= existing.timestampRank);
+          prefersV2 ||
+          (item.statusPriority === existing.statusPriority &&
+            item.source === existing.source &&
+            item.timestampRank >= existing.timestampRank);
         if (shouldReplace) {
           lookup.set(item.wr, item);
         }

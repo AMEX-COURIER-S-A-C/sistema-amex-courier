@@ -195,3 +195,108 @@ test('si los tres reportes ya están publicados hoy, reutiliza la publicación y
   assert.equal(fetches, 0);
   assert.deepEqual(cached.sort(), ['delivered', 'received', 'sent']);
 });
+
+test('fusiona TIB v2 (prioridad) + TIB v1 (historial) y preserva slots históricos si v2 devuelve 0 registros', async () => {
+  const uploaded = [];
+  const published = [];
+  const deleted = [];
+  const cached = [];
+
+  const fetchImpl = async (url, init) => {
+    const u = String(url);
+    if (u.endsWith('/user/login')) {
+      return { ok: true, json: async () => ({ token: 'jwt-v2-test' }) };
+    }
+    if (u.includes('/warehouse/warehouse/find-all-warehouse')) {
+      if (u.includes('status=RECEIVED')) {
+        return {
+          ok: true,
+          json: async () => ({
+            data: [
+              { id: 506639, tracking: 'TRK-V2', nameClient: 'AMEX CLIENTE V2', container: 'CAJA', weight: '2.10', status: 'RECEIVED', dateRegister: '2026-11-20T19:00:00Z' },
+            ],
+          }),
+        };
+      }
+      // IN_TRANSIT / TEMP_ASSIGNED / ASSIGNED / DELIVERED vacíos en v2
+      return { ok: true, json: async () => ({ data: [] }) };
+    }
+    // TIB v1: falla en ENTREGADO (debe preservar histórico R2) y responde en ENVIADO y RECIBIDO
+    const status = JSON.parse(init.body).status;
+    if (status === 'ENTREGADO') {
+      return { ok: false, status: 503 };
+    }
+    if (status === 'ENVIADO') {
+      return {
+        ok: true,
+        json: async () => [{ wr: '480001', tracking: 'TRK-SENT-V1', nclient: 'AMEX HIST SENT', container: 'CAJA', weight: '3.50', status: 'ENVIADO' }],
+      };
+    }
+    return {
+      ok: true,
+      json: async () => [
+        { wr: '506639', tracking: 'TRK-V1-OLD', nclient: 'AMEX CLIENTE V1', container: 'BOLSA', weight: '1.00', status: 'RECIBIDO' },
+        { wr: '490001', tracking: 'TRK-REC-V1', nclient: 'AMEX SOLO V1', container: 'CAJA', weight: '0.90', status: 'RECIBIDO' },
+      ],
+    };
+  };
+
+  const sync = createTibDailySync({
+    tibV2ApiUrl: 'https://api.tibgrupo.com',
+    tibV2Email: 'ops@example.test',
+    tibV2Password: TEST_TIB_PASSWORD,
+    tibApiUrl: 'https://tib-v1.example/api',
+    tibEmail: 'legacy@example.test',
+    tibPassword: TEST_TIB_PASSWORD,
+    fetchImpl,
+    now: () => new Date('2026-11-20T12:00:00.000Z'),
+    randomId: () => 'run-v2',
+    putObject: async (key, body) => uploaded.push({ key, body }),
+    deleteObject: async (key) => deleted.push(key),
+    listActiveFiles: async () => [],
+    listLatestActiveFiles: async () => [
+      {
+        tipo: 'delivered',
+        r2_key: 'FOLDER AMEX/inventario-tib/diario/2026-11-19/delivered-prev.xlsx',
+        nombre_archivo: 'ENTREGADO TIB (API Oficial).xlsx',
+        peso_bytes: 999999,
+      },
+    ],
+    publishFiles: async (date, rows) => {
+      published.push({ date, rows });
+      return {
+        old_r2_keys: [
+          'FOLDER AMEX/inventario-tib/diario/2026-11-19/delivered-prev.xlsx',
+          'FOLDER AMEX/inventario-tib/diario/2026-11-19/received-prev.xlsx',
+        ],
+      };
+    },
+    listInactiveKeys: async () => [],
+    syncCache: async (tipo, key) => cached.push({ tipo, key }),
+    withRetry: async (op) => op(),
+  });
+
+  const result = await sync.runOnce();
+
+  // Solo subió sent y received (delivered preservó el archivo histórico en R2)
+  assert.equal(uploaded.length, 2);
+  assert.equal(result.countsBySlot.received, 2);
+  assert.equal(result.countsBySlot.sent, 1);
+  assert.equal(result.countsBySlot.delivered, 0);
+
+  // Verificar que WR000506639 en received conservó datos de TIB v2 (no sobrescrito por v1)
+  const receivedUpload = uploaded.find((u) => u.key.includes('/received-run-v2.xlsx'));
+  const wb = XLSX.read(receivedUpload.body, { type: 'buffer' });
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets.Hoja1, { header: 1 });
+  const rowV2 = rows.find((r) => r[0] === 'WR000506639');
+  assert.equal(rowV2[1], 'TRK-V2');
+  assert.equal(rowV2[2], 'AMEX CLIENTE V2');
+  assert.equal(rowV2[4], 2.1);
+
+  // Verificar que el archivo preservado de delivered NO fue eliminado en cleanup
+  assert.deepEqual(deleted, ['FOLDER AMEX/inventario-tib/diario/2026-11-19/received-prev.xlsx']);
+  assert.equal(
+    cached.find((c) => c.tipo === 'delivered')?.key,
+    'FOLDER AMEX/inventario-tib/diario/2026-11-19/delivered-prev.xlsx'
+  );
+});

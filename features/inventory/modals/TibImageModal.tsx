@@ -4,6 +4,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Camera,
+  ChevronLeft,
+  ChevronRight,
   Download,
   FileText,
   ExternalLink,
@@ -25,6 +27,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { Paquete } from '@/types';
+import { resolveDisplayTicketUrl, splitPhotoUrls } from '@/lib/tib/cargoSystemHelpers';
 import '../styles/inventory.css';
 
 export interface TibImageModalProps {
@@ -59,6 +62,7 @@ export default function TibImageModal({
 
   const [loading, setLoading] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [activePhotoIdx, setActivePhotoIdx] = useState(0);
   const [ticketUrl, setTicketUrl] = useState<string | null>(null);
   const [tibData, setTibData] = useState<TibData | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -117,6 +121,7 @@ export default function TibImageModal({
 
       if (data.found && data.tibImagenUrl) {
         setImageUrl(data.tibImagenUrl);
+        setActivePhotoIdx(0);
         setTicketUrl(data.tibTicketPdfUrl || null);
         if (data.tibData) {
           setTibData(data.tibData);
@@ -149,6 +154,7 @@ export default function TibImageModal({
   useEffect(() => {
     if (!isOpen || !paquete) {
       setImageUrl(null);
+      setActivePhotoIdx(0);
       setTicketUrl(null);
       setTibData(null);
       setErrorMsg(null);
@@ -162,6 +168,7 @@ export default function TibImageModal({
 
     setZoomLevel(1);
     setRotation(0);
+    setActivePhotoIdx(0);
     setIsFullscreen(false);
     setCopiedTracking(false);
 
@@ -187,23 +194,39 @@ export default function TibImageModal({
     fetchTibImage,
   ]);
 
+  const photoList = React.useMemo(() => {
+    if (!imageUrl) return [];
+    const parsed = splitPhotoUrls(imageUrl);
+    if (parsed.length > 0) return parsed;
+    return !imageUrl.includes(',') ? [imageUrl] : [];
+  }, [imageUrl]);
+
+  const safePhotoIdx = photoList.length > 0 ? Math.min(activePhotoIdx, photoList.length - 1) : 0;
+  const activePhotoUrl = photoList[safePhotoIdx] || null;
+  const resolvedTicketUrl = paquete
+    ? resolveDisplayTicketUrl(ticketUrl, paquete.numeroReciboBodega)
+    : null;
+
   const handleDownload = async () => {
-    if (!imageUrl || !paquete) return;
+    if (!activePhotoUrl || !paquete) return;
     setDownloading(true);
     try {
-      const response = await fetch(imageUrl);
+      const response = await fetch(activePhotoUrl);
       const blob = await response.blob();
       const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
+      const extMatch = activePhotoUrl.match(/\.(webp|jpe?g|png)(?:\?|$)/i);
+      const ext = extMatch ? extMatch[1].toLowerCase() : 'png';
+      const suffix = photoList.length > 1 ? `_${safePhotoIdx + 1}` : '';
       link.href = blobUrl;
-      link.download = `TIB_${paquete.numeroReciboBodega}.png`;
+      link.download = `TIB_${paquete.numeroReciboBodega}${suffix}.${ext}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(blobUrl);
     } catch (err) {
       console.error('Error al descargar:', err);
-      window.open(imageUrl, '_blank');
+      window.open(activePhotoUrl, '_blank');
     } finally {
       setDownloading(false);
     }
@@ -569,9 +592,9 @@ export default function TibImageModal({
 
             {/* 6. Botones de Acción de Documentos */}
             <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '8px' }}>
-              {ticketUrl && (
+              {resolvedTicketUrl && (
                 <a
-                  href={ticketUrl}
+                  href={resolvedTicketUrl}
                   target="_blank"
                   rel="noreferrer"
                   style={{
@@ -595,7 +618,7 @@ export default function TibImageModal({
                 </a>
               )}
 
-              {imageUrl && (
+              {activePhotoUrl && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                   <button
                     type="button"
@@ -622,7 +645,7 @@ export default function TibImageModal({
                   </button>
 
                   <a
-                    href={imageUrl}
+                    href={activePhotoUrl}
                     target="_blank"
                     rel="noreferrer"
                     style={{
@@ -693,7 +716,7 @@ export default function TibImageModal({
                   </p>
                 </div>
               </div>
-            ) : imageUrl ? (
+            ) : activePhotoUrl ? (
               <>
                 {/* Contenedor Interactivo con Zoom y Rotación */}
                 <div
@@ -708,8 +731,8 @@ export default function TibImageModal({
                   }}
                 >
                   <img
-                    src={imageUrl}
-                    alt={`Paquete ${paquete.numeroReciboBodega}`}
+                    src={activePhotoUrl}
+                    alt={`Paquete ${paquete.numeroReciboBodega} (${safePhotoIdx + 1}/${photoList.length})`}
                     style={{
                       maxWidth: '100%',
                       maxHeight: '100%',
@@ -725,6 +748,98 @@ export default function TibImageModal({
                     onClick={() => setZoomLevel((prev) => (prev === 1 ? 1.6 : 1))}
                   />
                 </div>
+
+                {/* Selector de Galería cuando el paquete tiene múltiples fotos en TIB v2 */}
+                {photoList.length > 1 && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: '14px',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      background: 'rgba(15, 23, 42, 0.85)',
+                      border: '1px solid rgba(255, 255, 255, 0.2)',
+                      borderRadius: '999px',
+                      padding: '5px 10px',
+                      backdropFilter: 'blur(10px)',
+                      zIndex: 5,
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActivePhotoIdx((prev) => (prev - 1 + photoList.length) % photoList.length);
+                        setZoomLevel(1);
+                        setRotation(0);
+                      }}
+                      style={{
+                        background: 'rgba(255,255,255,0.12)',
+                        border: 'none',
+                        color: '#ffffff',
+                        borderRadius: '999px',
+                        width: '26px',
+                        height: '26px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                      }}
+                      title="Foto anterior"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    {photoList.map((_, pIdx) => (
+                      <button
+                        key={pIdx}
+                        type="button"
+                        onClick={() => {
+                          setActivePhotoIdx(pIdx);
+                          setZoomLevel(1);
+                          setRotation(0);
+                        }}
+                        style={{
+                          background: pIdx === safePhotoIdx ? '#2563eb' : 'rgba(255,255,255,0.12)',
+                          border: pIdx === safePhotoIdx ? '1px solid #60a5fa' : '1px solid transparent',
+                          color: '#ffffff',
+                          borderRadius: '999px',
+                          padding: '3px 9px',
+                          fontSize: '11px',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Foto {pIdx + 1}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActivePhotoIdx((prev) => (prev + 1) % photoList.length);
+                        setZoomLevel(1);
+                        setRotation(0);
+                      }}
+                      style={{
+                        background: 'rgba(255,255,255,0.12)',
+                        border: 'none',
+                        color: '#ffffff',
+                        borderRadius: '999px',
+                        width: '26px',
+                        height: '26px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                      }}
+                      title="Siguiente foto"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
 
                 {/* Barra de Herramientas Superior Derecha */}
                 <div className="tib-image-toolbar">
@@ -877,7 +992,7 @@ export default function TibImageModal({
       </div>
 
       {/* LIGHTBOX / PANTALLA COMPLETA TOTAL */}
-      {isFullscreen && imageUrl && (
+      {isFullscreen && activePhotoUrl && (
         <div
           style={{
             position: 'fixed',
@@ -924,6 +1039,33 @@ export default function TibImageModal({
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+              {photoList.length > 1 && (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', marginRight: '4px' }}>
+                  {photoList.map((_, pIdx) => (
+                    <button
+                      key={pIdx}
+                      type="button"
+                      onClick={() => {
+                        setActivePhotoIdx(pIdx);
+                        setZoomLevel(1);
+                        setRotation(0);
+                      }}
+                      style={{
+                        background: pIdx === safePhotoIdx ? '#2563eb' : 'rgba(255, 255, 255, 0.12)',
+                        border: pIdx === safePhotoIdx ? '1px solid #60a5fa' : '1px solid rgba(255, 255, 255, 0.2)',
+                        color: '#ffffff',
+                        padding: '5px 9px',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontSize: '11.5px',
+                        fontWeight: 800,
+                      }}
+                    >
+                      Foto {pIdx + 1}
+                    </button>
+                  ))}
+                </div>
+              )}
               <button
                 type="button"
                 onClick={() => setZoomLevel((prev) => Math.min(prev + 0.3, 3.5))}
@@ -1022,8 +1164,8 @@ export default function TibImageModal({
             }}
           >
             <img
-              src={imageUrl}
-              alt={`Paquete ${paquete.numeroReciboBodega}`}
+              src={activePhotoUrl}
+              alt={`Paquete ${paquete.numeroReciboBodega} (${safePhotoIdx + 1}/${photoList.length})`}
               style={{
                 maxWidth: '94vw',
                 maxHeight: '82vh',

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { authorizeUser } from '@/lib/auth/guards';
-
-const TIB_API_URL = 'https://www.tibcourier.com/global-courier/ajax/readListaWarehouse.php';
-const TIB_BASE_URL = 'https://www.tibcourier.com/global-courier/ajax/';
+import { fetchSinglePackageFallback } from '@/lib/tib/hybridEnricher';
+import { resolveDisplayTicketUrl, splitPhotoUrls } from '@/lib/tib/cargoSystemHelpers';
+import { normalizeTibWr } from '@/lib/tib/apiClient';
 
 export async function GET(req: NextRequest) {
   try {
@@ -153,53 +153,29 @@ export async function POST(req: NextRequest) {
 
     // 2. Si no se fuerza refresco y ya cuenta con la imagen de TIB en BD, responder al instante
     if (!forceRefresh && currentPkg?.tib_imagen_url) {
+      const wrDisplay = currentPkg.numero_recibo_bodega || normalizeTibWr(rawWr);
       return NextResponse.json({
         ok: true,
         found: true,
         cached: true,
         updatedFields: [],
         tibImagenUrl: currentPkg.tib_imagen_url,
-        tibTicketPdfUrl: currentPkg.tib_ticket_pdf_url,
+        tibImagenes: splitPhotoUrls(currentPkg.tib_imagen_url),
+        tibTicketPdfUrl: resolveDisplayTicketUrl(currentPkg.tib_ticket_pdf_url, wrDisplay),
         updatedData: currentPkg,
-        wr: currentPkg.numero_recibo_bodega,
+        wr: wrDisplay,
       });
     }
 
-    // 3. Extraer dígitos significativos del WR (WR000475750 -> 475750)
+    // 3. Validar formato de WR
     const cleanNumericWr = rawWr.replace(/\D/g, '').replace(/^0+/, '');
     if (!cleanNumericWr) {
       return NextResponse.json({ error: 'Formato de WR inválido.' }, { status: 400 });
     }
 
-    // 4. Consultar la API backend de TIBCARGO
-    let tibData: any = null;
-    try {
-      const tibResponse = await fetch(TIB_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        },
-        body: JSON.stringify({ warehouse: cleanNumericWr }),
-        signal: AbortSignal.timeout(8000),
-      });
-
-      if (!tibResponse.ok) {
-        return NextResponse.json(
-          { error: `Error del servidor TIB (HTTP ${tibResponse.status})` },
-          { status: 502 }
-        );
-      }
-
-      tibData = await tibResponse.json();
-    } catch (netErr: any) {
-      return NextResponse.json(
-        { error: `Tiempo de espera agotado o error de conexión con TIB: ${netErr?.message || 'Error de red'}` },
-        { status: 504 }
-      );
-    }
-
-    if (!Array.isArray(tibData) || tibData.length === 0) {
+    // 4. Consultar TIB v2 (Cargo System - api.tibgrupo.com) con respaldo automático a TIB v1 histórico
+    const tibItem = await fetchSinglePackageFallback(rawWr, 12000);
+    if (!tibItem) {
       return NextResponse.json({
         ok: true,
         found: false,
@@ -207,9 +183,9 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const pkg = tibData[0];
-    const tibImagenUrl = pkg.img ? `${TIB_BASE_URL}${pkg.img}` : null;
-    const tibTicketPdfUrl = pkg.ticket ? `${TIB_BASE_URL}${pkg.ticket}` : null;
+    const tibImagenUrl = tibItem.fotoUrl || null;
+    const tibTicketPdfUrlRaw = tibItem.ticketUrl || null;
+    const canonicalWr = currentPkg?.numero_recibo_bodega || tibItem.wr || normalizeTibWr(rawWr);
 
     // 5. Construir campos a actualizar de forma inteligente
     const updatePayload: Record<string, any> = {
@@ -223,70 +199,59 @@ export async function POST(req: NextRequest) {
         updatePayload.tib_imagen_url = tibImagenUrl;
         updatedFields.push('foto');
       }
-      if (tibTicketPdfUrl && (forceRefresh || !currentPkg?.tib_ticket_pdf_url)) {
-        updatePayload.tib_ticket_pdf_url = tibTicketPdfUrl;
+      if (tibTicketPdfUrlRaw && (forceRefresh || !currentPkg?.tib_ticket_pdf_url)) {
+        updatePayload.tib_ticket_pdf_url = tibTicketPdfUrlRaw;
         updatedFields.push('ticket');
       }
     }
 
     // Tracking
-    if (syncTracking && pkg.tracking && typeof pkg.tracking === 'string' && pkg.tracking.trim() !== '') {
-      const cleanTracking = pkg.tracking.trim();
+    if (syncTracking && tibItem.tracking) {
+      const cleanTracking = tibItem.tracking.trim();
       const currentTrackingEmpty = !currentPkg?.tracking || currentPkg.tracking === '-' || currentPkg.tracking.trim() === '';
-      if (forceRefresh || currentTrackingEmpty) {
+      if (cleanTracking && (forceRefresh || currentTrackingEmpty)) {
         updatePayload.tracking = cleanTracking;
         updatedFields.push('tracking');
       }
     }
 
     // Cliente / Consignatario
-    if (syncCliente && pkg.nclient && typeof pkg.nclient === 'string' && pkg.nclient.trim() !== '') {
-      const cleanCliente = pkg.nclient.trim();
+    if (syncCliente && tibItem.cliente) {
+      const cleanCliente = tibItem.cliente.trim();
       const currentClienteEmpty =
         !currentPkg?.nombre_consignatario ||
         currentPkg.nombre_consignatario.trim() === '' ||
         currentPkg.nombre_consignatario.toUpperCase().includes('CLIENTE AMEX');
-      if (forceRefresh || currentClienteEmpty) {
+      if (cleanCliente && (forceRefresh || currentClienteEmpty)) {
         updatePayload.nombre_consignatario = cleanCliente;
         updatedFields.push('cliente');
       }
     }
 
     // Peso Kg
-    if (syncPeso && pkg.weight) {
-      const parsedWeight = parseFloat(String(pkg.weight).replace(/,/g, '.'));
-      if (!isNaN(parsedWeight) && parsedWeight > 0) {
-        const currentPesoEmpty = !currentPkg?.peso_kg || Number(currentPkg.peso_kg) <= 0;
-        if (forceRefresh || currentPesoEmpty) {
-          updatePayload.peso_kg = parsedWeight;
-          updatedFields.push('peso');
-        }
+    if (syncPeso && tibItem.peso !== null && tibItem.peso > 0) {
+      const currentPesoEmpty = !currentPkg?.peso_kg || Number(currentPkg.peso_kg) <= 0;
+      if (forceRefresh || currentPesoEmpty) {
+        updatePayload.peso_kg = tibItem.peso;
+        updatedFields.push('peso');
       }
     }
 
     // Tipo de Empaque
-    if (syncEmpaque && pkg.container && typeof pkg.container === 'string' && pkg.container.trim() !== '') {
-      const cleanEmpaque = pkg.container.trim().toUpperCase();
+    if (syncEmpaque && tibItem.tipoEmpaque) {
+      const cleanEmpaque = tibItem.tipoEmpaque.trim().toUpperCase();
       const currentEmpaqueEmpty = !currentPkg?.tipo_empaque || currentPkg.tipo_empaque.trim() === '';
-      if (forceRefresh || currentEmpaqueEmpty) {
+      if (cleanEmpaque && (forceRefresh || currentEmpaqueEmpty)) {
         updatePayload.tipo_empaque = cleanEmpaque;
         updatedFields.push('empaque');
       }
     }
 
     // Estado TIB
-    if (syncEstadoTib && pkg.status && typeof pkg.status === 'string' && pkg.status.trim() !== '') {
-      const rawStatus = pkg.status.trim();
-      let mappedStatus = rawStatus;
-      const upper = rawStatus.toUpperCase();
-      if (upper.includes('RECIBIDO')) mappedStatus = 'Recibido';
-      else if (upper.includes('ENTREGADO')) mappedStatus = 'Entregado';
-      else if (upper.includes('ENVIADO')) mappedStatus = 'Enviado';
-      else if (upper.includes('ALMACEN')) mappedStatus = 'EnAlmacen';
-
+    if (syncEstadoTib && tibItem.estadoBd) {
       const currentEstadoEmpty = !currentPkg?.estado_tib || currentPkg.estado_tib.trim() === '';
       if (forceRefresh || currentEstadoEmpty) {
-        updatePayload.estado_tib = mappedStatus;
+        updatePayload.estado_tib = tibItem.estadoBd;
         updatedFields.push('estado_tib');
       }
     }
@@ -307,23 +272,25 @@ export async function POST(req: NextRequest) {
       ok: true,
       found: true,
       cached: false,
+      source: tibItem.source || 'tib_v2',
       updatedFields,
       tibImagenUrl,
-      tibTicketPdfUrl,
+      tibImagenes: splitPhotoUrls(tibImagenUrl),
+      tibTicketPdfUrl: resolveDisplayTicketUrl(tibTicketPdfUrlRaw, canonicalWr),
       updatedData: {
         ...(currentPkg || {}),
         ...updatePayload,
       },
       tibData: {
-        wr: pkg.wr,
-        seqwr: pkg.seqwr,
-        tracking: pkg.tracking,
-        cliente: pkg.nclient,
-        pesoKg: pkg.weight,
-        estado: pkg.status,
-        fecha: pkg.fecRegister,
-        rack: pkg.rack,
-        empaque: pkg.container,
+        wr: tibItem.wr,
+        seqwr: tibItem.seqwr,
+        tracking: tibItem.tracking,
+        cliente: tibItem.cliente,
+        pesoKg: tibItem.peso !== null ? String(tibItem.peso) : '',
+        estado: tibItem.status,
+        fecha: tibItem.fecRegister,
+        rack: tibItem.rack,
+        empaque: tibItem.tipoEmpaque,
       },
     });
   } catch (err: unknown) {

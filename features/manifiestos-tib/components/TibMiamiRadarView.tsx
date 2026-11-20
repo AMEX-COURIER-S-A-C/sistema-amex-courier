@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { alertDialog } from '@/lib/dialog';
+import { resolveDisplayTicketUrl, splitPhotoUrls } from '@/lib/tib/cargoSystemHelpers';
 
 interface TibPackage {
   index: number;
@@ -41,6 +42,7 @@ interface TibPackage {
   timestampCompleto: string;
   operador: string;
   fotoUrl: string | null;
+  fotos?: string[];
   ticketUrl: string | null;
   estado: string;
 }
@@ -84,7 +86,7 @@ export default function TibMiamiRadarView() {
   const [searchTerm, setSearchTerm] = useState('');
   const [copiedWrs, setCopiedWrs] = useState(false);
   const [copiedTracking, setCopiedTracking] = useState<string | null>(null);
-  const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
+  const [previewImage, setPreviewImage] = useState<{ urls: string[]; index: number; title: string } | null>(null);
 
   // Cargar datos desde la API
   const fetchTibData = useCallback(async (dateToQuery: string) => {
@@ -743,54 +745,71 @@ export default function TibMiamiRadarView() {
 
                     {/* Foto / Ticket */}
                     <td style={{ padding: '10px 14px', textAlign: 'center' }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                        {p.fotoUrl ? (
-                          <button
-                            type="button"
-                            onClick={() => setPreviewImage({ url: p.fotoUrl!, title: `Foto ${p.wr} - ${p.cliente}` })}
-                            style={{
-                              background: '#eff6ff',
-                              border: '1px solid #bfdbfe',
-                              color: '#1d4ed8',
-                              padding: '3px 6px',
-                              borderRadius: '4px',
-                              fontSize: '10.5px',
-                              fontWeight: 800,
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '3px'
-                            }}
-                          >
-                            <ImageIcon className="w-3 h-3" /> Foto
-                          </button>
-                        ) : (
-                          <span style={{ color: '#cbd5e1', fontSize: '10.5px' }}>—</span>
-                        )}
+                      {(() => {
+                        const pkgFotos =
+                          Array.isArray(p.fotos) && p.fotos.length > 0
+                            ? p.fotos
+                            : splitPhotoUrls(p.fotoUrl);
+                        const fallbackSingle = pkgFotos.length === 0 && p.fotoUrl ? [p.fotoUrl] : pkgFotos;
+                        const displayTicket = resolveDisplayTicketUrl(p.ticketUrl, p.wr) || p.ticketUrl;
+                        return (
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                            {fallbackSingle.length > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setPreviewImage({
+                                    urls: fallbackSingle,
+                                    index: 0,
+                                    title: `Foto ${p.wr} - ${p.cliente}`,
+                                  })
+                                }
+                                style={{
+                                  background: '#eff6ff',
+                                  border: '1px solid #bfdbfe',
+                                  color: '#1d4ed8',
+                                  padding: '3px 6px',
+                                  borderRadius: '4px',
+                                  fontSize: '10.5px',
+                                  fontWeight: 800,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px'
+                                }}
+                              >
+                                <ImageIcon className="w-3 h-3" />{' '}
+                                {fallbackSingle.length > 1 ? `Fotos (${fallbackSingle.length})` : 'Foto'}
+                              </button>
+                            ) : (
+                              <span style={{ color: '#cbd5e1', fontSize: '10.5px' }}>—</span>
+                            )}
 
-                        {p.ticketUrl && (
-                          <a
-                            href={p.ticketUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{
-                              background: '#fef3c7',
-                              border: '1px solid #fde68a',
-                              color: '#b45309',
-                              padding: '3px 6px',
-                              borderRadius: '4px',
-                              fontSize: '10.5px',
-                              fontWeight: 800,
-                              textDecoration: 'none',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '3px'
-                            }}
-                          >
-                            <FileText className="w-3 h-3" /> PDF
-                          </a>
-                        )}
-                      </div>
+                            {displayTicket && (
+                              <a
+                                href={displayTicket}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  background: '#fef3c7',
+                                  border: '1px solid #fde68a',
+                                  color: '#b45309',
+                                  padding: '3px 6px',
+                                  borderRadius: '4px',
+                                  fontSize: '10.5px',
+                                  fontWeight: 800,
+                                  textDecoration: 'none',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px'
+                                }}
+                              >
+                                <FileText className="w-3 h-3" /> PDF
+                              </a>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </td>
                   </tr>
                 ))}
@@ -800,7 +819,7 @@ export default function TibMiamiRadarView() {
         )}
       </div>
 
-      {/* 6. Modal de Vista Previa de Foto de Paquete */}
+      {/* 6. Modal de Vista Previa de Foto de Paquete (soporta múltiples fotos TIB v2) */}
       {previewImage && (
         <div
           onClick={() => setPreviewImage(null)}
@@ -832,6 +851,7 @@ export default function TibMiamiRadarView() {
             <div style={{ padding: '14px 18px', background: '#0f172a', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: '13px', fontWeight: 800 }}>
                 {previewImage.title}
+                {previewImage.urls.length > 1 ? ` (${previewImage.index + 1}/${previewImage.urls.length})` : ''}
               </span>
               <button
                 type="button"
@@ -844,7 +864,7 @@ export default function TibMiamiRadarView() {
             <div style={{ padding: '16px', background: '#f8fafc', textAlign: 'center' }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={previewImage.url}
+                src={previewImage.urls[previewImage.index] || previewImage.urls[0]}
                 alt="Foto Paquete TIB"
                 style={{
                   maxWidth: '100%',
@@ -854,10 +874,33 @@ export default function TibMiamiRadarView() {
                   boxShadow: '0 4px 10px rgba(0,0,0,0.1)'
                 }}
               />
+              {previewImage.urls.length > 1 && (
+                <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  {previewImage.urls.map((_, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setPreviewImage((prev) => (prev ? { ...prev, index: i } : null))}
+                      style={{
+                        background: i === previewImage.index ? '#2563eb' : '#e2e8f0',
+                        color: i === previewImage.index ? '#ffffff' : '#334155',
+                        border: 'none',
+                        borderRadius: '999px',
+                        padding: '4px 10px',
+                        fontSize: '11.5px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Foto {i + 1}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div style={{ padding: '10px 18px', background: '#ffffff', display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid #e2e8f0' }}>
               <a
-                href={previewImage.url}
+                href={previewImage.urls[previewImage.index] || previewImage.urls[0]}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{

@@ -1,10 +1,14 @@
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import {
+  extractNumericWrId,
   fetchTibWarehouseByStatus,
+  isTibV2Configured,
+  normalizeCargoWarehouseItem,
   normalizeTibWr,
   type NormalizedTibItem,
   type TibApiStatus,
 } from '@/lib/tib/apiClient';
+import { createCargoSystemClient } from '@/lib/tib/cargoSystemClient';
 
 const TIB_FALLBACK_API_URL = 'https://www.tibcourier.com/global-courier/ajax/readListaWarehouse.php';
 const TIB_BASE_MEDIA_URL = 'https://www.tibcourier.com/global-courier/ajax/';
@@ -103,12 +107,30 @@ export async function getOrRefreshOfficialTibMap(forceRefresh = false): Promise<
 }
 
 /**
- * Fallback unitario hacia el endpoint AJAX para paquetes que no figuren en la lista filtrada por cuenta
+ * Búsqueda unitaria de respaldo:
+ * 1. Prioridad TIB v2 (Cargo System: ?warehouseId=<id numérico>).
+ * 2. Fallback histórico TIB v1 (AJAX readListaWarehouse.php) para paquetes previos a la migración.
  */
 export async function fetchSinglePackageFallback(rawWr: string, timeoutMs = 8000): Promise<NormalizedTibItem | null> {
+  const numericId = extractNumericWrId(rawWr);
   const cleanNumericWr = rawWr.replace(/\D/g, '').replace(/^0+/, '');
   if (!cleanNumericWr) return null;
 
+  // 1. Prioridad TIB v2 (Cargo System)
+  if (numericId !== null && isTibV2Configured()) {
+    try {
+      const client = createCargoSystemClient({ timeoutMs: Math.max(timeoutMs, 10000), maxRetries: 2 });
+      const rawV2 = await client.fetchWarehouseByNumericId(numericId);
+      if (rawV2) {
+        const mapped = normalizeCargoWarehouseItem(rawV2);
+        if (mapped) return mapped;
+      }
+    } catch (v2Err) {
+      console.warn(`[HybridEnricher Fallback v2] Aviso consultando WR ${rawWr}:`, v2Err instanceof Error ? v2Err.message : v2Err);
+    }
+  }
+
+  // 2. Fallback histórico TIB v1 (AJAX)
   try {
     const res = await fetch(TIB_FALLBACK_API_URL, {
       method: 'POST',
@@ -164,9 +186,10 @@ export async function fetchSinglePackageFallback(rawWr: string, timeoutMs = 8000
       postal: String(pkg.postal || ''),
       fotoUrl: pkg.img ? `${TIB_BASE_MEDIA_URL}${String(pkg.img).replace(/^\/+/, '')}` : null,
       ticketUrl: pkg.ticket ? `${TIB_BASE_MEDIA_URL}${String(pkg.ticket).replace(/^\/+/, '')}` : null,
+      source: 'tib_v1',
     };
   } catch (err) {
-    console.warn(`[HybridEnricher Fallback] Error consultando WR ${rawWr}:`, err);
+    console.warn(`[HybridEnricher Fallback v1] Error consultando WR ${rawWr}:`, err);
     return null;
   }
 }

@@ -1,28 +1,5 @@
 import { getPortalAdmin } from '@/lib/supabase/portal-admin';
-import { normalizeTibWr, getTibApiCredentials } from '@/lib/tib/apiClient';
-
-export interface RawTibItem {
-  seqwr?: string;
-  wr?: string;
-  description?: string;
-  tracking?: string;
-  status?: string;
-  iclient?: string;
-  seqUser?: string;
-  fecRegister?: string | null;
-  fecModify?: string | null;
-  img?: string | null;
-  ticket?: string | null;
-  nclient?: string;
-  container?: string;
-  weight?: string | number | null;
-  rack?: string;
-  postal?: string;
-  oversized?: string;
-  seqwrnd?: string;
-  emailClient?: string;
-  _fetchedStatus?: string;
-}
+import { fetchAllTibWarehouseLists } from '@/lib/tib/apiClient';
 
 export function cleanExactString(str: unknown): string {
   return String(str || '')
@@ -40,65 +17,48 @@ export function getEstadoVisiblePortal(estadoAmex?: string | null, estadoTib?: s
   return 'RECIBIDO MIAMI';
 }
 
-const TIB_MEDIA_BASE_URL = 'https://www.tibcourier.com/global-courier/ajax/';
 export const ADMIN_MASTER_EMAIL = 'sistemaamexcourier@gmail.com';
 
-/**
- * Consulta la API oficial de TIB para un estado dado ('RECIBIDO', 'ENVIADO', 'ENTREGADO')
- */
-async function fetchTibStatus(url: string, email: string, password: string, status: string): Promise<RawTibItem[]> {
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, status }),
-    });
-
-    if (!res.ok) {
-      console.warn(`[TIB API] HTTP ${res.status} al consultar estado ${status}`);
-      return [];
-    }
-
-    const json = await res.json();
-    return (json.data || []).map((item: RawTibItem) => ({ ...item, _fetchedStatus: status }));
-  } catch (err) {
-    console.error(`[TIB API] Error al consultar estado ${status}:`, err);
-    return [];
-  }
+interface PortalClienteRow {
+  email: string;
+  nombre_completo?: string | null;
+  alias_palabras_clave?: string[] | null;
+  casillero_codigo?: string | null;
 }
 
 /**
- * Sincroniza paquetes ÚNICA Y EXCLUSIVAMENTE desde la API oficial de TIB hacia paquetes_portal.
- * 
- * Reglas de asignación:
- * 1. Prioridad: Coincidencia EXACTA con los clientes regulares registrados en clientes_portal
- *    (nombre completo, palabras clave o casillero).
- * 2. Regla Admin Master: Cualquier paquete que contenga "AMEX" o "amex" en consignatario o descripción
- *    se asigna automáticamente al usuario Admin Master (sistemaamexcourier@gmail.com).
+ * Sincroniza paquetes desde TIB (TIB v2 Cargo System prioritario + historial TIB v1)
+ * hacia paquetes_portal.
  */
 export async function syncTibPackagesToPortal(options?: { specificEmail?: string }) {
   const portalAdmin = getPortalAdmin();
-  const credentials = getTibApiCredentials();
   const isSpecificRegularClient =
     options?.specificEmail && options.specificEmail.trim().toLowerCase() !== ADMIN_MASTER_EMAIL;
 
-  // 1. Obtener los clientes registrados en clientes_portal
-  let clientQuery = portalAdmin
-    .from('clientes_portal')
-    .select('email, nombre_completo, alias_palabras_clave, casillero_codigo')
-    .eq('activo', true);
+  // 1. Obtener los clientes registrados en clientes_portal (resiliente si no existe casillero_codigo)
+  const buildClientQuery = (selectCols: string) => {
+    let q = portalAdmin.from('clientes_portal').select(selectCols).eq('activo', true);
+    if (isSpecificRegularClient) {
+      q = q.eq('email', options!.specificEmail!.trim().toLowerCase());
+    }
+    return q;
+  };
 
-  if (isSpecificRegularClient) {
-    clientQuery = clientQuery.eq('email', options!.specificEmail!.trim().toLowerCase());
+  let { data: clientes, error: cErr } = await buildClientQuery(
+    'email, nombre_completo, alias_palabras_clave, casillero_codigo'
+  );
+  if (cErr && /casillero_codigo/i.test(cErr.message || '')) {
+    const fallback = await buildClientQuery('email, nombre_completo, alias_palabras_clave');
+    clientes = fallback.data;
+    cErr = fallback.error;
   }
 
-  const { data: clientes, error: cErr } = await clientQuery;
   if (cErr) {
     console.error('[syncTibPackagesToPortal] Error al consultar clientes_portal:', cErr);
     throw new Error('Error al consultar directorio de clientes');
   }
 
-  const clientesList = clientes || [];
+  const clientesList = (clientes || []) as unknown as PortalClienteRow[];
 
   // 2. Construir mapas de coincidencia exacta estricta para clientes regulares
   const nclientExactMap = new Map<string, string>();
@@ -106,7 +66,6 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
 
   for (const c of clientesList) {
     const targetEmail = c.email.trim().toLowerCase();
-    // Excluir al admin master de las coincidencias exactas para dar prioridad a los clientes regulares
     if (targetEmail === ADMIN_MASTER_EMAIL) continue;
 
     const cleanNombre = cleanExactString(c.nombre_completo);
@@ -131,89 +90,60 @@ export async function syncTibPackagesToPortal(options?: { specificEmail?: string
     }
   }
 
-  // 3. Descargar en paralelo los estados de la API oficial de TIB
-  const [recibidos, enviados, entregados] = await Promise.all([
-    fetchTibStatus(credentials.url, credentials.email, credentials.password, 'RECIBIDO'),
-    fetchTibStatus(credentials.url, credentials.email, credentials.password, 'ENVIADO'),
-    fetchTibStatus(credentials.url, credentials.email, credentials.password, 'ENTREGADO'),
-  ]);
+  // 3. Descargar índice unificado TIB v2 (prioridad) + TIB v1 (historial)
+  const tibData = await fetchAllTibWarehouseLists(['RECIBIDO', 'ENVIADO', 'ENTREGADO']);
+  const allTibPackages = Array.from(tibData.lookup.values());
 
-  // Procesar todo el inventario histórico de TIB (2021 - presente: RECIBIDO, ENVIADO y ENTREGADO)
-  const allTibPackages: RawTibItem[] = [...recibidos, ...enviados, ...entregados];
-
-  // 4. Filtrar y procesar según las reglas de asignación
+  // 4. Filtrar y asignar paquetes según reglas de coincidencia
   const recordsToUpsert = [];
+  const nowIso = new Date().toISOString();
 
   for (const item of allTibPackages) {
-    const cleanConsignee = cleanExactString(item.nclient);
-    const cleanIclient = cleanExactString(item.iclient);
-
-    // Regla 1: Coincidencia con cliente regular
-    let matchedEmail: string | undefined = undefined;
+    const cleanConsignee = cleanExactString(item.cliente);
+    let matchedEmail: string | undefined;
 
     if (cleanConsignee && nclientExactMap.has(cleanConsignee)) {
       matchedEmail = nclientExactMap.get(cleanConsignee);
-    } else if (cleanIclient && iclientMap.has(cleanIclient)) {
-      matchedEmail = iclientMap.get(cleanIclient);
     }
 
-    // Regla 2: Asignación automática al Admin Master para todo lo que contenga "AMEX" o "amex"
     if (!matchedEmail) {
-      const consigneeUpper = (item.nclient || '').toUpperCase();
-      const descUpper = (item.description || '').toUpperCase();
+      const consigneeUpper = (item.cliente || '').toUpperCase();
+      const descUpper = (item.tipoEmpaque || '').toUpperCase();
       if (consigneeUpper.includes('AMEX') || descUpper.includes('AMEX')) {
         matchedEmail = ADMIN_MASTER_EMAIL;
       }
     }
 
-    // Si se solicitó para un email específico, omitir si no coincide
     if (options?.specificEmail) {
       const target = options.specificEmail.trim().toLowerCase();
-      if (matchedEmail !== target) {
-        continue;
-      }
+      if (matchedEmail !== target) continue;
     }
 
-    // Si tiene un destinatario asignado, estructurar para paquetes_portal
-    if (matchedEmail) {
-      const canonicalWr = normalizeTibWr(item.wr, item.seqwr);
-      if (!canonicalWr) continue;
+    if (!matchedEmail || !item.wr) continue;
 
-      const fullImgUrl = item.img
-        ? `${TIB_MEDIA_BASE_URL}${item.img.replace(/^\/+/, '')}`
-        : null;
-
-      const fullTicketUrl = item.ticket
-        ? `${TIB_MEDIA_BASE_URL}${item.ticket.replace(/^\/+/, '')}`
-        : null;
-
-      const weightNum = item.weight != null ? parseFloat(String(item.weight)) : 0;
-      const statusTib = item._fetchedStatus || item.status || 'RECIBIDO';
-
-      let parsedDate = new Date().toISOString();
-      if (item.fecRegister) {
-        const d = new Date(item.fecRegister);
-        if (!isNaN(d.getTime())) parsedDate = d.toISOString();
-      }
-
-      recordsToUpsert.push({
-        numero_recibo_bodega: canonicalWr,
-        tracking: item.tracking?.trim() || null,
-        nombre_consignatario: (item.nclient || '').trim(),
-        usuario_email: matchedEmail,
-        tipo_empaque: (item.container || item.description || 'CAJA').trim().toUpperCase(),
-        peso_kg: isNaN(weightNum) ? 0 : weightNum,
-        estado_tib: statusTib,
-        estado_amex: 'en_almacen',
-        estado_visible: getEstadoVisiblePortal('en_almacen', statusTib),
-        tib_imagen_url: fullImgUrl,
-        tib_ticket_pdf_url: fullTicketUrl,
-        ubicacion_almacen: item.rack?.trim() || null,
-        erp_paquete_id: null,
-        creado_en: parsedDate,
-        actualizado_en: new Date().toISOString(),
-      });
+    let parsedDate = nowIso;
+    if (item.fecRegister) {
+      const d = new Date(item.fecRegister);
+      if (!Number.isNaN(d.getTime())) parsedDate = d.toISOString();
     }
+
+    recordsToUpsert.push({
+      numero_recibo_bodega: item.wr,
+      tracking: item.tracking || null,
+      nombre_consignatario: item.cliente || '',
+      usuario_email: matchedEmail,
+      tipo_empaque: (item.tipoEmpaque || 'CAJA').toUpperCase(),
+      peso_kg: item.peso ?? 0,
+      estado_tib: item.status,
+      estado_amex: 'en_almacen',
+      estado_visible: getEstadoVisiblePortal('en_almacen', item.status),
+      tib_imagen_url: item.fotoUrl,
+      tib_ticket_pdf_url: item.ticketUrl,
+      ubicacion_almacen: item.rack || null,
+      erp_paquete_id: null,
+      creado_en: parsedDate,
+      actualizado_en: nowIso,
+    });
   }
 
   if (recordsToUpsert.length === 0) {

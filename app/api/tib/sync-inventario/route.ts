@@ -3,10 +3,14 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { authorizeUser, getUserDisplayName } from '@/lib/auth/guards';
 import { uploadFileToR2, deleteFileFromR2 } from '@/lib/r2/client';
 import {
+  DEFAULT_TIB_V2_API_URL,
   fetchAllTibWarehouseLists,
   fetchTibWarehouseByStatus,
   generateTibXlsxBuffer,
   getTibApiCredentials,
+  getTibV2Credentials,
+  isTibV1Configured,
+  isTibV2Configured,
   normalizeTibWr,
   SLOT_TO_TIB_STATUS,
   type TibApiStatus,
@@ -37,17 +41,33 @@ const SLOT_FILE_NAMES: Record<TibSlotType, string> = {
 };
 
 /**
- * Sincroniza un slot ('delivered' | 'sent' | 'received') en R2, tabla inventario_tib_diario y Worker VPS
+ * Sincroniza un slot ('delivered' | 'sent' | 'received') en R2, tabla inventario_tib_diario y Worker VPS.
+ * Guardia anti-sobrescritura vacía: si rowCount === 0 y ya existe un archivo activo previo, lo preserva.
  */
 async function syncSingleSlotToCloudAndWorker(
   slot: TibSlotType,
   xlsxBuffer: Buffer,
   userNombre: string,
-  fecha: string
+  fecha: string,
+  rowCount: number
 ) {
   const admin = getSupabaseAdmin();
   const nombreArchivo = SLOT_FILE_NAMES[slot];
   const relativePath = `inventario-tib/diario/${fecha}/${slot}.xlsx`;
+
+  // 0. Consultar archivos activos actuales del slot
+  const { data: previousRows } = await admin
+    .from('inventario_tib_diario')
+    .select('id, r2_key, nombre_archivo, fecha')
+    .eq('tipo', slot)
+    .eq('es_activo', true);
+
+  if (rowCount === 0 && previousRows && previousRows.length > 0) {
+    console.warn(
+      `[sync-inventario] Slot ${slot} devolvió 0 filas; se conserva el archivo histórico activo (${previousRows[0].r2_key}).`
+    );
+    return previousRows[0];
+  }
 
   // 1. Subir a R2
   const uploaded = await uploadFileToR2(
@@ -58,12 +78,6 @@ async function syncSingleSlotToCloudAndWorker(
   const r2Key = uploaded.key;
 
   // 2. Limpiar archivos anteriores obsoletos de este slot
-  const { data: previousRows } = await admin
-    .from('inventario_tib_diario')
-    .select('id, r2_key')
-    .eq('tipo', slot)
-    .eq('es_activo', true);
-
   if (previousRows && previousRows.length > 0) {
     for (const prev of previousRows) {
       if (prev.r2_key && prev.r2_key !== r2Key) {
@@ -120,21 +134,37 @@ export async function GET() {
     const auth = await authorizeUser();
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-    let credentialsConfigured = false;
+    const tibV2Configured = isTibV2Configured();
+    const tibV1Configured = isTibV1Configured();
+    let credentialsConfigured = tibV2Configured || tibV1Configured;
     let maskedEmail = '';
-    try {
-      const creds = getTibApiCredentials();
-      credentialsConfigured = true;
-      maskedEmail = creds.email;
-    } catch {
-      credentialsConfigured = false;
+    let endpoint = DEFAULT_TIB_V2_API_URL;
+    if (tibV2Configured) {
+      try {
+        const credsV2 = getTibV2Credentials();
+        maskedEmail = credsV2.email;
+        endpoint = credsV2.baseUrl;
+      } catch {
+        // continuar con v1
+      }
+    } else if (tibV1Configured) {
+      try {
+        const credsV1 = getTibApiCredentials();
+        maskedEmail = credsV1.email;
+        endpoint = credsV1.url;
+      } catch {
+        credentialsConfigured = false;
+      }
     }
 
     return NextResponse.json({
       ok: true,
       credentialsConfigured,
+      tibV2Configured,
+      tibV1Configured,
+      mode: tibV2Configured ? (tibV1Configured ? 'v2+v1' : 'v2') : 'v1',
       accountEmail: maskedEmail,
-      endpoint: process.env.TIB_API_URL || 'https://www.tibcourier.com/api/list-warehouse',
+      endpoint,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error verificando API TIB';
@@ -181,7 +211,13 @@ export async function POST(req: NextRequest) {
           const res = await fetchTibWarehouseByStatus(tibStatus, 30000);
           countsBySlot[slot] = res.items.length;
           const buffer = generateTibXlsxBuffer(res.items);
-          const saved = await syncSingleSlotToCloudAndWorker(slot, buffer, userNombre, todayLima);
+          const saved = await syncSingleSlotToCloudAndWorker(
+            slot,
+            buffer,
+            userNombre,
+            todayLima,
+            res.items.length
+          );
           syncedFiles[slot] = saved;
         })
       );
@@ -257,7 +293,7 @@ export async function POST(req: NextRequest) {
             const statusKey = SLOT_TO_TIB_STATUS[slot];
             const items = tibData.byStatus[statusKey] || [];
             const xlsxBuf = generateTibXlsxBuffer(items);
-            await syncSingleSlotToCloudAndWorker(slot, xlsxBuf, userNombre, todayLima);
+            await syncSingleSlotToCloudAndWorker(slot, xlsxBuf, userNombre, todayLima, items.length);
           })
         ).catch((e) => {
           console.warn('[sync-inventario] Aviso actualizando archivos TIB en R2:', e);
@@ -438,7 +474,7 @@ export async function POST(req: NextRequest) {
           const statusKey = SLOT_TO_TIB_STATUS[slot];
           const items = tibData.byStatus[statusKey] || [];
           const xlsxBuf = generateTibXlsxBuffer(items);
-          await syncSingleSlotToCloudAndWorker(slot, xlsxBuf, userNombre, todayLima);
+          await syncSingleSlotToCloudAndWorker(slot, xlsxBuf, userNombre, todayLima, items.length);
         })
       ).catch((e) => {
         console.warn('[sync-inventario] Aviso actualizando archivos TIB en R2:', e);

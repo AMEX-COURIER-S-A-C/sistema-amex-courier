@@ -30,7 +30,12 @@ const crypto = require('node:crypto');
 const { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const XLSX = require('xlsx');
 const { createProcessorClient } = require('./processor-client');
-const { createTibDailyScheduler, createTibDailySync, TIB_API_DEFAULT_URL } = require('./tib-daily-sync');
+const {
+  createTibDailyScheduler,
+  createTibDailySync,
+  TIB_API_DEFAULT_URL,
+  TIB_V2_API_DEFAULT_URL,
+} = require('./tib-daily-sync');
 
 // ---------------------------------------------------------------- config
 
@@ -75,8 +80,15 @@ const R2_ROOT = (process.env.CLOUDFLARE_R2_ROOT_FOLDER || 'FOLDER AMEX').replace
 const TIB_API_URL = (process.env.TIB_API_URL || TIB_API_DEFAULT_URL).trim();
 const TIB_API_EMAIL = (process.env.TIB_API_EMAIL || '').trim();
 const TIB_API_PASSWORD = process.env.TIB_API_PASSWORD || '';
+const TIB_V2_API_URL = (process.env.TIB_V2_API_URL || TIB_V2_API_DEFAULT_URL).trim().replace(/\/+$/, '');
+const TIB_V2_EMAIL = (process.env.TIB_V2_EMAIL || '').trim();
+const TIB_V2_PASSWORD = process.env.TIB_V2_PASSWORD || '';
+const TIB_API_MODE =
+  TIB_V2_EMAIL && TIB_V2_PASSWORD
+    ? (TIB_API_EMAIL && TIB_API_PASSWORD ? 'v2+v1' : 'v2')
+    : (TIB_API_EMAIL && TIB_API_PASSWORD ? 'v1' : 'none');
 const TIB_DAILY_SYNC_ENABLED =
-  process.env.TIB_DAILY_SYNC_ENABLED !== 'false' && Boolean(TIB_API_EMAIL && TIB_API_PASSWORD);
+  process.env.TIB_DAILY_SYNC_ENABLED !== 'false' && TIB_API_MODE !== 'none';
 
 const defaultProcessor = process.platform === 'win32'
   ? (fs.existsSync(path.resolve(__dirname, 'processor', 'AmexInventoryProcessor', 'publish', 'win-x64', 'AmexInventoryProcessor.exe'))
@@ -381,6 +393,9 @@ const tibDailySync = createTibDailySync({
   tibApiUrl: TIB_API_URL,
   tibEmail: TIB_API_EMAIL,
   tibPassword: TIB_API_PASSWORD,
+  tibV2ApiUrl: TIB_V2_API_URL,
+  tibV2Email: TIB_V2_EMAIL,
+  tibV2Password: TIB_V2_PASSWORD,
   r2Root: R2_ROOT,
   putObject: (key, body, contentType) => s3.send(new PutObjectCommand({
     Bucket: R2_BUCKET,
@@ -390,7 +405,10 @@ const tibDailySync = createTibDailySync({
   })),
   deleteObject: (key) => s3.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: key })),
   listActiveFiles: async (date) => sbFetch(
-    `/inventario_tib_diario?select=fecha,tipo,r2_key,nombre_archivo,subido_por_nombre,subido_en,es_activo&fecha=eq.${encodeURIComponent(date)}&es_activo=eq.true&limit=10`
+    `/inventario_tib_diario?select=fecha,tipo,r2_key,nombre_archivo,peso_bytes,subido_por_nombre,subido_en,es_activo&fecha=eq.${encodeURIComponent(date)}&es_activo=eq.true&limit=10`
+  ),
+  listLatestActiveFiles: async () => sbFetch(
+    '/inventario_tib_diario?select=fecha,tipo,r2_key,nombre_archivo,peso_bytes,subido_por_nombre,subido_en,es_activo&es_activo=eq.true&order=fecha.desc,subido_en.desc&limit=10'
   ),
   publishFiles: async (date, files) => sbFetch('/rpc/publish_daily_tib_reports', {
     method: 'POST',
@@ -1147,6 +1165,7 @@ const server = http.createServer(async (req, res) => {
     nodeRssMB: Math.round(mem.rss / 1024 / 1024),
     nodeHeapUsedMB: Math.round(mem.heapUsed / 1024 / 1024),
     tibCacheDir: TIB_CACHE_DIR,
+    tibApiMode: TIB_API_MODE,
     tibCache,
     tibMemoryCache,
     tibDailySync: tibDailySyncScheduler.getState(),

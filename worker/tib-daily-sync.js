@@ -5,14 +5,15 @@ const XLSX = require('xlsx');
 const { DeleteObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
 
 const TIB_API_DEFAULT_URL = 'https://www.tibcourier.com/api/list-warehouse';
+const TIB_V2_API_DEFAULT_URL = 'https://api.tibgrupo.com';
 const LIMA_TIME_ZONE = 'America/Lima';
 const PUBLISHER_NAME = 'Worker Hostinger (API TIB)';
 const XLSX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const REPORT_HEADERS = ['WR', 'TRACKING', 'CLIENTE', 'TIPO PAQUETE', 'PESO', 'ESTADO', 'MODIFICADO'];
 const REPORT_SLOTS = [
-  { tipo: 'delivered', tibStatus: 'ENTREGADO', nombre: 'ENTREGADO TIB (API Oficial).xlsx' },
-  { tipo: 'sent', tibStatus: 'ENVIADO', nombre: 'ENVIADO TIB (API Oficial).xlsx' },
-  { tipo: 'received', tibStatus: 'RECIBIDO', nombre: 'RECIBIDO TIB (API Oficial).xlsx' },
+  { tipo: 'delivered', tibStatus: 'ENTREGADO', cargoStatuses: ['DELIVERED'], nombre: 'ENTREGADO TIB (API Oficial).xlsx' },
+  { tipo: 'sent', tibStatus: 'ENVIADO', cargoStatuses: ['IN_TRANSIT', 'TEMP_ASSIGNED', 'ASSIGNED'], nombre: 'ENVIADO TIB (API Oficial).xlsx' },
+  { tipo: 'received', tibStatus: 'RECIBIDO', cargoStatuses: ['RECEIVED'], nombre: 'RECIBIDO TIB (API Oficial).xlsx' },
 ];
 
 function getLimaParts(date = new Date()) {
@@ -82,38 +83,87 @@ function normalizeTibWr(rawWr, seqwr) {
   return value;
 }
 
+function cleanNullableText(value) {
+  if (value === null || value === undefined) return '';
+  const trimmed = String(value).replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+  if (!trimmed) return '';
+  const lower = trimmed.toLowerCase();
+  if (lower === 'null' || lower === 'undefined') return '';
+  return trimmed;
+}
+
 function normalizeTibStatus(rawStatus, fallbackStatus) {
   const status = String(rawStatus || fallbackStatus || '').trim().toUpperCase();
-  if (status === 'ENTREGADO') return 'ENTREGADO';
-  if (status === 'ENVIADO') return 'ENVIADO';
+  if (status === 'ENTREGADO' || status === 'DELIVERED') return 'ENTREGADO';
+  if (
+    status === 'ENVIADO' ||
+    status === 'IN_TRANSIT' ||
+    status === 'TEMP_ASSIGNED' ||
+    status === 'ASSIGNED' ||
+    status === 'SHIPPED'
+  ) {
+    return 'ENVIADO';
+  }
   return 'RECIBIDO';
 }
 
 function normalizeTibRow(raw, fallbackStatus) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-  const wr = normalizeTibWr(raw.wr, raw.seqwr);
+  const isV2Shape = raw.id !== undefined && raw.wr === undefined && raw.seqwr === undefined;
+  const wr = isV2Shape ? normalizeTibWr(raw.id) : normalizeTibWr(raw.wr, raw.seqwr);
   if (!wr || !wr.startsWith('WR')) return null;
 
   let peso = '';
-  if (raw.weight !== null && raw.weight !== undefined && raw.weight !== '') {
-    const parsed = Number(String(raw.weight).replace(',', '.'));
+  const rawWeight = isV2Shape ? cleanNullableText(raw.weight) : raw.weight;
+  if (rawWeight !== null && rawWeight !== undefined && rawWeight !== '') {
+    const parsed = Number(String(rawWeight).replace(',', '.'));
     if (Number.isFinite(parsed) && parsed > 0) peso = Math.round(parsed * 100) / 100;
   }
 
+  const tracking = isV2Shape
+    ? cleanNullableText(raw.tracking) || cleanNullableText(raw.secondTracking)
+    : String(raw.tracking || '').trim();
+  const cliente = isV2Shape
+    ? cleanNullableText(raw.nameClient) || cleanNullableText(raw.nameConsignee)
+    : String(raw.nclient || '').trim();
+  const empaque = isV2Shape
+    ? (cleanNullableText(raw.container) || cleanNullableText(raw.description) || 'CAJA').toUpperCase()
+    : String(raw.container || 'CAJA').trim().toUpperCase() || 'CAJA';
+  const modified = isV2Shape
+    ? cleanNullableText(raw.dateModify) || cleanNullableText(raw.dateRegister)
+    : String(raw.fecModify || raw.fecRegister || '').trim();
+
   return [
     wr,
-    String(raw.tracking || '').trim(),
-    String(raw.nclient || '').trim(),
-    String(raw.container || 'CAJA').trim().toUpperCase() || 'CAJA',
+    tracking,
+    cliente,
+    empaque,
     peso,
     normalizeTibStatus(raw.status, fallbackStatus),
-    String(raw.fecModify || raw.fecRegister || '').trim(),
+    modified,
   ];
+}
+
+function mergeSlotItemsV2First(v2Items, v1Items, fallbackStatus) {
+  const byWr = new Map();
+  for (const item of Array.isArray(v2Items) ? v2Items : []) {
+    const row = normalizeTibRow(item, fallbackStatus);
+    if (row && !byWr.has(row[0])) byWr.set(row[0], row);
+  }
+  for (const item of Array.isArray(v1Items) ? v1Items : []) {
+    const row = normalizeTibRow(item, fallbackStatus);
+    if (row && !byWr.has(row[0])) byWr.set(row[0], row);
+  }
+  return Array.from(byWr.values());
 }
 
 function generateTibXlsxBuffer(items, fallbackStatus) {
   const rows = [REPORT_HEADERS];
   for (const item of items) {
+    if (Array.isArray(item) && item.length >= REPORT_HEADERS.length) {
+      rows.push(item);
+      continue;
+    }
     const normalized = normalizeTibRow(item, fallbackStatus);
     if (normalized) rows.push(normalized);
   }
@@ -123,6 +173,53 @@ function generateTibXlsxBuffer(items, fallbackStatus) {
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Hoja1');
   const output = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
   return { buffer: Buffer.isBuffer(output) ? output : Buffer.from(output), rowCount: rows.length - 1 };
+}
+
+async function fetchTibV2Token({ baseUrl, email, password, fetchImpl = fetch, timeoutMs = 20000 }) {
+  const cleanBase = String(baseUrl || TIB_V2_API_DEFAULT_URL).trim().replace(/\/+$/, '');
+  const response = await fetchImpl(`${cleanBase}/user/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+    signal: AbortSignal.timeout(timeoutMs),
+    cache: 'no-store',
+  });
+  if (!response.ok) {
+    throw new Error(`TIB v2 respondió HTTP ${response.status} al autenticar (/user/login).`);
+  }
+  const payload = await response.json().catch(() => null);
+  if (!payload || !payload.token) {
+    throw new Error('TIB v2 no devolvió token JWT en /user/login.');
+  }
+  return payload.token;
+}
+
+async function fetchTibV2SlotItems({ baseUrl, token, cargoStatuses, fetchImpl = fetch, timeoutMs = 30000 }) {
+  const cleanBase = String(baseUrl || TIB_V2_API_DEFAULT_URL).trim().replace(/\/+$/, '');
+  const collected = [];
+  for (const st of cargoStatuses) {
+    const response = await fetchImpl(
+      `${cleanBase}/warehouse/warehouse/find-all-warehouse?status=${encodeURIComponent(st)}`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'User-Agent': 'AMEX-Courier-Daily-Reports/2.0',
+        },
+        signal: AbortSignal.timeout(timeoutMs),
+        cache: 'no-store',
+      }
+    );
+    if (!response.ok) {
+      throw new Error(`TIB v2 respondió HTTP ${response.status} para el estado ${st}.`);
+    }
+    const payload = await response.json().catch(() => null);
+    if (!payload || typeof payload !== 'object' || !Array.isArray(payload.data)) {
+      throw new Error(`TIB v2 devolvió un formato inválido para el estado ${st}.`);
+    }
+    collected.push(...payload.data);
+  }
+  return collected;
 }
 
 async function fetchTibStatus({ url, email, password, status, fetchImpl = fetch, timeoutMs = 30000 }) {
@@ -166,11 +263,15 @@ function createTibDailySync(options) {
     tibApiUrl = TIB_API_DEFAULT_URL,
     tibEmail = '',
     tibPassword = '',
+    tibV2ApiUrl = TIB_V2_API_DEFAULT_URL,
+    tibV2Email = '',
+    tibV2Password = '',
     r2Root = 'FOLDER AMEX',
     fetchImpl = fetch,
     putObject,
     deleteObject,
     listActiveFiles,
+    listLatestActiveFiles = null,
     publishFiles,
     listInactiveKeys,
     markHistoryKeysDeleted = async () => {},
@@ -238,8 +339,10 @@ function createTibDailySync(options) {
   }
 
   async function performSync() {
-    if (!tibEmail || !tibPassword) {
-      throw new Error('Faltan TIB_API_EMAIL o TIB_API_PASSWORD en la configuración del Worker.');
+    const hasV2 = Boolean(tibV2Email && tibV2Password);
+    const hasV1 = Boolean(tibEmail && tibPassword);
+    if (!hasV2 && !hasV1) {
+      throw new Error('Faltan credenciales TIB_V2_EMAIL/TIB_V2_PASSWORD (o TIB_API_EMAIL/TIB_API_PASSWORD) en la configuración del Worker.');
     }
 
     const date = getLimaDateString(now());
@@ -261,32 +364,116 @@ function createTibDailySync(options) {
       return { date, skippedFetch: true, cleanupPending: cleanup.failed.length, countsBySlot: {} };
     }
 
+    // Autenticar una sola vez en TIB v2 si está configurado
+    let v2Token = null;
+    if (hasV2) {
+      try {
+        v2Token = await fetchTibV2Token({
+          baseUrl: tibV2ApiUrl,
+          email: tibV2Email,
+          password: tibV2Password,
+          fetchImpl,
+        });
+      } catch (v2AuthErr) {
+        if (!hasV1) throw v2AuthErr;
+        log('warn', 'No se pudo autenticar en TIB v2; usando respaldo TIB v1.', {
+          error: v2AuthErr.message,
+        });
+      }
+    }
+
     // Fetch/parse all 3 reports before creating any R2 object, so a bad TIB response
     // never replaces part of the previously published set.
+    const latestActive = typeof listLatestActiveFiles === 'function'
+      ? await listLatestActiveFiles().catch(() => [])
+      : [];
+    const latestByTipo = new Map(
+      (Array.isArray(latestActive) ? latestActive : []).map((row) => [row.tipo, row])
+    );
+
     const reports = [];
     for (const slot of REPORT_SLOTS) {
-      const items = await fetchTibStatus({
-        url: tibApiUrl,
-        email: tibEmail,
-        password: tibPassword,
-        status: slot.tibStatus,
-        fetchImpl,
-      });
-      const workbook = generateTibXlsxBuffer(items, slot.tibStatus);
-      if (items.length > 0 && workbook.rowCount === 0) {
+      let v2Items = [];
+      let v1Items = [];
+      let v2SlotErr = null;
+      let v1SlotErr = null;
+
+      if (v2Token) {
+        try {
+          v2Items = await fetchTibV2SlotItems({
+            baseUrl: tibV2ApiUrl,
+            token: v2Token,
+            cargoStatuses: slot.cargoStatuses,
+            fetchImpl,
+          });
+        } catch (err) {
+          v2SlotErr = err;
+          log('warn', `Error consultando TIB v2 para slot ${slot.tipo}.`, { error: err.message });
+        }
+      }
+
+      if (hasV1) {
+        try {
+          v1Items = await fetchTibStatus({
+            url: tibApiUrl,
+            email: tibEmail,
+            password: tibPassword,
+            status: slot.tibStatus,
+            fetchImpl,
+          });
+        } catch (err) {
+          v1SlotErr = err;
+          if (!v2Token || v2SlotErr) {
+            throw err;
+          }
+          log('warn', `Aviso consultando historial TIB v1 para slot ${slot.tipo}; se continúa con TIB v2.`, {
+            error: err.message,
+          });
+        }
+      }
+
+      if (v2Token && v2SlotErr && (!hasV1 || v1SlotErr)) {
+        throw v2SlotErr;
+      }
+
+      const rawTotal = v2Items.length + v1Items.length;
+      const mergedRows = mergeSlotItemsV2First(v2Items, v1Items, slot.tibStatus);
+      const workbook = generateTibXlsxBuffer(mergedRows, slot.tibStatus);
+      if (rawTotal > 0 && workbook.rowCount === 0) {
         throw new Error(`TIB devolvió filas sin WR válido para el estado ${slot.tibStatus}.`);
       }
-      reports.push({ ...slot, buffer: workbook.buffer, rowCount: workbook.rowCount });
+
+      // Guardia anti-sobrescritura vacía: si un slot viene con 0 filas y ya hay histórico activo, preservarlo
+      const preservedRow = workbook.rowCount === 0 ? latestByTipo.get(slot.tipo) : null;
+      reports.push({
+        ...slot,
+        buffer: workbook.buffer,
+        rowCount: workbook.rowCount,
+        preservedRow: preservedRow && preservedRow.r2_key ? preservedRow : null,
+      });
     }
 
     const runId = randomId();
     const uploaded = [];
+    const newlyUploadedKeys = [];
     let publishAttempted = false;
     let committed = false;
     try {
       for (const report of reports) {
+        if (report.preservedRow) {
+          log('warn', `Slot ${report.tipo} devolvió 0 registros; se preserva el archivo histórico activo (${report.preservedRow.r2_key}).`);
+          uploaded.push({
+            ...report,
+            r2_key: report.preservedRow.r2_key,
+            nombre: report.preservedRow.nombre_archivo || report.nombre,
+            preservedBytes: Number(report.preservedRow.peso_bytes || 0),
+          });
+          continue;
+        }
+
         const r2Key = buildR2Key(r2Root, date, report.tipo, runId);
         uploaded.push({ ...report, r2_key: r2Key });
+        newlyUploadedKeys.push(r2Key);
         await withRetry(
           () => putObject(r2Key, report.buffer, XLSX_CONTENT_TYPE),
           { maxRetries: 3, initialDelayMs: 1500, operationName: `Subida reporte TIB (${report.tipo})` }
@@ -298,7 +485,7 @@ function createTibDailySync(options) {
         tipo: report.tipo,
         r2_key: report.r2_key,
         nombre_archivo: report.nombre,
-        peso_bytes: report.buffer.byteLength,
+        peso_bytes: report.preservedRow ? report.preservedBytes : report.buffer.byteLength,
         subido_por_nombre: PUBLISHER_NAME,
         subido_en: subidoEn,
       }));
@@ -307,7 +494,11 @@ function createTibDailySync(options) {
       const publication = await publishFiles(date, dbRows);
       committed = true;
 
-      const oldKeys = Array.isArray(publication?.old_r2_keys) ? publication.old_r2_keys : [];
+      const preservedKeySet = new Set(
+        uploaded.filter((r) => r.preservedRow).map((r) => r.r2_key)
+      );
+      const oldKeys = (Array.isArray(publication?.old_r2_keys) ? publication.old_r2_keys : [])
+        .filter((k) => !preservedKeySet.has(k));
       await syncCacheForRows(dbRows.map((row) => ({ ...row, es_activo: true })));
       const cleanup = await cleanupOldObjects(oldKeys);
       const countsBySlot = Object.fromEntries(uploaded.map((report) => [report.tipo, report.rowCount]));
@@ -329,7 +520,7 @@ function createTibDailySync(options) {
       }
 
       if (!committed) {
-        await Promise.allSettled(uploaded.map((row) => deleteObject(row.r2_key)));
+        await Promise.allSettled(newlyUploadedKeys.map((key) => deleteObject(key)));
       }
       throw error;
     }
@@ -475,15 +666,19 @@ module.exports = {
   REPORT_HEADERS,
   REPORT_SLOTS,
   TIB_API_DEFAULT_URL,
+  TIB_V2_API_DEFAULT_URL,
   XLSX_CONTENT_TYPE,
   buildR2Key,
   createTibDailyScheduler,
   createTibDailySync,
   fetchTibStatus,
+  fetchTibV2SlotItems,
+  fetchTibV2Token,
   generateTibXlsxBuffer,
   getLimaDateString,
   isManagedReportKey,
   isPastLimaRunTime,
+  mergeSlotItemsV2First,
   millisecondsUntilNextLimaRun,
   normalizeTibRow,
   normalizeTibWr,
